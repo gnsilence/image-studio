@@ -1,6 +1,79 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const Database = require('better-sqlite3');
+
+let BetterSqliteDatabase = null;
+
+class NodeSqliteStatement {
+  constructor(statement) {
+    this.statement = statement;
+  }
+
+  normalizeRow(row) {
+    return row && Object.getPrototypeOf(row) === null ? { ...row } : row;
+  }
+
+  get(...params) {
+    return this.normalizeRow(this.statement.get(...params));
+  }
+
+  all(...params) {
+    return this.statement.all(...params).map(row => this.normalizeRow(row));
+  }
+
+  run(...params) {
+    return this.statement.run(...params);
+  }
+}
+
+class NodeSqliteDatabase {
+  constructor(dbPath) {
+    const { DatabaseSync } = require('node:sqlite');
+    this.db = new DatabaseSync(dbPath);
+    this.transactionDepth = 0;
+    this.savepointId = 0;
+  }
+
+  prepare(sql) {
+    return new NodeSqliteStatement(this.db.prepare(sql));
+  }
+
+  exec(sql) {
+    return this.db.exec(sql);
+  }
+
+  pragma(source, options = {}) {
+    const rows = this.prepare(`PRAGMA ${source}`).all();
+    if (!options.simple) return rows;
+    const row = rows[0];
+    return row ? row[Object.keys(row)[0]] : undefined;
+  }
+
+  transaction(callback) {
+    return (...args) => {
+      const topLevel = this.transactionDepth === 0;
+      const savepoint = `sp_${++this.savepointId}`;
+      this.exec(topLevel ? 'BEGIN' : `SAVEPOINT ${savepoint}`);
+      this.transactionDepth += 1;
+      try {
+        const result = callback(...args);
+        this.transactionDepth -= 1;
+        this.exec(topLevel ? 'COMMIT' : `RELEASE SAVEPOINT ${savepoint}`);
+        return result;
+      } catch (error) {
+        this.transactionDepth -= 1;
+        try { this.exec(topLevel ? 'ROLLBACK' : `ROLLBACK TO SAVEPOINT ${savepoint}`); } catch { /* ignore */ }
+        if (!topLevel) {
+          try { this.exec(`RELEASE SAVEPOINT ${savepoint}`); } catch { /* ignore */ }
+        }
+        throw error;
+      }
+    };
+  }
+
+  close() {
+    this.db.close();
+  }
+}
 
 const MIGRATIONS = [
   {
@@ -96,9 +169,19 @@ function applyMigrations(db) {
   }
 }
 
+function openDatabase(dbPath) {
+  if (process.env.NOVA_DESKTOP_SQLITE_DRIVER === 'node') return new NodeSqliteDatabase(dbPath);
+  try {
+    BetterSqliteDatabase ??= require('better-sqlite3');
+    return new BetterSqliteDatabase(dbPath);
+  } catch (error) {
+    return new NodeSqliteDatabase(dbPath);
+  }
+}
+
 function openDesktopDatabase(dbPath) {
   ensureParentDirectory(dbPath);
-  const db = new Database(dbPath);
+  const db = openDatabase(dbPath);
   db.pragma('journal_mode = WAL');
   db.pragma('busy_timeout = 5000');
   db.pragma('foreign_keys = ON');

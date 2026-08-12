@@ -1,4 +1,5 @@
 const path = require('node:path');
+const fs = require('node:fs');
 const {
   app,
   BrowserWindow,
@@ -22,6 +23,17 @@ const localAppData = process.env.NOVA_DESKTOP_DATA_ROOT
 app.setName(APP_NAME);
 app.setPath('userData', localAppData);
 
+function logStartup(message, error) {
+  if (app.isPackaged && process.env.NOVA_DESKTOP_DEBUG !== '1') return;
+  try {
+    fs.mkdirSync(localAppData, { recursive: true });
+    const details = error ? `\n${error?.stack || error?.message || String(error)}` : '';
+    fs.appendFileSync(path.join(localAppData, 'desktop-startup.log'), `[${new Date().toISOString()}] ${message}${details}\n`);
+  } catch {
+    // Startup logging must never block the app.
+  }
+}
+
 let mainWindow = null;
 let storage = null;
 let backend = null;
@@ -33,7 +45,9 @@ let shutdownComplete = false;
 let closeApproved = false;
 let backendRestartCount = 0;
 
-if (!app.requestSingleInstanceLock()) {
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+logStartup(`main loaded; packaged=${app.isPackaged}; cwd=${process.cwd()}; lock=${hasSingleInstanceLock}`);
+if (!hasSingleInstanceLock) {
   app.quit();
 }
 
@@ -84,7 +98,9 @@ async function startBackendWithRetry() {
 }
 
 async function createMainWindow() {
+  logStartup('createMainWindow:start');
   const address = await startBackendWithRetry();
+  logStartup(`backend:ready ${address.url}`);
   attachDesktopToken(address, backend.sessionToken);
   const windowOptions = {
     title: 'AIOSS Image - AI 图像生成器',
@@ -144,6 +160,7 @@ async function createMainWindow() {
   window.on('closed', () => { mainWindow = null; });
 
   await window.loadURL(`${address.url}/`);
+  logStartup(`window:loaded ${address.url}/`);
   return window;
 }
 
@@ -180,6 +197,7 @@ async function handleUnexpectedBackendExit() {
 }
 
 async function initialize() {
+  logStartup('initialize:start');
   storage = new StorageService({ dataRoot: localAppData, safeStorage });
   s3Service = new S3Service({
     getStorage: () => storage,
@@ -218,6 +236,7 @@ async function initialize() {
   updater.on('status', status => mainWindow?.webContents.send('desktop:updater:status-changed', status));
   updater.start();
   await createMainWindow();
+  logStartup('initialize:done');
 }
 
 async function shutdown() {
@@ -239,6 +258,7 @@ app.on('second-instance', () => {
 });
 
 app.on('before-quit', event => {
+  logStartup('app:before-quit');
   if (shutdownComplete) return;
   event.preventDefault();
   if (quitting) return;
@@ -249,11 +269,15 @@ app.on('before-quit', event => {
   });
 });
 
-app.on('window-all-closed', () => app.quit());
+app.on('window-all-closed', () => {
+  logStartup('app:window-all-closed');
+  app.quit();
+});
 
 app.whenReady()
   .then(initialize)
   .catch(error => {
+    logStartup('initialize:error', error);
     dialog.showErrorBox('AIOSS Image 启动失败', error?.stack || error?.message || String(error));
     shutdownComplete = true;
     app.quit();
