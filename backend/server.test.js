@@ -348,6 +348,86 @@ test('NOVA_TASK_TTL_HOURS controls completed task expiration', async () => {
   }
 });
 
+test('Grok image tasks complete from inline base64 without downloading remote URLs', async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nova-image-grok-b64-test-'));
+  const token = 'test-image-grok-b64-token';
+  const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lW2mWQAAAABJRU5ErkJggg==';
+  let upstreamBody = null;
+  const upstream = http.createServer((req, res) => {
+    let raw = '';
+    req.on('data', chunk => { raw += chunk; });
+    req.on('end', () => {
+      upstreamBody = raw ? JSON.parse(raw) : {};
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ data: [{ b64_json: pngBase64 }] }));
+    });
+  });
+  const upstreamAddress = await listen(upstream);
+  const child = fork(path.join(__dirname, 'server.js'), [], {
+    cwd: path.join(__dirname, '..'),
+    silent: true,
+    env: {
+      ...process.env,
+      NODE_ENV: 'production',
+      HOSTNAME: '127.0.0.1',
+      PORT: '0',
+      NOVA_TASK_DB: path.join(tempDir, 'tasks.sqlite'),
+      NOVA_IMAGE_DIR: path.join(tempDir, 'images'),
+      NOVA_DESKTOP_SESSION_TOKEN: token,
+    },
+  });
+
+  try {
+    const ready = await waitForMessage(child, 'ready');
+    const headers = {
+      'Content-Type': 'application/json',
+      'X-Nova-Desktop-Token': token,
+    };
+    const response = await fetch(`${ready.url}/api/nova/tasks`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        apiKey: 'custom-image-key',
+        baseUrl: `http://127.0.0.1:${upstreamAddress.port}/v1/`,
+        protocol: 'grok',
+        mode: 'text-to-image',
+        prompt: 'test image',
+        outputSize: '1K',
+        aspectRatio: '1:1',
+        temperature: 1,
+        model: 'grok-imagine-image-quality',
+        parallelCount: 1,
+        images: [],
+      }),
+    });
+    assert.equal(response.status, 202);
+    const { taskId } = await response.json();
+
+    const task = await waitForTaskDone(ready.url, taskId, headers);
+
+    assert.equal(task?.status, 'completed', task?.error);
+    assert.deepEqual(task.result?.images?.length, 1);
+    assert.equal(task.result?.images?.[0]?.startsWith('URL:/api/nova/images/'), true);
+    assert.equal(upstreamBody?.response_format, 'b64_json');
+  } finally {
+    if (child.connected) {
+      const exitPromise = waitForExit(child);
+      child.send({ type: 'stop' });
+      await exitPromise;
+    } else if (!child.killed) {
+      child.kill('SIGKILL');
+    }
+    child.stdout?.destroy();
+    child.stderr?.destroy();
+    await closeServer(upstream);
+    try {
+      fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    } catch {
+      // Windows may retain the SQLite file handle briefly after child exit.
+    }
+  }
+});
+
 test('URL image tasks complete with remote URL when server-side result download fails', async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nova-image-url-download-fallback-test-'));
   const token = 'test-image-url-download-fallback-token';

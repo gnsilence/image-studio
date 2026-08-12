@@ -121,6 +121,7 @@ const REQUEST_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 const IMAGE_STREAM_ENABLED = String(process.env.NOVA_IMAGE_STREAM ?? 'true').toLowerCase() !== 'false';
 const IMAGE_STREAM_PARTIAL_IMAGES = Math.min(3, Math.max(0, Number.parseInt(process.env.NOVA_IMAGE_PARTIAL_IMAGES || '1', 10) || 1));
 const IMAGE_STREAM_UNSUPPORTED_PATTERN = /(?:(?:stream|partial_images).*(?:unsupported|not supported|unknown|unrecognized|invalid)|(?:unsupported|not supported|unknown|unrecognized|invalid).*(?:stream|partial_images)|(?:stream|partial_images).*(?:不支持|未知|无效)|(?:不支持|未知|无效).*(?:stream|partial_images))/i;
+const IMAGE_RESPONSE_FORMAT_UNSUPPORTED_PATTERN = /(?:(?:response_format|b64_json).*(?:unsupported|not supported|unknown|unrecognized|invalid)|(?:unsupported|not supported|unknown|unrecognized|invalid).*(?:response_format|b64_json)|(?:response_format|b64_json).*(?:不支持|未知|无效)|(?:不支持|未知|无效).*(?:response_format|b64_json))/i;
 // 开源版：不再硬编码模型列表，由前端通过 protocol 字段指定协议类型
 const VALID_PROTOCOLS = new Set(['google', 'openai', 'grok']);
 const GPT_IMAGE_QUALITIES = new Set(['auto', 'high', 'medium', 'low']);
@@ -389,6 +390,14 @@ function getImageExtension(mimeType) {
   if (mimeType?.includes('jpeg') || mimeType?.includes('jpg')) return 'jpg';
   if (mimeType?.includes('webp')) return 'webp';
   return 'png';
+}
+
+function detectImageMimeType(buffer, fallback = 'image/png') {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 12) return fallback;
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'image/jpeg';
+  if (buffer[0] === 0x89 && buffer.slice(1, 4).toString('ascii') === 'PNG') return 'image/png';
+  if (buffer.slice(0, 4).toString('ascii') === 'RIFF' && buffer.slice(8, 12).toString('ascii') === 'WEBP') return 'image/webp';
+  return fallback;
 }
 
 function logTaskStage(trace, stage, details = {}) {
@@ -1108,6 +1117,11 @@ function isImageStreamUnsupportedError(error) {
   return IMAGE_STREAM_UNSUPPORTED_PATTERN.test(message);
 }
 
+function isImageResponseFormatUnsupportedError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return IMAGE_RESPONSE_FORMAT_UNSUPPORTED_PATTERN.test(message);
+}
+
 async function requestGptImage(apiKey, request, resolvedSize, options = {}) {
   const baseUrl = options.baseUrl || resolveNovaApiBaseUrl();
   const endpoint = request.mode === 'image-to-image'
@@ -1153,6 +1167,7 @@ function createGrokImageRequestInit(apiKey, request, options = {}) {
   const aspectRatio = getGrokAspectRatio(request.aspectRatio);
   const resolution = getGrokResolution(request.outputSize);
   const images = Array.isArray(request.images) ? request.images : [];
+  const responseFormat = options.responseFormat || 'b64_json';
 
   if (request.mode === 'image-to-image') {
     if (images.length === 0) {
@@ -1165,7 +1180,7 @@ function createGrokImageRequestInit(apiKey, request, options = {}) {
     const payload = {
       model: request.model,
       prompt,
-      response_format: 'url',
+      response_format: responseFormat,
       ...(stream ? { stream: true } : {}),
       ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}),
       ...(resolution ? { resolution } : {}),
@@ -1184,7 +1199,7 @@ function createGrokImageRequestInit(apiKey, request, options = {}) {
   const payload = {
     model: request.model,
     prompt,
-    response_format: 'url',
+    response_format: responseFormat,
     ...(stream ? { stream: true } : {}),
     ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}),
     ...(resolution ? { resolution } : {}),
@@ -1335,7 +1350,13 @@ async function generateNovaImage(apiKey, request, trace) {
     }
   }
   if (request.protocol === 'grok') {
-    return requestGrokImage(apiKey, request, { baseUrl, trace });
+    try {
+      return await requestGrokImage(apiKey, request, { baseUrl, trace, responseFormat: 'b64_json' });
+    } catch (error) {
+      if (!isImageResponseFormatUnsupportedError(error)) throw error;
+      console.warn('[grok-image] 上游不支持 b64_json 图片响应，回退 URL 响应');
+      return requestGrokImage(apiKey, request, { baseUrl, trace, responseFormat: 'url' });
+    }
   }
   // 默认走 Google Gemini 协议
   return generateNovaGeminiImage(apiKey, request, { baseUrl, trace });
@@ -1464,7 +1485,7 @@ async function generateSingleImage(apiKey, request, taskId, index) {
         }
       } else {
         const buffer = Buffer.from(img, 'base64');
-        const result = saveImageToDisk(taskId, index, subIdx, buffer, 'image/png');
+        const result = saveImageToDisk(taskId, index, subIdx, buffer, detectImageMimeType(buffer));
         logTaskStage(trace, 'result_saved', {
           subIndex: subIdx,
           source: 'base64',
