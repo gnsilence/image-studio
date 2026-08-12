@@ -1447,8 +1447,21 @@ async function generateSingleImage(apiKey, request, taskId, index) {
       const img = expanded[subIdx];
       if (img.startsWith('URL:')) {
         const remoteUrl = img.substring(4);
-        const result = await downloadUrlToDisk(taskId, index, subIdx, remoteUrl, trace);
-        diskRefs.push(`URL:${result.httpUrl}`);
+        try {
+          const result = await downloadUrlToDisk(taskId, index, subIdx, remoteUrl, trace);
+          diskRefs.push(`URL:${result.httpUrl}`);
+        } catch (error) {
+          logTaskStage(trace, 'result_download_failed_remote_fallback', {
+            subIndex: subIdx,
+            elapsedMs: Date.now() - trace.startedAt,
+            sourceHost: (() => { try { return new URL(remoteUrl).host; } catch { return 'unknown'; } })(),
+            errorName: error?.name || '',
+            errorMessage: String(error?.message || error).slice(0, 300),
+            causeCode: error?.cause?.code || '',
+            causeMessage: String(error?.cause?.message || '').slice(0, 300),
+          });
+          diskRefs.push(`URL:${remoteUrl}`);
+        }
       } else {
         const buffer = Buffer.from(img, 'base64');
         const result = saveImageToDisk(taskId, index, subIdx, buffer, 'image/png');

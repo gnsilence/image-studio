@@ -38,6 +38,18 @@ function closeServer(server) {
   return new Promise(resolve => server.close(() => resolve()));
 }
 
+async function waitForTaskDone(baseUrl, taskId, headers) {
+  let task;
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    const taskResponse = await fetch(`${baseUrl}/api/nova/tasks/${taskId}`, { headers });
+    task = await taskResponse.json();
+    if (task.status === 'completed' || task.status === 'failed') break;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  return task;
+}
+
 test('desktop server uses an ephemeral port, enforces its token, and stops cleanly', async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nova-backend-test-'));
   const token = 'test-desktop-session-token';
@@ -143,14 +155,7 @@ test('image tasks call the configured Base URL', async () => {
     assert.equal(response.status, 202);
     const { taskId } = await response.json();
 
-    let task;
-    const deadline = Date.now() + 10_000;
-    while (Date.now() < deadline) {
-      const taskResponse = await fetch(`${ready.url}/api/nova/tasks/${taskId}`, { headers });
-      task = await taskResponse.json();
-      if (task.status === 'completed' || task.status === 'failed') break;
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
+    const task = await waitForTaskDone(ready.url, taskId, headers);
 
     assert.equal(task?.status, 'completed', task?.error);
     assert.equal(upstreamRequests.length, 1);
@@ -237,14 +242,7 @@ test('OpenAI image tasks retry without streaming when the upstream rejects strea
     assert.equal(response.status, 202);
     const { taskId } = await response.json();
 
-    let task;
-    const deadline = Date.now() + 10_000;
-    while (Date.now() < deadline) {
-      const taskResponse = await fetch(`${ready.url}/api/nova/tasks/${taskId}`, { headers });
-      task = await taskResponse.json();
-      if (task.status === 'completed' || task.status === 'failed') break;
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
+    const task = await waitForTaskDone(ready.url, taskId, headers);
 
     assert.equal(task?.status, 'completed', task?.error);
     assert.equal(upstreamBodies.length, 2);
@@ -323,14 +321,7 @@ test('NOVA_TASK_TTL_HOURS controls completed task expiration', async () => {
     assert.equal(response.status, 202);
     const { taskId } = await response.json();
 
-    let task;
-    const deadline = Date.now() + 10_000;
-    while (Date.now() < deadline) {
-      const taskResponse = await fetch(`${ready.url}/api/nova/tasks/${taskId}`, { headers });
-      task = await taskResponse.json();
-      if (task.status === 'completed' || task.status === 'failed') break;
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
+    const task = await waitForTaskDone(ready.url, taskId, headers);
 
     assert.equal(task?.status, 'completed', task?.error);
     const createdAt = Date.parse(task.createdAt);
@@ -338,6 +329,80 @@ test('NOVA_TASK_TTL_HOURS controls completed task expiration', async () => {
     assert.ok(Number.isFinite(createdAt));
     assert.ok(Number.isFinite(expiresAt));
     assert.ok(Math.abs((expiresAt - createdAt) - 60 * 60 * 1000) < 30_000);
+  } finally {
+    if (child.connected) {
+      const exitPromise = waitForExit(child);
+      child.send({ type: 'stop' });
+      await exitPromise;
+    } else if (!child.killed) {
+      child.kill('SIGKILL');
+    }
+    child.stdout?.destroy();
+    child.stderr?.destroy();
+    await closeServer(upstream);
+    try {
+      fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    } catch {
+      // Windows may retain the SQLite file handle briefly after child exit.
+    }
+  }
+});
+
+test('URL image tasks complete with remote URL when server-side result download fails', async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nova-image-url-download-fallback-test-'));
+  const token = 'test-image-url-download-fallback-token';
+  const unreachableImageUrl = 'http://127.0.0.1:9/generated.png';
+  const upstream = http.createServer((req, res) => {
+    req.resume();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ data: [{ url: unreachableImageUrl }] }));
+  });
+  const upstreamAddress = await listen(upstream);
+  const child = fork(path.join(__dirname, 'server.js'), [], {
+    cwd: path.join(__dirname, '..'),
+    silent: true,
+    env: {
+      ...process.env,
+      NODE_ENV: 'production',
+      HOSTNAME: '127.0.0.1',
+      PORT: '0',
+      NOVA_TASK_DB: path.join(tempDir, 'tasks.sqlite'),
+      NOVA_IMAGE_DIR: path.join(tempDir, 'images'),
+      NOVA_DESKTOP_SESSION_TOKEN: token,
+      NOVA_IMAGE_STREAM: 'false',
+    },
+  });
+
+  try {
+    const ready = await waitForMessage(child, 'ready');
+    const headers = {
+      'Content-Type': 'application/json',
+      'X-Nova-Desktop-Token': token,
+    };
+    const response = await fetch(`${ready.url}/api/nova/tasks`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        apiKey: 'custom-image-key',
+        baseUrl: `http://127.0.0.1:${upstreamAddress.port}/v1/`,
+        protocol: 'grok',
+        mode: 'text-to-image',
+        prompt: 'test image',
+        outputSize: '1K',
+        aspectRatio: '1:1',
+        temperature: 1,
+        model: 'grok-imagine-image-quality',
+        parallelCount: 1,
+        images: [],
+      }),
+    });
+    assert.equal(response.status, 202);
+    const { taskId } = await response.json();
+
+    const task = await waitForTaskDone(ready.url, taskId, headers);
+
+    assert.equal(task?.status, 'completed', task?.error);
+    assert.deepEqual(task.result?.images, [`URL:${unreachableImageUrl}`]);
   } finally {
     if (child.connected) {
       const exitPromise = waitForExit(child);
