@@ -44,10 +44,12 @@ import {
 } from '@/lib/workspace-task-service';
 import { cn } from '@/lib/utils';
 import { BA_RANDOM_URL, BING_WALLPAPER_URL } from '@/lib/constants';
+import { isDesktopRuntime } from '@/lib/desktop-bridge';
 
 export function WorkspaceShell() {
   const queueStatus = useQueueStatus();
-  const { wideMode, toggleWideMode } = useWideMode();
+  const { wideMode, mounted, toggleWideMode } = useWideMode();
+  const desktopRuntime = mounted && isDesktopRuntime();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [missingApiKeyDialogOpen, setMissingApiKeyDialogOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -209,17 +211,22 @@ export function WorkspaceShell() {
     <div
       className={cn(
         'mx-auto flex min-h-screen w-full flex-col gap-4 overflow-x-hidden px-3 py-3 transition-[max-width] duration-200 sm:gap-5 sm:px-6 sm:py-5 lg:px-8',
-        wideMode ? 'max-w-none xl:h-dvh xl:min-h-0 xl:gap-3 xl:py-3 xl:overflow-hidden' : 'max-w-5xl',
+        desktopRuntime && 'nova-desktop-shell',
+        wideMode
+          ? 'max-w-none xl:h-dvh xl:min-h-0 xl:gap-3 xl:py-3 xl:overflow-hidden'
+          : desktopRuntime ? 'max-w-none' : 'max-w-5xl',
         !wideMode && activeTab === 'agent' && 'h-dvh min-h-0 overflow-hidden'
       )}
     >
       <div className={cn(
         'flex-1 bg-transparent shadow-none sm:rounded-3xl sm:bg-card/95 sm:shadow-sm sm:border sm:border-border/70',
+        desktopRuntime && 'nova-desktop-frame',
         wideMode && 'flex min-h-0 flex-col',
         !wideMode && activeTab === 'agent' && 'flex min-h-0 flex-col'
       )}>
         <div className={cn(
           'p-0 sm:p-5',
+          desktopRuntime && 'nova-desktop-inner',
           wideMode
             ? 'flex h-full flex-1 flex-col min-h-0 sm:p-3'
             : activeTab === 'agent'
@@ -248,21 +255,25 @@ export function WorkspaceShell() {
                   : 'gap-2'
             )}
           >
-            <div className={cn('flex flex-col', wideMode && 'self-stretch sticky top-4 h-full xl:shrink-0')}>
+            <div className={cn(
+              'flex flex-col',
+              wideMode && 'self-stretch sticky top-4 h-full xl:shrink-0',
+              desktopRuntime && (wideMode ? 'nova-desktop-sidebar' : 'nova-desktop-topnav'),
+            )}>
               {wideMode && (
                 <button
                   type="button"
                   onClick={promptGallery.handlePromptGalleryEntry}
                   className="flex items-center gap-2 px-2 pt-3 pb-1 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  aria-label="Nova Image logo"
+                  aria-label="AIOSS logo"
                 >
                   <img
                     src="/favicon.png"
-                    alt="Nova Image"
+                    alt="AIOSS"
                     className="h-8 w-8 shrink-0 rounded-lg object-cover ring-1 ring-border/60"
                   />
                   <div className="min-w-0">
-                    <h2 className="truncate text-base font-semibold tracking-tight leading-tight">Nova Image</h2>
+                    <h2 className="truncate text-base font-semibold tracking-tight leading-tight">AIOSS Image</h2>
                     <p className="truncate text-[11px] text-muted-foreground leading-tight">批量 API 图像生成器</p>
                   </div>
                 </button>
@@ -273,7 +284,7 @@ export function WorkspaceShell() {
 
               {wideMode && (
                 <div className="hidden flex-col gap-1 xl:flex">
-                  <div className="flex flex-col gap-1">
+                  <div className="nova-desktop-random flex flex-col gap-1">
                     <DropdownMenu modal={false}>
                       <DropdownMenuTrigger
                         className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'w-full justify-start gap-2 rounded-xl px-3 text-xs')}
@@ -296,7 +307,7 @@ export function WorkspaceShell() {
                     </DropdownMenu>
                   </div>
 
-                  <div className="flex flex-col gap-1 [&_button]:w-full [&_button]:justify-start [&_button]:rounded-xl [&_button_svg]:size-4 [&_button_svg]:shrink-0">
+                  <div className="nova-desktop-sidebar-tools flex flex-col gap-1 [&_button]:w-full [&_button]:justify-start [&_button]:rounded-xl [&_button_svg]:size-4 [&_button_svg]:shrink-0">
                     <ThemeToggle />
                     <Button variant="outline" size="sm" className="w-full justify-start gap-2 rounded-xl px-3 text-xs" onClick={toggleWideMode}>
                       {wideMode ? <PanelLeftClose className="size-4 shrink-0" /> : <PanelLeftOpen className="size-4 shrink-0" />}
@@ -308,7 +319,7 @@ export function WorkspaceShell() {
                     </Button>
                   </div>
 
-                  <div className="flex flex-col gap-1">
+                  <div className="nova-desktop-status flex flex-col gap-1">
                     <div className="h-px bg-border" />
                     {queueStatus ? (
                       <div className="flex flex-col gap-1">
@@ -340,6 +351,7 @@ export function WorkspaceShell() {
             </div>
 
             <div className={cn(
+              desktopRuntime && 'nova-desktop-workspace',
               wideMode && 'xl:flex xl:flex-1 xl:min-h-0 xl:min-w-0',
               wideMode && (activeTab === 'image-generation' || activeTab === 'agent'
                 ? 'xl:overflow-hidden'
@@ -409,7 +421,7 @@ export function WorkspaceShell() {
               </TabsContent>
 
               <TabsContent value="assets" keepMounted className={cn(wideMode ? 'space-y-6 xl:min-h-0 xl:min-w-0 xl:flex xl:flex-col' : 'space-y-6')}>
-                <AssetsWorkspace wideMode={wideMode} active={activeTab === 'assets'} />
+                <AssetsWorkspace wideMode={wideMode} active={activeTab === 'assets'} onConfigure={() => setSettingsOpen(true)} />
               </TabsContent>
 
               <TabsContent value="reverse-prompt" keepMounted className={cn(wideMode ? 'space-y-6 xl:min-h-0 xl:flex xl:flex-col' : 'space-y-6')}>

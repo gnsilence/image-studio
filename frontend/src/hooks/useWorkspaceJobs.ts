@@ -3,10 +3,9 @@ import { hasAnyApiKey } from '@/lib/settings-storage';
 import {
   deleteImage,
   loadJobs,
-  openDB,
+  loadStoredImages,
   saveImage,
   saveJobs,
-  IMG_STORE,
   type Mode,
   type StoredJob,
 } from '@/lib/job-store';
@@ -39,17 +38,21 @@ export function useWorkspaceJobs() {
   const [cancelJobId, setCancelJobId] = useState<string | null>(null);
 
   useEffect(() => {
+    const refreshApiKeyState = () => setHasApiKey(hasAnyApiKey());
+    refreshApiKeyState();
+    window.addEventListener('nova-model-registry-updated', refreshApiKeyState);
+    return () => window.removeEventListener('nova-model-registry-updated', refreshApiKeyState);
+  }, []);
+
+  useEffect(() => {
     const stored = loadInitialJobs();
     saveJobs(stored);
 
     if (stored.length > 0) {
-      openDB()
-        .then(db => {
-          if (!db) return;
-          const request = db.transaction(IMG_STORE, 'readonly').objectStore(IMG_STORE).getAll();
-          request.onsuccess = () => {
+      loadStoredImages()
+        .then(images => {
             const imageMap = new Map<string, StoredJob>();
-            for (const image of request.result as StoredJob[]) {
+            for (const image of images) {
               imageMap.set(image.id, image);
             }
 
@@ -69,7 +72,6 @@ export function useWorkspaceJobs() {
               };
             }));
             setLoadedImages(new Set(imageMap.keys()));
-          };
         })
         .catch(() => undefined);
     }

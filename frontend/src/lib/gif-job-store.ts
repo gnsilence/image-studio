@@ -2,6 +2,7 @@ import { isGptImageModel } from '@/lib/gemini-config';
 import type { RefImageData } from '@/lib/job-store';
 import { supportsCustomSize, type GptImageBackground, type GptImageQuality, type GptImageStyle } from '@/lib/model-capabilities';
 import { getDefaultImageModel, getCompleteImageModels, loadRegistry } from '@/lib/nova-models';
+import { runtimeStorage } from '@/lib/runtime-storage';
 
 export type GifModel = string;
 
@@ -52,7 +53,7 @@ export const GIF_FRAME_COUNT = GIF_GRID_COLS * GIF_GRID_ROWS;
 export function loadActiveGifJob(): ActiveGifJob | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = runtimeStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as ActiveGifJob;
     if (!parsed || typeof parsed.id !== 'string' || !parsed.status) return null;
@@ -66,10 +67,10 @@ export function saveActiveGifJob(job: ActiveGifJob | null): void {
   if (typeof window === 'undefined') return;
   try {
     if (!job) {
-      localStorage.removeItem(STORAGE_KEY);
+      runtimeStorage.removeItem(STORAGE_KEY);
       return;
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(job));
+    runtimeStorage.setItem(STORAGE_KEY, JSON.stringify(job));
   } catch {
     // storage quota / privacy mode — keep working with in-memory state only
   }

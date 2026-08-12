@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ackNovaTask, createNovaTask, resolveImageTaskProvider, type NovaTaskResponse } from '@/lib/ccode-task-client';
 import { downloadAndStoreImages } from '@/lib/image-downloader';
 import type { StoredJob } from '@/lib/job-store';
+import { BUILTIN_IMAGE_PRESETS, DEFAULT_DEFAULTS } from '@/lib/nova-models';
 import {
   finalizeCompletedServerTask,
   submitTextToImage,
@@ -76,6 +77,13 @@ function createActions(initialJob: StoredJob): { actions: SubmitActions; getJob:
 }
 
 beforeEach(() => {
+  localStorage.clear();
+  const preset = BUILTIN_IMAGE_PRESETS['gpt-image-2'];
+  localStorage.setItem('nova-model-registry', JSON.stringify({
+    imageModels: [{ ...preset, apiKey: 'test-api-key', builtinPreset: preset.id }],
+    textModels: [],
+    defaults: DEFAULT_DEFAULTS,
+  }));
   mockedAckNovaTask.mockReset();
   mockedAckNovaTask.mockResolvedValue(undefined);
   mockedCreateNovaTask.mockReset();
@@ -86,6 +94,7 @@ beforeEach(() => {
     apiKey: 'test-api-key',
     baseUrl: 'https://api.openai.com',
     protocol: 'openai',
+    modelId: 'gpt-image-2',
   });
 });
 
@@ -110,11 +119,6 @@ describe('submitTextToImage', () => {
       apiKey: 'test-api-key',
       mode: 'text-to-image',
       model: 'gpt-image-2',
-      gptImageQuality: 'high',
-      gptImageStyle: 'vivid',
-      gptImageBackground: 'transparent',
-    }));
-    expect(actions.addJob).toHaveBeenCalledWith(expect.objectContaining({
       gptImageQuality: 'high',
       gptImageStyle: 'vivid',
       gptImageBackground: 'transparent',

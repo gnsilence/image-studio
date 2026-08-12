@@ -1,3 +1,6 @@
+import { getDesktopBridge } from '@/lib/desktop-bridge';
+import { blobToBytes, blobToDataUrl, dataUrlToBlob, storedFileToBlob } from '@/lib/desktop-binary';
+
 export interface PreparedUploadImage {
     id: string;
     name: string;
@@ -45,6 +48,15 @@ function openDB(): Promise<IDBDatabase | null> {
 }
 
 async function getCachedImage(key: string): Promise<CachedUploadImage | null> {
+    const desktop = getDesktopBridge();
+    if (desktop) {
+        const record = await desktop.records.get<CachedUploadImage>('upload-cache', key);
+        if (!record) return null;
+        if (record.dataUrl) return record;
+        const stored = await desktop.files.read('cache', `upload:${key}`);
+        if (!stored) return null;
+        return { ...record, dataUrl: await blobToDataUrl(storedFileToBlob(stored)) };
+    }
     const db = await openDB();
     if (!db) return null;
 
@@ -57,6 +69,14 @@ async function getCachedImage(key: string): Promise<CachedUploadImage | null> {
 }
 
 async function saveCachedImage(record: CachedUploadImage): Promise<void> {
+    const desktop = getDesktopBridge();
+    if (desktop) {
+        const blob = dataUrlToBlob(record.dataUrl);
+        if (!blob) throw new Error('上传缓存图片格式无效');
+        await desktop.files.write('cache', `upload:${record.key}`, await blobToBytes(blob), blob.type || record.mimeType);
+        await desktop.records.put('upload-cache', record.key, { ...record, dataUrl: '' });
+        return;
+    }
     const db = await openDB();
     if (!db) return;
 

@@ -45,6 +45,7 @@ import {
 } from '@/lib/agent-context-store';
 import { getDefaultConfiguredTextModel } from '@/lib/model-endpoints';
 import { supportsAgentNativeWebSearch } from '@/lib/nova-text-protocol';
+import { runtimeStorage } from '@/lib/runtime-storage';
 
 export type AgentPhase = 'idle' | 'loading' | 'describing' | 'streaming' | 'proposal' | 'generating';
 
@@ -175,7 +176,7 @@ async function resultImageToBlob(ref: string): Promise<Blob> {
 
 export function useAgentChat() {
   const [ready, setReady] = useState(false);
-  const [hasApiKey] = useState(() => hasAnyApiKey());
+  const [hasApiKey, setHasApiKey] = useState(() => hasAnyApiKey());
   const [phase, setPhase] = useState<AgentPhase>('idle');
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [images, setImages] = useState<AgentImageRecord[]>([]);
@@ -189,10 +190,10 @@ export function useAgentChat() {
   const [generationDraft, setGenerationDraft] = useState<AgentGenerationDraft | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [webSearchEnabled, setWebSearchEnabled] = useState(() =>
-    typeof localStorage !== 'undefined' ? localStorage.getItem('nova-agent-web-search') === 'true' : false
+    typeof localStorage !== 'undefined' ? runtimeStorage.getItem('nova-agent-web-search') === 'true' : false
   );
   const [intentRecognition, setIntentRecognition] = useState(() =>
-    typeof localStorage !== 'undefined' ? localStorage.getItem('nova-agent-intent-recognition') !== 'false' : true
+    typeof localStorage !== 'undefined' ? runtimeStorage.getItem('nova-agent-intent-recognition') !== 'false' : true
   );
 
   const streamHandleRef = useRef<StreamAgentHandle | null>(null);
@@ -211,6 +212,13 @@ export function useAgentChat() {
   /** 镜像 imageModel state，供 runChat 回调中同步读取 */
   const imageModelRef = useRef(imageModel);
   useEffect(() => { imageModelRef.current = imageModel; }, [imageModel]);
+
+  useEffect(() => {
+    const refreshApiKeyState = () => setHasApiKey(hasAnyApiKey());
+    refreshApiKeyState();
+    window.addEventListener('nova-model-registry-updated', refreshApiKeyState);
+    return () => window.removeEventListener('nova-model-registry-updated', refreshApiKeyState);
+  }, []);
 
   const getAgentTextModelConfig = useCallback(() => {
     const configured = getDefaultConfiguredTextModel('agent');
@@ -955,7 +963,7 @@ export function useAgentChat() {
     if (!agentSupportsWebSearch()) return;
     setWebSearchEnabled(prev => {
       const next = !prev;
-      try { localStorage.setItem('nova-agent-web-search', String(next)); } catch { /* ignore */ }
+      try { runtimeStorage.setItem('nova-agent-web-search', String(next)); } catch { /* ignore */ }
       return next;
     });
   }, [agentSupportsWebSearch]);
@@ -963,7 +971,7 @@ export function useAgentChat() {
   const toggleIntentRecognition = useCallback(() => {
     setIntentRecognition(prev => {
       const next = !prev;
-      try { localStorage.setItem('nova-agent-intent-recognition', String(next)); } catch { /* ignore */ }
+      try { runtimeStorage.setItem('nova-agent-intent-recognition', String(next)); } catch { /* ignore */ }
       return next;
     });
   }, []);

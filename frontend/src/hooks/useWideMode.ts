@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { runtimeStorage } from '@/lib/runtime-storage';
 
 export const WIDE_MODE_STORAGE_KEY = 'nova-wide-mode';
 
@@ -14,7 +15,7 @@ function readStoredWideMode(): boolean {
   if (typeof window === 'undefined') return false;
 
   try {
-    return localStorage.getItem(WIDE_MODE_STORAGE_KEY) === 'enabled';
+    return runtimeStorage.getItem(WIDE_MODE_STORAGE_KEY) === 'enabled';
   } catch {
     return false;
   }
@@ -25,7 +26,7 @@ function writeStoredWideMode(enabled: boolean): void {
 
   try {
     const value: StoredWideMode = enabled ? 'enabled' : 'disabled';
-    localStorage.setItem(WIDE_MODE_STORAGE_KEY, value);
+    runtimeStorage.setItem(WIDE_MODE_STORAGE_KEY, value);
   } catch {
     // Storage can be unavailable in hardened/private browser modes.
   }

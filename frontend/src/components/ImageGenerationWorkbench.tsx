@@ -15,7 +15,8 @@ import { ConfirmDialog } from '@/components/workspace/dialogs/ConfirmDialog';
 import { streamPromptOptimize, type StreamPromptOptimizeHandle } from '@/lib/prompt-optimize-client';
 import { loadJsonFromStorage, saveJsonToStorage } from '@/lib/settings-storage';
 import { requireDefaultConfiguredTextModel } from '@/lib/model-endpoints';
-import { addTextAsset, getAssetBlob, type ImageAsset, type TextAsset } from '@/lib/asset-store';
+import { addTextAsset, type TextAsset } from '@/lib/asset-store';
+import { getSelectionBlob, getSelectionMimeType, getSelectionName, type ImageAssetSelection } from '@/lib/s3-assets';
 import { MODEL_IMAGE_LIMITS, MODEL_OPTIONS, type ModelId } from '@/lib/gemini-config';
 import {
   DEFAULT_GPT_IMAGE_ADVANCED_PARAMS,
@@ -421,7 +422,7 @@ export function ImageGenerationWorkbench({
     }
   }, [autoLayoutLocked, detectImageAspectRatio, maxImages, model, pendingFiles.length]);
 
-  const handleImportAssets = useCallback(async (selectedAssets: ImageAsset[]) => {
+  const handleImportAssets = useCallback(async (selectedAssets: ImageAssetSelection[]) => {
     if (selectedAssets.length === 0) return;
     if (maxImages <= 0) {
       setUploadError('当前模型不支持参考图，请切换到支持编辑的模型');
@@ -442,14 +443,15 @@ export function ImageGenerationWorkbench({
       let firstDetectedRatio: AspectRatio | null = null;
 
       for (const asset of selectedAssets.slice(0, Math.min(remainingSlots, MAX_ASSET_IMPORTS))) {
-        const blob = await getAssetBlob(asset.id);
+        const blob = await getSelectionBlob(asset);
         if (!blob) continue;
 
-        const file = new File([blob], asset.name, { type: asset.mimeType || blob.type || 'image/png' });
+        const assetName = getSelectionName(asset);
+        const file = new File([blob], assetName, { type: getSelectionMimeType(asset) || blob.type || 'image/png' });
         const optimized = await prepareUploadImage(file);
 
         if (optimized.processedSize > MAX_UPLOAD_SIZE_BYTES) {
-          setUploadError(`文件过大: ${asset.name}，压缩后仍超过 10MB`);
+          setUploadError(`文件过大: ${assetName}，压缩后仍超过 10MB`);
           continue;
         }
 
@@ -463,7 +465,7 @@ export function ImageGenerationWorkbench({
           preview: optimized.preview,
           dataUrl: optimized.dataUrl,
           mimeType: optimized.mimeType,
-          badge: '素材库',
+          badge: asset.source === 's3' ? 'S3' : '素材库',
         });
       }
 
@@ -772,6 +774,7 @@ export function ImageGenerationWorkbench({
         maxSelected={Math.min(MAX_ASSET_IMPORTS, Math.max(1, maxImages - pendingFiles.length))}
         onOpenChange={setAssetPickerOpen}
         onConfirm={(assets) => void handleImportAssets(assets)}
+        onConfigure={onConfigureApiKey}
       />
       <AgentTextAssetPickerDialog
         open={textAssetPickerOpen}

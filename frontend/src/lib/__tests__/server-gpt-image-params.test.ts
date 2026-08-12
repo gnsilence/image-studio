@@ -42,6 +42,14 @@ describe('backend GPT Image advanced params forwarding', () => {
     expect(serverSource).toContain('function resolveGptImageRequestSize(request)');
     expect(serverSource).toContain('const customSize = normalizeCustomImageSize(request.customSize, 4096)');
     expect(serverSource).toContain('return getSupportedGptImageSize(request.model, request.outputSize, request.aspectRatio)');
-    expect(serverSource).toContain('return requestGptImage(apiKey, request, resolveGptImageRequestSize(request), { baseUrl });');
+    expect(serverSource).toContain('return requestGptImage(apiKey, request, resolveGptImageRequestSize(request), { baseUrl, trace });');
+  });
+
+  it('uses configurable image addresses while keeping text requests fixed', () => {
+    expect(serverSource).toContain("const FIXED_MODEL_BASE_URL = 'https://www.aioss.cc';");
+    expect(serverSource).toContain('body.baseUrl = normalizeProtocolBaseUrl(body.protocol, body.baseUrl);');
+    expect(serverSource).toContain('const normalizedBaseUrl = FIXED_MODEL_BASE_URL;');
+    expect(serverSource).toContain("const normalizedBaseUrl = modelType === 'image'");
+    expect(serverSource).toContain("? normalizeProtocolBaseUrl(protocol, parsed.searchParams.get('baseUrl'))");
   });
 });

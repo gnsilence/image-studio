@@ -8,8 +8,11 @@
 /** BA 随机人物图片 */
 export const BA_RANDOM_URL = 'https://img.catcdn.cn/ba/';
 
-/** Bing 每日壁纸 */
-export const BING_WALLPAPER_URL = 'https://bing.img.run/rand_uhd.php';
+/** Bing 壁纸本地代理 */
+export const BING_WALLPAPER_URL = '/api/nova/random-image/bing';
+
+/** Bing 壁纸官方来源 */
+export const BING_WALLPAPER_SOURCE_URL = 'https://www.bing.com/';
 
 // ===== 文件大小限制 =====
 

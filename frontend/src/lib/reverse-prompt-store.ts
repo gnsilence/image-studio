@@ -2,6 +2,8 @@
 // 数据库: nova-reverse-db (v1)
 // store: reverse-results (keyPath: 'slot')
 // 保存文字结果和当前输入图草稿。
+import { getDesktopBridge } from '@/lib/desktop-bridge';
+import { blobToBytes, blobToDataUrl, dataUrlToBlob, storedFileToBlob } from '@/lib/desktop-binary';
 
 export interface StoredReverseResult {
   slot: 'current' | 'previous';
@@ -51,6 +53,22 @@ export async function loadReverseResults(): Promise<{
   previous: StoredReverseResult | null;
   draft: StoredReverseDraft | null;
 }> {
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    const [current, previous, draft] = await Promise.all([
+      desktop.records.get<StoredReverseResult>('reverse-results', 'current'),
+      desktop.records.get<StoredReverseResult>('reverse-results', 'previous'),
+      desktop.records.get<StoredReverseDraft>('reverse-results', 'draft'),
+    ]);
+    if (draft?.file && !draft.file.dataUrl) {
+      const stored = await desktop.files.read('cache', 'reverse-draft');
+      if (stored) {
+        const dataUrl = await blobToDataUrl(storedFileToBlob(stored));
+        draft.file = { ...draft.file, dataUrl, preview: dataUrl };
+      }
+    }
+    return { current, previous, draft };
+  }
   const db = await openReverseDB();
   if (!db) return { current: null, previous: null, draft: null };
 
@@ -84,6 +102,11 @@ export async function loadReverseResults(): Promise<{
 
 /** 保存单条记录到指定槽位 */
 export async function saveReverseResult(result: StoredReverseResult): Promise<void> {
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    await desktop.records.put('reverse-results', result.slot, result);
+    return;
+  }
   const db = await openReverseDB();
   if (!db) return;
 
@@ -97,6 +120,11 @@ export async function saveReverseResult(result: StoredReverseResult): Promise<vo
 
 /** 清除指定槽位 */
 export async function clearReverseResult(slot: 'current' | 'previous'): Promise<void> {
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    await desktop.records.delete('reverse-results', slot);
+    return;
+  }
   const db = await openReverseDB();
   if (!db) return;
 
@@ -110,6 +138,17 @@ export async function clearReverseResult(slot: 'current' | 'previous'): Promise<
 
 /** 保存当前输入图草稿 */
 export async function saveReverseDraft(file: StoredReverseDraft['file']): Promise<void> {
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    let storedFile = file;
+    const blob = file ? dataUrlToBlob(file.dataUrl) : null;
+    if (file && blob) {
+      await desktop.files.write('cache', 'reverse-draft', await blobToBytes(blob), blob.type || file.mimeType);
+      storedFile = { ...file, dataUrl: '', preview: '' };
+    }
+    await desktop.records.put('reverse-results', 'draft', { slot: 'draft', file: storedFile, timestamp: Date.now() });
+    return;
+  }
   const db = await openReverseDB();
   if (!db) return;
 
@@ -123,6 +162,14 @@ export async function saveReverseDraft(file: StoredReverseDraft['file']): Promis
 
 /** 清除当前输入图草稿 */
 export async function clearReverseDraft(): Promise<void> {
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    await Promise.all([
+      desktop.records.delete('reverse-results', 'draft'),
+      desktop.files.delete('cache', 'reverse-draft'),
+    ]);
+    return;
+  }
   const db = await openReverseDB();
   if (!db) return;
 

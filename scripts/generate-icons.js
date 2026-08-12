@@ -1,5 +1,5 @@
 /**
- * 从 coai.png 生成 PWA 所需的各尺寸图标
+ * 从 AIOSS SVG 标志生成 PWA 和 Electron 所需的各尺寸图标
  * 用法: node scripts/generate-icons.js
  */
 const sharp = require('sharp');
@@ -7,9 +7,9 @@ const path = require('path');
 const fs = require('fs');
 
 const ROOT = path.resolve(__dirname, '..');
-const SRC = path.join(ROOT, 'coai.png');
-const PUBLIC = path.join(ROOT, 'public');
-const APP = path.join(ROOT, 'src', 'app');
+const SRC = path.join(ROOT, 'frontend', 'public', 'aioss-logo.svg');
+const PUBLIC = path.join(ROOT, 'frontend', 'public');
+const APP = path.join(ROOT, 'frontend', 'src', 'app');
 
 const tasks = [
     { out: 'icon-192.png', size: 192, maskable: false },
@@ -17,6 +17,58 @@ const tasks = [
     { out: 'icon-maskable-512.png', size: 512, maskable: true },
     { out: 'favicon.png', size: 48, maskable: false },
 ];
+
+async function writeWindowsIco() {
+    const sizes = [16, 24, 32, 48, 64, 128, 256];
+    const images = await Promise.all(sizes.map(size => sharp(SRC).resize(size, size).png().toBuffer()));
+    const headerSize = 6 + images.length * 16;
+    const header = Buffer.alloc(headerSize);
+    header.writeUInt16LE(0, 0);
+    header.writeUInt16LE(1, 2);
+    header.writeUInt16LE(images.length, 4);
+    let offset = headerSize;
+    images.forEach((image, index) => {
+        const size = sizes[index];
+        const entry = 6 + index * 16;
+        header.writeUInt8(size === 256 ? 0 : size, entry);
+        header.writeUInt8(size === 256 ? 0 : size, entry + 1);
+        header.writeUInt8(0, entry + 2);
+        header.writeUInt8(0, entry + 3);
+        header.writeUInt16LE(1, entry + 4);
+        header.writeUInt16LE(32, entry + 6);
+        header.writeUInt32LE(image.length, entry + 8);
+        header.writeUInt32LE(offset, entry + 12);
+        offset += image.length;
+    });
+    fs.writeFileSync(path.join(PUBLIC, 'app.ico'), Buffer.concat([header, ...images]));
+    console.log(`✅ app.ico (${sizes.join('/')}px)`);
+}
+
+async function writeMacIcns() {
+    const entries = [
+        ['icp4', 16],
+        ['icp5', 32],
+        ['icp6', 64],
+        ['ic07', 128],
+        ['ic08', 256],
+        ['ic09', 512],
+        ['ic10', 1024],
+    ];
+    const chunks = await Promise.all(entries.map(async ([type, size]) => {
+        const image = await sharp(SRC).resize(size, size).png().toBuffer();
+        const chunk = Buffer.alloc(8 + image.length);
+        chunk.write(type, 0, 4, 'ascii');
+        chunk.writeUInt32BE(chunk.length, 4);
+        image.copy(chunk, 8);
+        return chunk;
+    }));
+    const totalLength = 8 + chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const header = Buffer.alloc(8);
+    header.write('icns', 0, 4, 'ascii');
+    header.writeUInt32BE(totalLength, 4);
+    fs.writeFileSync(path.join(PUBLIC, 'app.icns'), Buffer.concat([header, ...chunks]));
+    console.log('✅ app.icns (16-1024px)');
+}
 
 (async () => {
     if (!fs.existsSync(SRC)) {
@@ -63,6 +115,9 @@ const tasks = [
             console.log(`✅ ${out} (${size}x${size})`);
         }
     }
+
+    await writeWindowsIco();
+    await writeMacIcns();
 
     // 同步 favicon 到 Next.js app 目录
     fs.copyFileSync(path.join(PUBLIC, 'favicon.png'), path.join(APP, 'favicon.png'));

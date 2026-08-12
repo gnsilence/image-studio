@@ -26,6 +26,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { ConfirmDialog } from '@/components/workspace/dialogs/ConfirmDialog';
 import { cn } from '@/lib/utils';
 import type { GridCell } from '@/lib/gif-encoder';
+import { runtimeStorage } from '@/lib/runtime-storage';
 
 interface FrameTransform {
   offsetX: number;
@@ -115,7 +116,7 @@ export function GifFrameTuner({ cells, cellWidth, cellHeight, onGenerate, onClos
   useEffect(() => {
     if (!window.matchMedia('(max-width: 767px)').matches) return;
     try {
-      if (localStorage.getItem(MOBILE_HINT_STORAGE_KEY) === '1') return;
+      if (runtimeStorage.getItem(MOBILE_HINT_STORAGE_KEY) === '1') return;
     } catch {
       // Ignore unavailable storage.
     }
@@ -126,7 +127,7 @@ export function GifFrameTuner({ cells, cellWidth, cellHeight, onGenerate, onClos
   const dismissMobileHint = useCallback(() => {
     if (hideMobileHintNextTime) {
       try {
-        localStorage.setItem(MOBILE_HINT_STORAGE_KEY, '1');
+        runtimeStorage.setItem(MOBILE_HINT_STORAGE_KEY, '1');
       } catch {
         // Ignore unavailable storage.
       }

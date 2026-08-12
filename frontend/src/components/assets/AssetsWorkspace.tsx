@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import {
   Check,
   ChevronDown,
+  Cloud,
   Copy,
   Download,
   FileArchive,
@@ -30,6 +31,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ConfirmDialog } from '@/components/workspace/dialogs/ConfirmDialog';
+import { S3AssetBrowser } from '@/components/assets/S3AssetBrowser';
 import { HistoryImagePreview } from '@/components/workspace/results/HistoryImagePreview';
 import { useImageLazyLoad } from '@/hooks/useImageLazyLoad';
 import {
@@ -53,10 +55,13 @@ import { loadJsonFromStorage, saveJsonToStorage } from '@/lib/settings-storage';
 import { requireDefaultConfiguredTextModel } from '@/lib/model-endpoints';
 import { prepareUploadImage } from '@/lib/upload-image-cache';
 import { cn } from '@/lib/utils';
+import { getDesktopBridge } from '@/lib/desktop-bridge';
+import { uploadLocalAssetToS3 } from '@/lib/s3-assets';
 
 interface AssetsWorkspaceProps {
   wideMode?: boolean;
   active?: boolean;
+  onConfigure?: () => void;
 }
 
 const SETTINGS_KEY = 'nova-assets-settings';
@@ -260,7 +265,7 @@ function AssetThumbnail({
   );
 }
 
-export function AssetsWorkspace({ wideMode = false, active = true }: AssetsWorkspaceProps) {
+export function AssetsWorkspace({ wideMode = false, active = true, onConfigure }: AssetsWorkspaceProps) {
   const [assets, setAssets] = useState<AssetItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
@@ -288,6 +293,9 @@ export function AssetsWorkspace({ wideMode = false, active = true }: AssetsWorks
   const [editNote, setEditNote] = useState('');
   const [textDialogOpen, setTextDialogOpen] = useState(false);
   const [textContent, setTextContent] = useState('');
+  const [librarySource, setLibrarySource] = useState<'local' | 's3'>('local');
+  const [s3Prefix, setS3Prefix] = useState('');
+  const [uploadingToS3, setUploadingToS3] = useState(false);
   const fullObjectUrlsRef = useRef<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const tagDragRef = useRef({ pointerId: -1, startX: 0, scrollLeft: 0, dragged: false });
@@ -607,17 +615,82 @@ export function AssetsWorkspace({ wideMode = false, active = true }: AssetsWorks
     setMetadataSuggestion(null);
   }, [metadataGenerating, metadataSuggestion]);
 
+  const uploadSelectedToS3 = useCallback(async () => {
+    const selectedImages = assets.filter((asset): asset is ImageAsset => isImageAsset(asset) && selectedAssetIds.has(asset.id));
+    if (selectedImages.length === 0) {
+      dispatchImageActionToast('请选择需要上传的图片素材', 'error');
+      return;
+    }
+    const targetLabel = s3Prefix || '已配置的 S3 根目录';
+    if (!window.confirm(`将 ${selectedImages.length} 张图片上传到 ${targetLabel}，是否继续？`)) return;
+    setUploadingToS3(true);
+    let index = 0;
+    let uploaded = 0;
+    const errors: string[] = [];
+    const worker = async () => {
+      while (index < selectedImages.length) {
+        const asset = selectedImages[index++];
+        try {
+          await uploadLocalAssetToS3(s3Prefix, asset);
+          uploaded += 1;
+        } catch (error) {
+          errors.push(error instanceof Error ? error.message : `${asset.name} 上传失败`);
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(2, selectedImages.length) }, () => worker()));
+    setUploadingToS3(false);
+    if (uploaded) dispatchImageActionToast(`已上传 ${uploaded} 张本地素材到 S3`, 'success');
+    if (errors.length) dispatchImageActionToast(errors[0], 'error');
+  }, [assets, s3Prefix, selectedAssetIds]);
+
+  const desktopRuntime = Boolean(getDesktopBridge());
+  const sourceSwitch = desktopRuntime ? (
+    <div className="flex h-8 shrink-0 items-center rounded-md border bg-muted/30 p-0.5">
+      <button type="button" onClick={() => setLibrarySource('local')} className={cn('flex h-7 items-center gap-1.5 rounded px-2.5 text-xs transition-colors', librarySource === 'local' ? 'bg-background font-medium text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+        <HardDrive className="h-3.5 w-3.5" />本地素材
+      </button>
+      <button type="button" onClick={() => setLibrarySource('s3')} className={cn('flex h-7 items-center gap-1.5 rounded px-2.5 text-xs transition-colors', librarySource === 's3' ? 'bg-background font-medium text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+        <Cloud className="h-3.5 w-3.5" />S3 存储
+      </button>
+    </div>
+  ) : null;
+
+  if (desktopRuntime && librarySource === 's3') {
+    return (
+      <section className={cn('flex min-h-[560px] min-w-0 flex-col gap-3 overflow-hidden', wideMode && 'xl:h-full xl:min-h-0')}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-base font-medium text-foreground">远程素材</h3>
+            <p className="mt-1 text-xs text-muted-foreground">按文件夹浏览当前 S3 存储桶，远端资源不会写入本地素材库。</p>
+          </div>
+          {sourceSwitch}
+        </div>
+        <S3AssetBrowser mode="workspace" onPrefixChange={setS3Prefix} onConfigure={onConfigure} className="min-h-0 flex-1" />
+      </section>
+    );
+  }
+
   return (
     <section className={cn('min-w-0 space-y-4 overflow-hidden', wideMode && 'xl:flex xl:h-full xl:min-h-0 xl:flex-col')}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <h3 className="text-base font-medium text-foreground">我的素材</h3>
+          <div className="flex flex-wrap items-center gap-3">
+            <h3 className="text-base font-medium text-foreground">我的素材</h3>
+            {sourceSwitch}
+          </div>
           <div className="flex flex-wrap items-center gap-3">
             <p className="text-xs text-muted-foreground">共 {assets.length} 项 · 当前 {filteredAssets.length} 项</p>
             <StorageEstimate totalBytes={totalBytes} />
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {desktopRuntime && (
+            <Button variant="outline" size="sm" onClick={() => void uploadSelectedToS3()} disabled={selectedCount === 0 || uploadingToS3} className="gap-1.5">
+              {uploadingToS3 ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Cloud className="h-3.5 w-3.5" />}
+              上传 S3
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"

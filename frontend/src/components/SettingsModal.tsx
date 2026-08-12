@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CheckCircle2,
+  Cloud,
   Database,
   Download,
   ExternalLink,
@@ -10,6 +11,7 @@ import {
   EyeOff,
   ImageIcon,
   Info,
+  Loader2,
   Plus,
   RefreshCw,
   Save,
@@ -37,6 +39,7 @@ import {
   BUILTIN_IMAGE_PRESET_OPTIONS,
   DEFAULT_DEFAULTS,
   DEFAULT_TEXT_MODEL_TEMPLATES,
+  FIXED_MODEL_BASE_URL,
   generateModelId,
   getDefaultTextModelTemplate,
   getCompleteImageModels,
@@ -58,8 +61,16 @@ import { syncDynamicModelExports } from '@/lib/gemini-config';
 import { exportAllData, importAllData, downloadBlob, generateBackupFilename, type BackupProgress as BackupProgressType } from '@/lib/backup-utils';
 import { checkModelsAvailability, type ModelStatus } from '@/lib/ccode-task-client';
 import { hasAnyApiKey } from '@/lib/settings-storage';
-import { BA_RANDOM_URL, BING_WALLPAPER_URL } from '@/lib/constants';
+import { BA_RANDOM_URL, BING_WALLPAPER_SOURCE_URL } from '@/lib/constants';
 import { PROMPT_DATA_SOURCES, getPromptSourceLabel } from '@/lib/prompt-gallery-data';
+import {
+  getDesktopBridge,
+  type DesktopUpdateStatus,
+  type S3ConfigInput,
+  type S3CredentialsInput,
+  type S3PublicConfig,
+} from '@/lib/desktop-bridge';
+import { cn } from '@/lib/utils';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -153,11 +164,20 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
   const [modelCheckError, setModelCheckError] = useState<string | null>(null);
   const [showImageApiKey, setShowImageApiKey] = useState(false);
   const [showTextApiKey, setShowTextApiKey] = useState(false);
+  const [s3Config, setS3Config] = useState<S3ConfigInput>({ endpoint: '', region: 'us-east-1', bucket: '', rootPrefix: '', forcePathStyle: false });
+  const [s3CredentialStatus, setS3CredentialStatus] = useState<Pick<S3PublicConfig, 'hasAccessKeyId' | 'hasSecretAccessKey' | 'hasSessionToken'>>({ hasAccessKeyId: false, hasSecretAccessKey: false, hasSessionToken: false });
+  const [s3Credentials, setS3Credentials] = useState<S3CredentialsInput>({ accessKeyId: '', secretAccessKey: '', sessionToken: '' });
+  const [showS3Secrets, setShowS3Secrets] = useState(false);
+  const [s3Saving, setS3Saving] = useState(false);
+  const [s3Testing, setS3Testing] = useState(false);
+  const [s3Error, setS3Error] = useState<string | null>(null);
+  const [s3Success, setS3Success] = useState<string | null>(null);
 
   const [backupProgress, setBackupProgress] = useState<BackupProgressType>({ percent: 0, message: '' });
   const [isBackupActive, setIsBackupActive] = useState(false);
   const [backupError, setBackupError] = useState<string | null>(null);
   const [backupSuccess, setBackupSuccess] = useState<string | null>(null);
+  const [updateStatus, setUpdateStatus] = useState<DesktopUpdateStatus | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -174,6 +194,34 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
     setModelCheckError(null);
     setBackupError(null);
     setBackupSuccess(null);
+    setS3Error(null);
+    setS3Success(null);
+    setS3Credentials({ accessKeyId: '', secretAccessKey: '', sessionToken: '' });
+    const desktop = getDesktopBridge();
+    if (desktop) {
+      void desktop.s3.getConfig().then(config => {
+        setS3Config({
+          endpoint: config.endpoint,
+          region: config.region,
+          bucket: config.bucket,
+          rootPrefix: config.rootPrefix,
+          forcePathStyle: config.forcePathStyle,
+        });
+        setS3CredentialStatus({
+          hasAccessKeyId: config.hasAccessKeyId,
+          hasSecretAccessKey: config.hasSecretAccessKey,
+          hasSessionToken: config.hasSessionToken,
+        });
+      }).catch(err => setS3Error(err instanceof Error ? err.message : '读取 S3 配置失败'));
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const desktop = getDesktopBridge();
+    if (!desktop) return;
+    void desktop.updater.getStatus().then(setUpdateStatus).catch(() => undefined);
+    return desktop.updater.onStatus(setUpdateStatus);
   }, [isOpen]);
 
   useEffect(() => {
@@ -331,6 +379,13 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
     setBackupError(null);
     setBackupSuccess(null);
     try {
+      const desktop = getDesktopBridge();
+      if (desktop) {
+        setBackupProgress({ percent: 20, message: '正在创建桌面备份...' });
+        const exported = await desktop.backup.export();
+        if (!exported.canceled) setBackupSuccess('数据已成功导出。桌面备份不包含 API Key。');
+        return;
+      }
       const blob = await exportAllData((progress) => setBackupProgress(progress));
       const filename = generateBackupFilename();
       downloadBlob(blob, filename);
@@ -367,6 +422,107 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  const applyS3PublicConfig = (config: S3PublicConfig) => {
+    setS3Config({
+      endpoint: config.endpoint,
+      region: config.region,
+      bucket: config.bucket,
+      rootPrefix: config.rootPrefix,
+      forcePathStyle: config.forcePathStyle,
+    });
+    setS3CredentialStatus({
+      hasAccessKeyId: config.hasAccessKeyId,
+      hasSecretAccessKey: config.hasSecretAccessKey,
+      hasSessionToken: config.hasSessionToken,
+    });
+  };
+
+  const handleSaveS3 = async () => {
+    const desktop = getDesktopBridge();
+    if (!desktop) return;
+    setS3Saving(true);
+    setS3Error(null);
+    setS3Success(null);
+    try {
+      const saved = await desktop.s3.saveConfig({ config: s3Config, credentials: s3Credentials });
+      applyS3PublicConfig(saved);
+      setS3Credentials({ accessKeyId: '', secretAccessKey: '', sessionToken: '' });
+      setS3Success('S3 配置已安全保存');
+    } catch (err) {
+      setS3Error(err instanceof Error ? err.message : '保存 S3 配置失败');
+    } finally {
+      setS3Saving(false);
+    }
+  };
+
+  const handleTestS3 = async () => {
+    const desktop = getDesktopBridge();
+    if (!desktop) return;
+    setS3Testing(true);
+    setS3Error(null);
+    setS3Success(null);
+    try {
+      const result = await desktop.s3.testConnection({ config: s3Config, credentials: s3Credentials });
+      setS3Success(result.message);
+    } catch (err) {
+      setS3Error(err instanceof Error ? err.message : 'S3 连接测试失败');
+    } finally {
+      setS3Testing(false);
+    }
+  };
+
+  const handleClearS3Credentials = async () => {
+    const desktop = getDesktopBridge();
+    if (!desktop || !window.confirm('确定清除已加密保存的 S3 访问凭据吗？')) return;
+    setS3Error(null);
+    setS3Success(null);
+    try {
+      applyS3PublicConfig(await desktop.s3.clearCredentials());
+      setS3Credentials({ accessKeyId: '', secretAccessKey: '', sessionToken: '' });
+      setS3Success('S3 访问凭据已清除');
+    } catch (err) {
+      setS3Error(err instanceof Error ? err.message : '清除 S3 凭据失败');
+    }
+  };
+
+  const handleImportClick = async () => {
+    const desktop = getDesktopBridge();
+    if (!desktop) {
+      fileInputRef.current?.click();
+      return;
+    }
+    setIsBackupActive(true);
+    setBackupError(null);
+    setBackupSuccess(null);
+    setBackupProgress({ percent: 20, message: '正在校验并导入桌面备份...' });
+    try {
+      const imported = await desktop.backup.import();
+      if (!imported.canceled) {
+        setBackupSuccess('数据已成功导入，页面将在 2 秒后刷新。');
+        setTimeout(() => window.location.reload(), 2000);
+      }
+    } catch (err) {
+      setBackupError(err instanceof Error ? err.message : '导入失败');
+    } finally {
+      setIsBackupActive(false);
+    }
+  };
+
+  const handleCheckUpdate = async () => {
+    const desktop = getDesktopBridge();
+    if (!desktop) return;
+    setUpdateStatus(await desktop.updater.check());
+  };
+
+  const handleInstallUpdate = async () => {
+    const desktop = getDesktopBridge();
+    if (!desktop) return;
+    const result = await desktop.updater.restartAndInstall();
+    if (!result.installed && result.reason === 'tasks-running') {
+      setUpdateStatus(current => ({ ...(current || { state: 'ready' }), message: '仍有生成任务运行，请稍后重试。' }));
+    }
+  };
+
   const completeImageOptions = imageModels.filter(isCompleteImageModel).map((model) => ({ value: model.id, label: model.name }));
   const completeTextOptions = textModels.filter(isCompleteTextModel).map((model) => ({ value: model.id, label: model.name }));
   const selectedImageOutputSizes = selectedImageModel
@@ -381,13 +537,13 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
       if (!open && isBackupActive) return;
       if (!open) onClose();
     }}>
-      <DialogContent className="flex max-h-[92vh] flex-col overflow-hidden p-0 pt-0 gap-0 sm:max-w-5xl">
+      <DialogContent className={`flex max-h-[92vh] flex-col overflow-hidden p-0 pt-0 gap-0 sm:max-w-5xl ${getDesktopBridge() ? 'nova-desktop-settings' : ''}`}>
         <DialogHeader className="p-4 pb-3">
           <div className="flex items-center gap-2">
             <Settings className="w-5 h-5 text-muted-foreground" />
             <DialogTitle>设置</DialogTitle>
           </div>
-          <DialogDescription>按模型分别配置协议、URL 和 API Key。至少完成一个图片模型和一个文本模型后，外部功能才会解锁。</DialogDescription>
+          <DialogDescription>按模型分别配置协议、模型 ID 和 API Key。图片模型还可配置独立 Base URL；文本模型继续使用固定服务地址。</DialogDescription>
         </DialogHeader>
 
         <Tabs defaultValue="models" className="min-h-0 flex-1 gap-0">
@@ -396,6 +552,12 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
               <ImageIcon className="w-4 h-4" />
               模型配置
             </TabsTrigger>
+            {getDesktopBridge() && (
+              <TabsTrigger value="s3" className="gap-2 rounded-none border-b-2 border-transparent data-active:border-primary data-active:bg-transparent data-active:shadow-none px-4 py-3">
+                <Cloud className="w-4 h-4" />
+                S3 存储
+              </TabsTrigger>
+            )}
             <TabsTrigger value="backup" className="gap-2 rounded-none border-b-2 border-transparent data-active:border-primary data-active:bg-transparent data-active:shadow-none px-4 py-3">
               <Database className="w-4 h-4" />
               备份
@@ -410,7 +572,7 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="space-y-1">
                 <p className="text-sm font-medium">模型级独立配置</p>
-                <p className="text-xs text-muted-foreground">每个模型单独记录协议、Base URL、API Key。外部只显示配置完整的模型。</p>
+                <p className="text-xs text-muted-foreground">图片模型可配置独立 Base URL；文本模型固定使用 {FIXED_MODEL_BASE_URL}。</p>
               </div>
               <Button onClick={persistRegistry} className="gap-2">
                 <Save className="w-4 h-4" />
@@ -478,9 +640,14 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
                       <label className="text-xs text-muted-foreground">模型 ID</label>
                       <Input value={selectedImageModel.modelId} onChange={(event) => handleUpdateImageModel(selectedImageModel.id, { modelId: event.target.value })} />
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-2 md:col-span-2">
                       <label className="text-xs text-muted-foreground">Base URL</label>
-                      <Input value={selectedImageModel.baseUrl} onChange={(event) => handleUpdateImageModel(selectedImageModel.id, { baseUrl: event.target.value })} />
+                      <Input
+                        type="url"
+                        value={selectedImageModel.baseUrl}
+                        onChange={(event) => handleUpdateImageModel(selectedImageModel.id, { baseUrl: event.target.value })}
+                        placeholder={FIXED_MODEL_BASE_URL}
+                      />
                     </div>
                     <div className="space-y-2">
                       <label className="text-xs text-muted-foreground">API Key</label>
@@ -601,10 +768,6 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
                       <Input value={selectedTextModel.modelId} onChange={(event) => handleUpdateTextModel(selectedTextModel.id, { modelId: event.target.value })} />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-xs text-muted-foreground">Base URL</label>
-                      <Input value={selectedTextModel.baseUrl} onChange={(event) => handleUpdateTextModel(selectedTextModel.id, { baseUrl: event.target.value })} />
-                    </div>
-                    <div className="space-y-2">
                       <label className="text-xs text-muted-foreground">API Key</label>
                       <div className="relative">
                         <Input
@@ -694,6 +857,89 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
             </div>
           </TabsContent>
 
+          {getDesktopBridge() && (
+            <TabsContent value="s3" className="min-h-0 overflow-y-auto p-4 sm:p-6 mt-0 space-y-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <h3 className="text-base font-medium">S3 远程素材源</h3>
+                  <p className="text-sm text-muted-foreground">连接 AWS S3、MinIO 或 Cloudflare R2，素材库将按文件夹浏览指定存储桶。</p>
+                </div>
+                <div className={cn('rounded-md border px-2.5 py-1.5 text-xs', s3CredentialStatus.hasAccessKeyId && s3CredentialStatus.hasSecretAccessKey ? 'border-emerald-500/25 bg-emerald-500/8 text-emerald-700 dark:text-emerald-400' : 'border-border bg-muted/40 text-muted-foreground')}>
+                  {s3CredentialStatus.hasAccessKeyId && s3CredentialStatus.hasSecretAccessKey ? '凭据已加密保存' : '尚未保存凭据'}
+                </div>
+              </div>
+
+              {s3Error && <div className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">{s3Error}</div>}
+              {s3Success && <div className="rounded-md border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-700 dark:text-emerald-400">{s3Success}</div>}
+
+              <div className="space-y-4 rounded-md border p-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-xs font-medium text-muted-foreground">Endpoint</label>
+                    <Input value={s3Config.endpoint} onChange={event => setS3Config(current => ({ ...current, endpoint: event.target.value }))} placeholder="AWS S3 可留空；MinIO/R2 填写 HTTPS 地址" />
+                    <p className="text-[11px] text-muted-foreground">HTTP 仅允许 localhost、127.0.0.1 和 ::1。</p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-muted-foreground">Region</label>
+                    <Input value={s3Config.region} onChange={event => setS3Config(current => ({ ...current, region: event.target.value }))} placeholder="us-east-1；R2 通常为 auto" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-muted-foreground">Bucket</label>
+                    <Input value={s3Config.bucket} onChange={event => setS3Config(current => ({ ...current, bucket: event.target.value }))} placeholder="素材存储桶名称" />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-xs font-medium text-muted-foreground">根前缀</label>
+                    <Input value={s3Config.rootPrefix} onChange={event => setS3Config(current => ({ ...current, rootPrefix: event.target.value }))} placeholder="可选，例如 assets/images" />
+                    <p className="text-[11px] text-muted-foreground">客户端只能浏览和写入此目录范围，留空表示整个存储桶。</p>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-4 border-t pt-4">
+                  <div>
+                    <p className="text-sm font-medium">Path Style</p>
+                    <p className="text-xs text-muted-foreground">MinIO 等自建服务通常需要开启。</p>
+                  </div>
+                  <Switch checked={s3Config.forcePathStyle} onCheckedChange={checked => setS3Config(current => ({ ...current, forcePathStyle: checked }))} />
+                </div>
+              </div>
+
+              <div className="space-y-4 rounded-md border p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h4 className="text-sm font-medium">访问凭据</h4>
+                    <p className="mt-1 text-xs text-muted-foreground">留空会保留已保存值；填写 Access Key 和 Secret Key 时必须同时填写。</p>
+                  </div>
+                  <button type="button" title={showS3Secrets ? '隐藏凭据' : '显示凭据'} onClick={() => setShowS3Secrets(current => !current)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground">
+                    {showS3Secrets ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-muted-foreground">Access Key ID</label>
+                    <Input type={showS3Secrets ? 'text' : 'password'} autoComplete="off" value={s3Credentials.accessKeyId || ''} onChange={event => setS3Credentials(current => ({ ...current, accessKeyId: event.target.value }))} placeholder={s3CredentialStatus.hasAccessKeyId ? '已配置，留空保持不变' : '请输入 Access Key ID'} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-muted-foreground">Secret Access Key</label>
+                    <Input type={showS3Secrets ? 'text' : 'password'} autoComplete="new-password" value={s3Credentials.secretAccessKey || ''} onChange={event => setS3Credentials(current => ({ ...current, secretAccessKey: event.target.value }))} placeholder={s3CredentialStatus.hasSecretAccessKey ? '已配置，留空保持不变' : '请输入 Secret Access Key'} />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-xs font-medium text-muted-foreground">Session Token（可选）</label>
+                    <Input type={showS3Secrets ? 'text' : 'password'} autoComplete="off" value={s3Credentials.sessionToken || ''} onChange={event => setS3Credentials(current => ({ ...current, sessionToken: event.target.value }))} placeholder={s3CredentialStatus.hasSessionToken ? '已配置，留空保持不变' : 'AWS STS 临时凭据使用'} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+                <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" disabled={!s3CredentialStatus.hasAccessKeyId && !s3CredentialStatus.hasSecretAccessKey} onClick={() => void handleClearS3Credentials()}>
+                  清除已保存凭据
+                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" disabled={s3Testing || s3Saving} onClick={() => void handleTestS3()}>{s3Testing && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}测试读取连接</Button>
+                  <Button disabled={s3Saving || s3Testing} onClick={() => void handleSaveS3()}>{s3Saving ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />}保存 S3 配置</Button>
+                </div>
+              </div>
+            </TabsContent>
+          )}
+
           <TabsContent value="backup" className="min-h-0 overflow-y-auto p-4 sm:p-6 space-y-6 mt-0">
             <div className="space-y-4">
               <div className="space-y-2">
@@ -738,7 +984,7 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
                     <h4 className="font-medium">导入数据</h4>
                     <p className="text-sm text-muted-foreground">从备份文件恢复数据。<span className="font-medium text-destructive">警告：这会覆盖现有数据。</span></p>
                     <input ref={fileInputRef} type="file" accept=".zip" onChange={handleFileSelect} className="hidden" />
-                    <Button onClick={() => fileInputRef.current?.click()} disabled={isBackupActive} variant="outline" className="gap-2">
+                    <Button onClick={() => void handleImportClick()} disabled={isBackupActive} variant="outline" className="gap-2">
                       <Upload className="w-4 h-4" />
                       选择备份文件
                     </Button>
@@ -750,7 +996,33 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
 
           <TabsContent value="about" className="min-h-0 overflow-y-auto p-4 sm:p-6 space-y-4 mt-0">
             <div className="space-y-4 text-sm">
-              <h3 className="text-lg font-medium">Nova Image <span className="text-xs text-muted-foreground font-normal">v{process.env.NEXT_PUBLIC_APP_VERSION}</span></h3>
+              <h3 className="text-lg font-medium">AIOSS Image <span className="text-xs text-muted-foreground font-normal">v{process.env.NEXT_PUBLIC_APP_VERSION}</span></h3>
+              {getDesktopBridge() && updateStatus && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+                  <div className="min-w-0">
+                    <div className="font-medium">客户端更新</div>
+                    <div className="text-xs text-muted-foreground">
+                      {updateStatus.state === 'disabled' && '当前构建未启用自动更新'}
+                      {updateStatus.state === 'idle' && '尚未检查更新'}
+                      {updateStatus.state === 'checking' && '正在检查更新...'}
+                      {updateStatus.state === 'up-to-date' && '当前已是最新版本'}
+                      {updateStatus.state === 'downloading' && `正在下载${typeof updateStatus.percent === 'number' ? ` ${updateStatus.percent}%` : '...'}`}
+                      {updateStatus.state === 'ready' && `版本 ${updateStatus.version || ''} 已下载，等待重启安装`}
+                      {updateStatus.state === 'error' && (updateStatus.message || '更新检查失败')}
+                      {updateStatus.message && updateStatus.state !== 'error' && ` ${updateStatus.message}`}
+                    </div>
+                  </div>
+                  {updateStatus.state === 'ready' ? (
+                    <Button size="sm" onClick={() => void handleInstallUpdate()} className="gap-2">
+                      <RefreshCw className="size-4" />重启安装
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="outline" onClick={() => void handleCheckUpdate()} disabled={updateStatus.state === 'checking' || updateStatus.state === 'downloading'} className="gap-2">
+                      <RefreshCw className="size-4" />检查更新
+                    </Button>
+                  )}
+                </div>
+              )}
               <p className="text-sm text-muted-foreground">
                 项目地址：
                 {' '}
@@ -802,8 +1074,8 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
                   </li>
                   <li>
                     <span className="text-foreground">随机图片 · Bing壁纸</span> -{' '}
-                    <a href={BING_WALLPAPER_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
-                      bing.img.run <ExternalLink className="w-3 h-3" />
+                    <a href={BING_WALLPAPER_SOURCE_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
+                      bing.com <ExternalLink className="w-3 h-3" />
                     </a>
                   </li>
                 </ul>
@@ -816,7 +1088,7 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
                 </summary>
                 <ul className="mt-3 list-disc list-inside space-y-2 text-muted-foreground">
                   <li>本站为本地优先应用：模型配置、任务历史、设置与生成图片默认保存在你的浏览器本地。</li>
-                  <li>每个模型的 API Key 和 Base URL 仅用于调用你自己配置的上游服务。</li>
+                  <li>图片模型的 API Key 和 Base URL 仅用于调用你配置的图片服务；文本模型固定调用 {FIXED_MODEL_BASE_URL}。</li>
                   <li>生图、反推、Agent、提示词优化等功能会把你当前选择的提示词、参考图或对话内容发送到对应模型配置的上游接口。</li>
                   <li>备份文件可能包含模型配置、本地任务记录与图片数据，请自行妥善保管。</li>
                 </ul>

@@ -31,6 +31,7 @@ const LOCAL_STORAGE_KEYS = [
     'nova-jobs',
     'nova-t2i-settings',
     'nova-i2i-settings',
+    'nova-image-generation-settings',
     'nova-reverse-prompt-settings',
     'theme',
     'nova-wide-mode',
@@ -41,6 +42,7 @@ const LOCAL_STORAGE_KEYS = [
     // 动图生成
     'nova-gif-settings',
     'nova-gif-active-job',
+    'nova-gif-tuner-mobile-hint-hidden',
     // 我的素材
     'nova-assets-settings',
     // 无限画布生成配置
@@ -341,7 +343,7 @@ export async function exportAllData(onProgress?: ProgressCallback): Promise<Blob
     files['metadata.json'] = jsonToU8({
         version: process.env.NEXT_PUBLIC_APP_VERSION || '0.0.0',
         exportDate: new Date().toISOString(),
-        appName: 'Nova Image',
+        appName: 'AIOSS Image',
     });
 
     // 添加 localStorage 数据

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">AIOSS</title>
+  <desc id="desc">AIOSS Image application icon</desc>
+  <rect width="512" height="512" rx="112" fill="#07131b"/>
+  <path d="M92 132h328" stroke="#38d9c5" stroke-width="20" stroke-linecap="round"/>
+  <text x="256" y="316" fill="#f7fbff" font-family="Arial, Helvetica, sans-serif" font-size="92" font-weight="700" text-anchor="middle">AIOSS</text>
+  <circle cx="92" cy="400" r="8" fill="#38d9c5"/>
+  <path d="M116 400h304" stroke="#23404b" stroke-width="4" stroke-linecap="round"/>
+</svg>

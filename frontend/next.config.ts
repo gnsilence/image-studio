@@ -4,6 +4,7 @@ import fs from "node:fs";
 import withPWA from "next-pwa";
 
 const dev = process.env.NODE_ENV !== "production";
+const desktopBuild = process.env.NOVA_DESKTOP_BUILD === "1";
 
 // 从根目录 package.json 读取版本号，编译时自动注入
 const rootPkgPath = path.join(__dirname, "..", "package.json");
@@ -27,7 +28,7 @@ const nextConfig: NextConfig = {
 
 export default withPWA({
   dest: "public",
-  disable: dev,
+  disable: dev || desktopBuild,
   register: true,
   skipWaiting: true,
 })(nextConfig);

@@ -248,7 +248,8 @@ export async function checkModelsAvailability(
         }
 
         // 统一通过后端代理使用 /v1/models（NewAPI 兼容）
-        const proxyUrl = `/api/nova/proxy/models?baseUrl=${encodeURIComponent(normalizedBaseUrl)}&apiKey=${encodeURIComponent(model.apiKey)}&protocol=${model.protocol}`;
+        const modelType = completeImageModels.some(imageModel => imageModel.id === model.id) ? 'image' : 'text';
+        const proxyUrl = `/api/nova/proxy/models?baseUrl=${encodeURIComponent(normalizedBaseUrl)}&apiKey=${encodeURIComponent(model.apiKey)}&protocol=${model.protocol}&modelType=${modelType}`;
         const response = await fetch(proxyUrl, { method: 'GET', cache: 'no-store' });
         if (!response.ok) {
           const detail = await response.text().catch(() => '');

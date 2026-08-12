@@ -63,6 +63,7 @@ export const WorkspaceHeader = forwardRef<WorkspaceHeaderRef, WorkspaceHeaderPro
   const [imageApiUrl, setImageApiUrl] = useState('');
   const [viewerPayload, setViewerPayload] = useState<ImageActionPayload | null>(null);
   const viewerObjectUrlRef = useRef<string | null>(null);
+  const viewerRequestIdRef = useRef(0);
 
   useBodyScrollLock(viewerOpen);
 
@@ -73,35 +74,65 @@ export const WorkspaceHeader = forwardRef<WorkspaceHeaderRef, WorkspaceHeaderPro
     }
   }, []);
 
-  useImperativeHandle(ref, () => ({
-    openRandomImage: (url, title) => {
+  const loadRandomImage = useCallback(async (url: string, title: string, preserveCurrent = false) => {
+    const requestId = ++viewerRequestIdRef.current;
+    const requestUrl = `${url}${url.includes('?') ? '&' : '?'}_t=${Date.now()}`;
+    if (!preserveCurrent) {
       cleanupViewerObjectUrl();
+      setImageSrc('');
       setViewerPayload(null);
-      setImageApiUrl(url);
-      setImageTitle(title);
-      setImageLoading(true);
-      setViewerOpen(true);
-      setImageSrc(url);
-    },
-  }));
-
-  /** Open viewer with a fresh random image. */
-  const openRandomImage = useCallback((url: string, title: string) => {
-    cleanupViewerObjectUrl();
-    setViewerPayload(null);
+    }
     setImageApiUrl(url);
     setImageTitle(title);
     setImageLoading(true);
     setViewerOpen(true);
-    setImageSrc(url);
+    try {
+      const response = await fetch(requestUrl, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const blob = await response.blob();
+      if (!blob.type.startsWith('image/')) throw new Error('响应不是图片');
+      if (requestId !== viewerRequestIdRef.current) return;
+
+      cleanupViewerObjectUrl();
+      const objectUrl = URL.createObjectURL(blob);
+      viewerObjectUrlRef.current = objectUrl;
+      const imageId = `random-${title || 'image'}-${Date.now()}`;
+      setViewerPayload({
+        id: imageId,
+        name: imageId,
+        blob,
+        mimeType: blob.type,
+        sourceKind: 'random',
+        sourceLabel: title ? `随机图片：${title}` : '随机图片',
+        sourceRef: url,
+      });
+      setImageSrc(objectUrl);
+    } catch {
+      if (requestId !== viewerRequestIdRef.current) return;
+      const resolvedUrl = new URL(requestUrl, window.location.href);
+      if (resolvedUrl.origin !== window.location.origin) {
+        cleanupViewerObjectUrl();
+        setViewerPayload(null);
+        setImageSrc(requestUrl);
+        return;
+      }
+      setImageLoading(false);
+      if (!preserveCurrent) setImageSrc('');
+    }
   }, [cleanupViewerObjectUrl]);
+
+  /** Open viewer with a fresh random image. */
+  const openRandomImage = useCallback((url: string, title: string) => {
+    void loadRandomImage(url, title);
+  }, [loadRandomImage]);
+
+  useImperativeHandle(ref, () => ({ openRandomImage }), [openRandomImage]);
 
   /** Refresh current image (same category), append cache-bust param. */
   const handleRefresh = useCallback(() => {
     if (!imageApiUrl) return;
-    setImageLoading(true);
-    setImageSrc(`${imageApiUrl}${imageApiUrl.includes('?') ? '&' : '?'}_t=${Date.now()}`);
-  }, [imageApiUrl]);
+    void loadRandomImage(imageApiUrl, imageTitle, true);
+  }, [imageApiUrl, imageTitle, loadRandomImage]);
 
   /** Called when the <img> finishes loading in the viewer. */
   const handleImageLoaded = useCallback(() => {
@@ -115,6 +146,7 @@ export const WorkspaceHeader = forwardRef<WorkspaceHeaderRef, WorkspaceHeaderPro
 
   /** Close the viewer and clean up. */
   const closeRandomImage = useCallback(() => {
+    viewerRequestIdRef.current += 1;
     cleanupViewerObjectUrl();
     setViewerOpen(false);
     setImageSrc('');
@@ -133,16 +165,16 @@ export const WorkspaceHeader = forwardRef<WorkspaceHeaderRef, WorkspaceHeaderPro
             type="button"
             onClick={onLogoClick}
             className="rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:rounded-xl"
-            aria-label="Nova Image logo"
+            aria-label="AIOSS logo"
           >
             <img
               src="/favicon.png"
-              alt="Nova Image logo"
+              alt="AIOSS logo"
               className="h-8 w-8 flex-shrink-0 rounded-lg object-cover ring-1 ring-border/60 sm:h-11 sm:w-11 sm:rounded-xl"
             />
           </button>
           <div className="hidden min-w-0 space-y-1 sm:block">
-            <h1 className="truncate text-2xl font-semibold tracking-tight">Nova Image</h1>
+            <h1 className="truncate text-2xl font-semibold tracking-tight">AIOSS Image</h1>
             <p className="text-sm text-muted-foreground">批量 API 图像生成器</p>
           </div>
         </div>
@@ -447,16 +479,18 @@ function RandomImageViewer({ src, title, loading, onRefresh, onImageLoaded, onIm
             </div>
           </div>
         )}
-        <img
-          ref={imageRef}
-          src={src}
-          alt={title}
-          draggable={false}
-          onLoad={onImageLoaded}
-          onError={onImageError}
-          className="h-full w-full origin-center object-contain will-change-transform"
-          style={{ transition: dragging ? 'none' : 'transform 120ms ease-out' }}
-        />
+        {src && (
+          <img
+            ref={imageRef}
+            src={src}
+            alt={title}
+            draggable={false}
+            onLoad={onImageLoaded}
+            onError={onImageError}
+            className="h-full w-full origin-center object-contain will-change-transform"
+            style={{ transition: dragging ? 'none' : 'transform 120ms ease-out' }}
+          />
+        )}
       </div>
     </div>
   );

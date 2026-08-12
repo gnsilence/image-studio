@@ -6,8 +6,8 @@ import { ServiceWorkerManager } from "@/components/ServiceWorkerManager";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Nova Image - AI 图像生成器",
-  description: "Nova Image AI 图像生成工作台",
+  title: "AIOSS Image - AI 图像生成器",
+  description: "AIOSS Image AI 图像生成工作台",
   icons: {
     icon: [
       { url: '/favicon.png', type: 'image/png' },
@@ -38,7 +38,7 @@ export default function RootLayout({
             __html: `
               (function() {
                 try {
-                  const theme = window.localStorage.getItem('theme');
+                  const theme = window.novaDesktop?.config.get('theme') ?? window.localStorage.getItem('theme');
                   if (theme === 'dark' || theme === 'light') {
                     document.documentElement.setAttribute('data-theme', theme);
                   } else {
@@ -58,7 +58,7 @@ export default function RootLayout({
             __html: `
               (function() {
                 try {
-                  var stored = window.localStorage.getItem('nova-wide-mode');
+                  var stored = window.novaDesktop?.config.get('nova-wide-mode') ?? window.localStorage.getItem('nova-wide-mode');
                   var wide = stored === 'enabled' && window.innerWidth >= 1280;
                   if (wide) {
                     document.documentElement.setAttribute('data-wide-mode', '');

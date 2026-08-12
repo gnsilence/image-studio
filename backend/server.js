@@ -1,10 +1,16 @@
 const http = require('http');
-const { createHash, randomUUID } = require('crypto');
+const { createHash, randomUUID, timingSafeEqual } = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { createRequire } = require('module');
+const { Readable } = require('stream');
+const { pipeline } = require('stream/promises');
+const runtimeRequire = process.env.NOVA_DESKTOP_MODULE_ROOT
+  ? createRequire(path.join(process.env.NOVA_DESKTOP_MODULE_ROOT, 'package.json'))
+  : require;
 const next = process.env.NODE_ENV !== 'production' ? require('next') : null;
-const Database = require('better-sqlite3');
-const { WebSocketServer } = require('ws');
+const Database = runtimeRequire('better-sqlite3');
+const { WebSocketServer } = runtimeRequire('ws');
 
 const ENV_FILE_PATH = path.join(process.cwd(), '.env');
 const TASK_STATUS = {
@@ -30,6 +36,10 @@ const LIMIT_ERROR_MESSAGES = {
   tooManyPending: '你已有较多任务正在排队或生成，请稍后再提交。',
   notAcceptingTasks: '服务器正在升级维护，暂不接受新任务。未完成任务将继续完成。',
 };
+const FIXED_MODEL_BASE_URL = 'https://www.aioss.cc';
+const BING_IMAGE_ARCHIVE_URL = 'https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=8&mkt=zh-CN';
+const PICSUM_FALLBACK_URL = 'https://picsum.photos/1920/1080';
+const RANDOM_IMAGE_TIMEOUT_MS = 15 * 1000;
 
 function parseEnvFile(filePath = ENV_FILE_PATH) {
   if (!fs.existsSync(filePath)) return {};
@@ -93,7 +103,7 @@ function normalizeProtocolBaseUrl(protocol, url) {
 }
 
 function resolveNovaApiBaseUrl() {
-  return normalizeBaseUrl(getRuntimeEnv().NOVA_API_BASE_URL) || 'https://api.openai.com';
+  return FIXED_MODEL_BASE_URL;
 }
 
 function hashPromptGalleryPassword(password) {
@@ -127,8 +137,9 @@ const CUSTOM_IMAGE_SIZE_LIMITS = {
   maxPixels: 8294400,
 };
 const IS_DEV = process.env.NODE_ENV !== 'production';
-const STATIC_DIR = path.join(__dirname, '..', 'frontend', 'out');
+const STATIC_DIR = process.env.NOVA_STATIC_DIR || path.join(__dirname, '..', 'frontend', 'out');
 const IMAGE_DIR = process.env.NOVA_IMAGE_DIR || path.join(__dirname, 'nova-images');
+const DESKTOP_SESSION_TOKEN = process.env.NOVA_DESKTOP_SESSION_TOKEN || '';
 const taskRefImages = new Map();
 
 const app = IS_DEV ? next({ dev: IS_DEV, hostname: HOSTNAME, port: PORT, dir: path.join(__dirname, '..', 'frontend') }) : null;
@@ -154,6 +165,23 @@ const WS_MAX_TASK_IDS_PER_MESSAGE = 200;
 const WS_MAX_SUBSCRIPTIONS_PER_SOCKET = 500;
 let queueBroadcastTimer = null;
 let queueBroadcastPending = false;
+let wsHeartbeatTimer = null;
+let cleanupExpiredTimer = null;
+let cleanupRateLimitTimer = null;
+let activeHttpServer = null;
+let activeWebSocketServer = null;
+let runtimeInitialized = false;
+let stoppingPromise = null;
+
+function hasValidDesktopSessionToken(req) {
+  if (!DESKTOP_SESSION_TOKEN) return true;
+  const provided = req.headers['x-nova-desktop-token'];
+  if (typeof provided !== 'string') return false;
+  const expectedBuffer = Buffer.from(DESKTOP_SESSION_TOKEN);
+  const providedBuffer = Buffer.from(provided);
+  return expectedBuffer.length === providedBuffer.length
+    && timingSafeEqual(expectedBuffer, providedBuffer);
+}
 
 function getMaxServerConcurrency() {
   const configured = Number(getRuntimeEnv().NOVA_TASK_CONCURRENCY || GLOBAL_TASK_CONCURRENCY);
@@ -359,6 +387,17 @@ function getImageExtension(mimeType) {
   return 'png';
 }
 
+function logTaskStage(trace, stage, details = {}) {
+  if (!trace?.taskId) return;
+  console.log(`[task-stage] ${JSON.stringify({
+    at: new Date().toISOString(),
+    taskId: trace.taskId,
+    itemIndex: trace.itemIndex,
+    stage,
+    ...details,
+  })}`);
+}
+
 function saveImageToDisk(taskId, itemIndex, subIndex, imageBuffer, mimeType) {
   const ext = getImageExtension(mimeType);
   const fileName = `${taskId}-${itemIndex}-${subIndex}.${ext}`;
@@ -367,12 +406,35 @@ function saveImageToDisk(taskId, itemIndex, subIndex, imageBuffer, mimeType) {
   return { filePath, httpUrl: `/api/nova/images/${taskId}/${itemIndex}` };
 }
 
-async function downloadUrlToDisk(taskId, itemIndex, subIndex, imageUrl) {
+async function downloadUrlToDisk(taskId, itemIndex, subIndex, imageUrl, trace) {
+  const startedAt = Date.now();
+  let sourceHost = 'unknown';
+  try { sourceHost = new URL(imageUrl).host; } catch { /* keep URL out of logs */ }
+  logTaskStage(trace, 'result_download_started', { subIndex, sourceHost });
   const response = await fetchWithTimeout(imageUrl, {});
+  logTaskStage(trace, 'result_download_headers_received', {
+    subIndex,
+    elapsedMs: Date.now() - startedAt,
+    httpStatus: response.status,
+    contentType: response.headers.get('content-type') || '',
+    contentLength: response.headers.get('content-length') || '',
+  });
   if (!response.ok) throw new Error(`远程图片下载失败: ${response.status}`);
   const contentType = response.headers.get('content-type') || 'image/png';
   const buffer = Buffer.from(await response.arrayBuffer());
-  return saveImageToDisk(taskId, itemIndex, subIndex, buffer, contentType);
+  logTaskStage(trace, 'result_download_body_received', {
+    subIndex,
+    elapsedMs: Date.now() - startedAt,
+    bytes: buffer.length,
+  });
+  const result = saveImageToDisk(taskId, itemIndex, subIndex, buffer, contentType);
+  logTaskStage(trace, 'result_saved', {
+    subIndex,
+    source: 'url',
+    elapsedMs: Date.now() - startedAt,
+    bytes: buffer.length,
+  });
+  return result;
 }
 
 function getTaskImageFiles(taskId) {
@@ -640,7 +702,7 @@ function validateCreatePayload(body) {
   if (!Array.isArray(body.images)) body.images = [];
   body.baseUrl = normalizeProtocolBaseUrl(body.protocol, body.baseUrl);
   if (!body.baseUrl) throw new Error('缺少 API 基础地址');
-  // 开源版：不做模型级参数规范化，前端负责传递正确的参数，后端无条件透传
+  // 图片模型参数由前端传递，后端规范化地址后调用对应上游。
 }
 
 function createTask(body, req) {
@@ -999,9 +1061,16 @@ function extractImagePayloadFromEventStream(text) {
   throw new Error('响应中无图片数据');
 }
 
-async function parseGptImageResponse(response) {
+async function parseGptImageResponse(response, trace) {
   const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+  const bodyStartedAt = Date.now();
   const responseText = await response.text();
+  logTaskStage(trace, 'upstream_response_body_received', {
+    requestElapsedMs: Date.now() - trace.startedAt,
+    bodyReadMs: Date.now() - bodyStartedAt,
+    bodyBytes: Buffer.byteLength(responseText),
+    contentType,
+  });
 
   if (!response.ok) {
     const errorText = getUpstreamErrorText(responseText);
@@ -1042,7 +1111,13 @@ async function requestGptImage(apiKey, request, resolvedSize, options = {}) {
     `${baseUrl}${endpoint}`,
     createGptImageRequestInit(apiKey, request, resolvedSize, options)
   );
-  return parseGptImageResponse(response);
+  logTaskStage(options.trace, 'upstream_response_headers_received', {
+    requestElapsedMs: Date.now() - options.trace.startedAt,
+    httpStatus: response.status,
+    contentType: response.headers.get('content-type') || '',
+    contentLength: response.headers.get('content-length') || '',
+  });
+  return parseGptImageResponse(response, options.trace);
 }
 
 function getGrokResolution(outputSize) {
@@ -1128,7 +1203,13 @@ async function requestGrokImage(apiKey, request, options = {}) {
     `${baseUrl}${endpoint}`,
     createGrokImageRequestInit(apiKey, request, options)
   );
-  return parseGptImageResponse(response);
+  logTaskStage(options.trace, 'upstream_response_headers_received', {
+    requestElapsedMs: Date.now() - options.trace.startedAt,
+    httpStatus: response.status,
+    contentType: response.headers.get('content-type') || '',
+    contentLength: response.headers.get('content-length') || '',
+  });
+  return parseGptImageResponse(response, options.trace);
 }
 
 // ===== 加强网络连接：启用 TCP keepalive，防止 Docker 回环连接被静默断开 =====
@@ -1136,7 +1217,7 @@ async function requestGrokImage(apiKey, request, options = {}) {
 // 导致长时间等待响应（如 4K 图片生成）时连接被 Docker 网络层丢弃。
 // 通过 setGlobalDispatcher 配置 undici Agent 的 keepalive 和超时参数。
 try {
-  const { Agent, setGlobalDispatcher } = require('undici');
+  const { Agent, setGlobalDispatcher } = runtimeRequire('undici');
   setGlobalDispatcher(new Agent({
     keepAliveTimeout: 60 * 1000,         // 空闲连接保持 60 秒
     keepAliveMaxTimeout: 10 * 60 * 1000, // 最大保持 10 分钟
@@ -1152,9 +1233,9 @@ try {
   console.warn('[network] undici Agent 配置失败，使用默认设置:', e?.message || e);
 }
 
-async function fetchWithTimeout(url, init) {
+async function fetchWithTimeout(url, init, timeoutMs = REQUEST_TIMEOUT_MS) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, { ...init, signal: controller.signal });
   } finally {
@@ -1162,17 +1243,81 @@ async function fetchWithTimeout(url, init) {
   }
 }
 
-async function generateNovaImage(apiKey, request) {
+function resolveBingImageUrl(image) {
+  const rawUrl = String(image?.url || '').trim();
+  if (!rawUrl) return null;
+  try {
+    const imageUrl = new URL(rawUrl, 'https://www.bing.com');
+    if (imageUrl.protocol !== 'https:' || !/(^|\.)bing\.com$/i.test(imageUrl.hostname)) return null;
+    return imageUrl.href;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchRandomImageResponse() {
+  try {
+    const archiveResponse = await fetchWithTimeout(BING_IMAGE_ARCHIVE_URL, {
+      headers: { Accept: 'application/json' },
+    }, RANDOM_IMAGE_TIMEOUT_MS);
+    if (!archiveResponse.ok) throw new Error(`Bing archive returned ${archiveResponse.status}`);
+    const archive = await archiveResponse.json();
+    const images = Array.isArray(archive?.images)
+      ? archive.images.map(resolveBingImageUrl).filter(Boolean)
+      : [];
+    if (!images.length) throw new Error('Bing archive returned no valid images');
+
+    const imageUrl = images[Math.floor(Math.random() * images.length)];
+    const imageResponse = await fetchWithTimeout(imageUrl, {
+      headers: { Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8' },
+    }, RANDOM_IMAGE_TIMEOUT_MS);
+    if (!imageResponse.ok || !String(imageResponse.headers.get('content-type') || '').toLowerCase().startsWith('image/')) {
+      throw new Error(`Bing image returned ${imageResponse.status}`);
+    }
+    return { response: imageResponse, source: 'bing' };
+  } catch (error) {
+    console.warn('[random-image] Bing 请求失败，使用 Picsum 备用来源:', error?.message || error);
+    const fallbackResponse = await fetchWithTimeout(PICSUM_FALLBACK_URL, {
+      headers: { Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8' },
+    }, RANDOM_IMAGE_TIMEOUT_MS);
+    if (!fallbackResponse.ok || !String(fallbackResponse.headers.get('content-type') || '').toLowerCase().startsWith('image/')) {
+      throw new Error(`备用图片返回 ${fallbackResponse.status}`);
+    }
+    return { response: fallbackResponse, source: 'picsum' };
+  }
+}
+
+async function pipeRemoteImageToResponse(res, upstream, source) {
+  const headers = {
+    'Content-Type': upstream.headers.get('content-type') || 'image/jpeg',
+    'Cache-Control': 'no-store',
+    'X-Nova-Image-Source': source,
+  };
+  const contentLength = upstream.headers.get('content-length');
+  if (contentLength) headers['Content-Length'] = contentLength;
+  res.writeHead(200, headers);
+  if (!upstream.body) {
+    res.end();
+    return;
+  }
+  try {
+    await pipeline(Readable.fromWeb(upstream.body), res);
+  } catch (error) {
+    if (!res.destroyed) res.destroy(error);
+  }
+}
+
+async function generateNovaImage(apiKey, request, trace) {
   // 开源版：根据前端传入的 protocol 字段路由到对应的 API 协议
   const baseUrl = request.baseUrl || resolveNovaApiBaseUrl();
   if (request.protocol === 'openai') {
-    return requestGptImage(apiKey, request, resolveGptImageRequestSize(request), { baseUrl });
+    return requestGptImage(apiKey, request, resolveGptImageRequestSize(request), { baseUrl, trace });
   }
   if (request.protocol === 'grok') {
-    return requestGrokImage(apiKey, request, { baseUrl });
+    return requestGrokImage(apiKey, request, { baseUrl, trace });
   }
   // 默认走 Google Gemini 协议
-  return generateNovaGeminiImage(apiKey, request, { baseUrl });
+  return generateNovaGeminiImage(apiKey, request, { baseUrl, trace });
 }
 
 function extractGeminiImagePayload(data) {
@@ -1204,12 +1349,26 @@ async function generateNovaGeminiImage(apiKey, request, options = {}) {
     }),
   });
 
+  logTaskStage(options.trace, 'upstream_response_headers_received', {
+    requestElapsedMs: Date.now() - options.trace.startedAt,
+    httpStatus: response.status,
+    contentType: response.headers.get('content-type') || '',
+    contentLength: response.headers.get('content-length') || '',
+  });
+
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`API 请求失败: ${response.status} ${errorText}`);
   }
 
+  const bodyStartedAt = Date.now();
   const responseText = await response.text();
+  logTaskStage(options.trace, 'upstream_response_body_received', {
+    requestElapsedMs: Date.now() - options.trace.startedAt,
+    bodyReadMs: Date.now() - bodyStartedAt,
+    bodyBytes: Buffer.byteLength(responseText),
+    contentType: response.headers.get('content-type') || '',
+  });
   if (isLikelyHtmlResponse(responseText)) {
     throw new Error('上游返回了 HTML 页面而不是 JSON。通常是 baseUrl 配置错误、请求被站点网关拦截，或该地址并非兼容的图片 API。');
   }
@@ -1246,19 +1405,35 @@ function drainQueue() {
 }
 
 async function generateSingleImage(apiKey, request, taskId, index) {
+  const trace = { taskId, itemIndex: index, startedAt: Date.now() };
   try {
-    const image = await generateNovaImage(apiKey, request);
+    logTaskStage(trace, 'upstream_request_started', {
+      protocol: request.protocol,
+      model: request.model,
+    });
+    const image = await generateNovaImage(apiKey, request, trace);
+    logTaskStage(trace, 'upstream_payload_parsed', {
+      requestElapsedMs: Date.now() - trace.startedAt,
+      payloadType: image.startsWith('MULTI_URL:') ? 'multi-url' : image.startsWith('URL:') ? 'url' : 'base64',
+      payloadCharacters: image.length,
+    });
     const expanded = image.startsWith('MULTI_URL:') ? image.substring(10).split('|||').map(url => `URL:${url}`) : [image];
     const diskRefs = [];
     for (let subIdx = 0; subIdx < expanded.length; subIdx++) {
       const img = expanded[subIdx];
       if (img.startsWith('URL:')) {
         const remoteUrl = img.substring(4);
-        const result = await downloadUrlToDisk(taskId, index, subIdx, remoteUrl);
+        const result = await downloadUrlToDisk(taskId, index, subIdx, remoteUrl, trace);
         diskRefs.push(`URL:${result.httpUrl}`);
       } else {
         const buffer = Buffer.from(img, 'base64');
         const result = saveImageToDisk(taskId, index, subIdx, buffer, 'image/png');
+        logTaskStage(trace, 'result_saved', {
+          subIndex: subIdx,
+          source: 'base64',
+          requestElapsedMs: Date.now() - trace.startedAt,
+          bytes: buffer.length,
+        });
         diskRefs.push(`URL:${result.httpUrl}`);
       }
     }
@@ -1266,6 +1441,13 @@ async function generateSingleImage(apiKey, request, taskId, index) {
       .run(JSON.stringify(diskRefs), new Date().toISOString(), taskId, index);
     return { success: true, images: diskRefs };
   } catch (error) {
+    logTaskStage(trace, 'upstream_request_failed', {
+      requestElapsedMs: Date.now() - trace.startedAt,
+      errorName: error?.name || '',
+      errorMessage: String(error?.message || error).slice(0, 300),
+      causeCode: error?.cause?.code || '',
+      causeMessage: String(error?.cause?.message || '').slice(0, 300),
+    });
     const message = normalizeError(error);
     db.prepare("UPDATE task_items SET status = 'failed', error = ?, completed_at = ? WHERE task_id = ? AND item_index = ?")
       .run(message, new Date().toISOString(), taskId, index);
@@ -1534,7 +1716,7 @@ function setupWebSocketServer() {
     });
   });
 
-  setInterval(() => {
+  wsHeartbeatTimer = setInterval(() => {
     for (const ws of wss.clients) {
       if (ws.readyState !== ws.OPEN) continue;
       const state = wsAlive.get(ws);
@@ -1548,7 +1730,8 @@ function setupWebSocketServer() {
       }
       try { ws.ping(); } catch { /* ignore */ }
     }
-  }, WS_HEARTBEAT_INTERVAL_MS).unref();
+  }, WS_HEARTBEAT_INTERVAL_MS);
+  wsHeartbeatTimer.unref();
 
   return wss;
 }
@@ -1556,6 +1739,11 @@ function setupWebSocketServer() {
 async function handleApi(req, res, pathname) {
   try {
     const apiPathname = pathname.replace(/\/+$/, '');
+
+    if (!hasValidDesktopSessionToken(req)) {
+      sendJson(res, 401, { error: 'Unauthorized desktop session' });
+      return true;
+    }
 
     if (req.method === 'GET' && apiPathname === '/api/nova/queue-status') {
       sendJson(res, 200, getQueueStats());
@@ -1629,6 +1817,17 @@ async function handleApi(req, res, pathname) {
       return true;
     }
 
+    if (req.method === 'GET' && apiPathname === '/api/nova/random-image/bing') {
+      try {
+        const { response, source } = await fetchRandomImageResponse();
+        await pipeRemoteImageToResponse(res, response, source);
+      } catch (error) {
+        console.warn('[random-image] 所有图片来源均不可用:', error?.message || error);
+        if (!res.headersSent) sendJson(res, 502, { error: '随机壁纸暂时不可用，请稍后重试。' });
+      }
+      return true;
+    }
+
     const imageMatch = apiPathname.match(/^\/api\/nova\/images\/([^/]+)\/(\d+)$/);
     if (req.method === 'GET' && imageMatch) {
       const taskId = imageMatch[1];
@@ -1677,13 +1876,13 @@ async function handleApi(req, res, pathname) {
     if (req.method === 'POST' && apiPathname === '/api/nova/proxy/text') {
       try {
         const body = await readJsonBody(req);
-        const { protocol, baseUrl, apiKey, model, stream, requestBody } = body;
-        if (!baseUrl || !apiKey) {
-          sendJson(res, 400, { error: 'Missing baseUrl or apiKey' });
+        const { protocol, apiKey, model, stream, requestBody } = body;
+        if (!apiKey) {
+          sendJson(res, 400, { error: 'Missing apiKey' });
           return true;
         }
 
-        const normalizedBaseUrl = normalizeProtocolBaseUrl(protocol, baseUrl);
+        const normalizedBaseUrl = FIXED_MODEL_BASE_URL;
         let targetUrl;
         const authHeaders = { 'Content-Type': 'application/json' };
 
@@ -1766,15 +1965,21 @@ async function handleApi(req, res, pathname) {
     if (req.method === 'GET' && apiPathname === '/api/nova/proxy/models') {
       try {
         const parsed = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
-        const baseUrl = parsed.searchParams.get('baseUrl');
         const apiKey = parsed.searchParams.get('apiKey');
         const protocol = parsed.searchParams.get('protocol') || 'openai';
-        if (!baseUrl || !apiKey) {
-          sendJson(res, 400, { error: 'Missing baseUrl or apiKey' });
+        const modelType = parsed.searchParams.get('modelType');
+        if (!apiKey) {
+          sendJson(res, 400, { error: 'Missing apiKey' });
           return true;
         }
 
-        const normalizedBaseUrl = normalizeProtocolBaseUrl(protocol, baseUrl);
+        const normalizedBaseUrl = modelType === 'image'
+          ? normalizeProtocolBaseUrl(protocol, parsed.searchParams.get('baseUrl'))
+          : FIXED_MODEL_BASE_URL;
+        if (!normalizedBaseUrl) {
+          sendJson(res, 400, { error: 'Missing baseUrl' });
+          return true;
+        }
         let modelsUrl = `${normalizedBaseUrl}/v1/models`;
         const headers = {};
 
@@ -1843,13 +2048,46 @@ async function handleApi(req, res, pathname) {
   }
 }
 
-initDatabase();
-ensureImageDir();
-cleanupExpiredTasks();
-setInterval(cleanupExpiredTasks, CLEANUP_INTERVAL_MS).unref();
-setInterval(cleanupRateLimitBuckets, CLEANUP_INTERVAL_MS).unref();
+function initializeRuntime() {
+  if (runtimeInitialized) return;
+  initDatabase();
+  ensureImageDir();
+  cleanupExpiredTasks();
+  cleanupExpiredTimer = setInterval(cleanupExpiredTasks, CLEANUP_INTERVAL_MS);
+  cleanupRateLimitTimer = setInterval(cleanupRateLimitBuckets, CLEANUP_INTERVAL_MS);
+  cleanupExpiredTimer.unref();
+  cleanupRateLimitTimer.unref();
+  runtimeInitialized = true;
+}
 
-const startServer = () => {
+function listen(httpServer) {
+  return new Promise((resolve, reject) => {
+    const onError = error => {
+      httpServer.off('listening', onListening);
+      reject(error);
+    };
+    const onListening = () => {
+      httpServer.off('error', onError);
+      const address = httpServer.address();
+      const port = typeof address === 'object' && address ? address.port : PORT;
+      resolve({ host: HOSTNAME, port, url: `http://${HOSTNAME}:${port}` });
+    };
+    httpServer.once('error', onError);
+    httpServer.once('listening', onListening);
+    httpServer.listen(PORT, HOSTNAME);
+  });
+}
+
+async function startServer() {
+  if (activeHttpServer) {
+    const address = activeHttpServer.address();
+    const port = typeof address === 'object' && address ? address.port : PORT;
+    return { host: HOSTNAME, port, url: `http://${HOSTNAME}:${port}` };
+  }
+
+  initializeRuntime();
+  if (app) await app.prepare();
+
   const wss = setupWebSocketServer();
   const httpServer = http.createServer(async (req, res) => {
     const parsedUrl = new URL(req.url || '/', `http://${req.headers.host || `${HOSTNAME}:${PORT}`}`);
@@ -1879,6 +2117,11 @@ const startServer = () => {
       return;
     }
     if (pathname === '/api/nova/ws') {
+      if (!hasValidDesktopSessionToken(req)) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+        socket.destroy();
+        return;
+      }
       wss.handleUpgrade(req, socket, head, ws => wss.emit('connection', ws, req));
       return;
     }
@@ -1889,18 +2132,109 @@ const startServer = () => {
     socket.destroy();
   });
 
-  httpServer.listen(PORT, HOSTNAME, () => {
-    const localUrl = `http://localhost:${PORT}`;
-    const listenUrl = `http://${HOSTNAME}:${PORT}`;
-    console.log(`Nova Image server ready on ${localUrl}`);
+  activeHttpServer = httpServer;
+  activeWebSocketServer = wss;
+
+  try {
+    const address = await listen(httpServer);
+    const localUrl = `http://localhost:${address.port}`;
+    const listenUrl = `http://${HOSTNAME}:${address.port}`;
+    console.log(`AIOSS Image server ready on ${localUrl}`);
     if (HOSTNAME !== 'localhost' && HOSTNAME !== '127.0.0.1') {
       console.log(`Listening on ${listenUrl}`);
     }
-  });
-};
-
-if (IS_DEV) {
-  app.prepare().then(startServer);
-} else {
-  startServer();
+    return address;
+  } catch (error) {
+    activeHttpServer = null;
+    activeWebSocketServer = null;
+    if (wsHeartbeatTimer) clearInterval(wsHeartbeatTimer);
+    wsHeartbeatTimer = null;
+    try { wss.close(); } catch { /* ignore */ }
+    throw error;
+  }
 }
+
+function closeWebSocketServer(wss) {
+  if (!wss) return Promise.resolve();
+  for (const ws of wss.clients) {
+    try { ws.close(1001, 'Server shutting down'); } catch { /* ignore */ }
+  }
+  return new Promise(resolve => {
+    try { wss.close(() => resolve()); } catch { resolve(); }
+  });
+}
+
+function closeHttpServer(server) {
+  if (!server) return Promise.resolve();
+  return new Promise(resolve => {
+    try {
+      server.close(() => resolve());
+      if (typeof server.closeIdleConnections === 'function') server.closeIdleConnections();
+    } catch {
+      resolve();
+    }
+  });
+}
+
+async function stopServer() {
+  if (stoppingPromise) return stoppingPromise;
+  stoppingPromise = (async () => {
+    if (cleanupExpiredTimer) clearInterval(cleanupExpiredTimer);
+    if (cleanupRateLimitTimer) clearInterval(cleanupRateLimitTimer);
+    if (wsHeartbeatTimer) clearInterval(wsHeartbeatTimer);
+    if (queueBroadcastTimer) clearTimeout(queueBroadcastTimer);
+    cleanupExpiredTimer = null;
+    cleanupRateLimitTimer = null;
+    wsHeartbeatTimer = null;
+    queueBroadcastTimer = null;
+
+    const httpServer = activeHttpServer;
+    const wss = activeWebSocketServer;
+    activeHttpServer = null;
+    activeWebSocketServer = null;
+    await Promise.all([closeWebSocketServer(wss), closeHttpServer(httpServer)]);
+    try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch { /* ignore */ }
+    try { db.close(); } catch { /* ignore */ }
+    if (app && typeof app.close === 'function') {
+      try { await app.close(); } catch { /* ignore */ }
+    }
+  })();
+  return stoppingPromise;
+}
+
+function notifyParent(message) {
+  if (process.parentPort && typeof process.parentPort.postMessage === 'function') {
+    process.parentPort.postMessage(message);
+  }
+  if (typeof process.send === 'function') process.send(message);
+}
+
+async function runAsMain() {
+  try {
+    const address = await startServer();
+    notifyParent({ type: 'ready', ...address });
+  } catch (error) {
+    notifyParent({ type: 'error', message: error?.message || String(error) });
+    console.error(error);
+    process.exitCode = 1;
+  }
+}
+
+function handleControlMessage(message) {
+  if (message?.type === 'stop') {
+    stopServer().finally(() => process.exit());
+  }
+}
+
+if (process.parentPort && typeof process.parentPort.on === 'function') {
+  process.parentPort.on('message', event => handleControlMessage(event?.data ?? event));
+}
+if (typeof process.on === 'function') process.on('message', handleControlMessage);
+
+if (require.main === module) {
+  runAsMain();
+  process.once('SIGINT', () => stopServer().finally(() => process.exit()));
+  process.once('SIGTERM', () => stopServer().finally(() => process.exit()));
+}
+
+module.exports = { startServer, stopServer, hasValidDesktopSessionToken, resolveBingImageUrl };

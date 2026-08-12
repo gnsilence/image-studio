@@ -5,6 +5,7 @@ import {
   isTextProviderProtocol,
   type TextProviderProtocol,
 } from '@/lib/nova-text-protocol';
+import { runtimeStorage } from '@/lib/runtime-storage';
 
 export type ProviderProtocol = 'google' | 'openai' | 'grok';
 export type ImageOutputSize = '512' | '1K' | '2K' | '4K';
@@ -69,13 +70,15 @@ export interface NovaModelRegistry {
 
 const REGISTRY_KEY = 'nova-model-registry';
 
+export const FIXED_MODEL_BASE_URL = 'https://www.aioss.cc';
+
 export const BUILTIN_IMAGE_PRESETS: Record<BuiltinImagePresetId, BuiltinImagePreset> = {
   'gemini-2.5-flash-image': {
     id: 'gemini-2.5-flash-image',
     protocol: 'google',
     name: 'Banana',
     modelId: 'gemini-2.5-flash-image',
-    baseUrl: 'https://generativelanguage.googleapis.com',
+    baseUrl: FIXED_MODEL_BASE_URL,
     maxRefImages: 3,
     maxOutputSize: '1K',
     supportsAdvancedParams: false,
@@ -85,7 +88,7 @@ export const BUILTIN_IMAGE_PRESETS: Record<BuiltinImagePresetId, BuiltinImagePre
     protocol: 'google',
     name: 'Banana Pro',
     modelId: 'gemini-3-pro-image-preview',
-    baseUrl: 'https://generativelanguage.googleapis.com',
+    baseUrl: FIXED_MODEL_BASE_URL,
     maxRefImages: 14,
     maxOutputSize: '4K',
     supportsAdvancedParams: false,
@@ -95,7 +98,7 @@ export const BUILTIN_IMAGE_PRESETS: Record<BuiltinImagePresetId, BuiltinImagePre
     protocol: 'google',
     name: 'Banana 2',
     modelId: 'gemini-3.1-flash-image-preview',
-    baseUrl: 'https://generativelanguage.googleapis.com',
+    baseUrl: FIXED_MODEL_BASE_URL,
     maxRefImages: 14,
     maxOutputSize: '4K',
     supportsAdvancedParams: false,
@@ -105,7 +108,7 @@ export const BUILTIN_IMAGE_PRESETS: Record<BuiltinImagePresetId, BuiltinImagePre
     protocol: 'google',
     name: 'Banana 2 Lite',
     modelId: 'gemini-3.1-flash-lite-image',
-    baseUrl: 'https://generativelanguage.googleapis.com',
+    baseUrl: FIXED_MODEL_BASE_URL,
     maxRefImages: 14,
     maxOutputSize: '1K',
     supportsAdvancedParams: false,
@@ -115,7 +118,7 @@ export const BUILTIN_IMAGE_PRESETS: Record<BuiltinImagePresetId, BuiltinImagePre
     protocol: 'openai',
     name: 'GPT Image 2',
     modelId: 'gpt-image-2',
-    baseUrl: 'https://api.openai.com',
+    baseUrl: FIXED_MODEL_BASE_URL,
     maxRefImages: 16,
     maxOutputSize: '4K',
     supportsAdvancedParams: true,
@@ -125,7 +128,7 @@ export const BUILTIN_IMAGE_PRESETS: Record<BuiltinImagePresetId, BuiltinImagePre
     protocol: 'grok',
     name: 'Grok Imagine',
     modelId: 'grok-imagine-image',
-    baseUrl: 'https://api.x.ai',
+    baseUrl: FIXED_MODEL_BASE_URL,
     maxRefImages: 0,
     maxOutputSize: '1K',
     supportsAdvancedParams: false,
@@ -135,7 +138,7 @@ export const BUILTIN_IMAGE_PRESETS: Record<BuiltinImagePresetId, BuiltinImagePre
     protocol: 'grok',
     name: 'Grok Imagine Quality',
     modelId: 'grok-imagine-image-quality',
-    baseUrl: 'https://api.x.ai',
+    baseUrl: FIXED_MODEL_BASE_URL,
     maxRefImages: 0,
     maxOutputSize: '2K',
     supportsAdvancedParams: false,
@@ -145,7 +148,7 @@ export const BUILTIN_IMAGE_PRESETS: Record<BuiltinImagePresetId, BuiltinImagePre
     protocol: 'grok',
     name: 'Grok Imagine Edit',
     modelId: 'grok-imagine-image-edit',
-    baseUrl: 'https://api.x.ai',
+    baseUrl: FIXED_MODEL_BASE_URL,
     maxRefImages: 4,
     maxOutputSize: '2K',
     supportsAdvancedParams: false,
@@ -162,28 +165,28 @@ export const DEFAULT_TEXT_MODEL_TEMPLATES = [
     protocol: 'openai-responses' as const,
     name: 'GPT 5.4 Mini',
     modelId: 'gpt-5.4-mini',
-    baseUrl: 'https://api.openai.com',
+    baseUrl: FIXED_MODEL_BASE_URL,
     note: getTextProviderDescription('openai-responses'),
   },
   {
     protocol: 'google-gemini' as const,
     name: 'Gemini 2.5 Flash',
     modelId: 'gemini-2.5-flash',
-    baseUrl: 'https://generativelanguage.googleapis.com',
+    baseUrl: FIXED_MODEL_BASE_URL,
     note: getTextProviderDescription('google-gemini'),
   },
   {
     protocol: 'anthropic-messages' as const,
     name: 'Claude Sonnet',
     modelId: 'claude-sonnet-4-20250514',
-    baseUrl: 'https://api.anthropic.com',
+    baseUrl: FIXED_MODEL_BASE_URL,
     note: getTextProviderDescription('anthropic-messages'),
   },
   {
     protocol: 'openai-chat-completions' as const,
     name: 'OpenAI Compatible Chat',
     modelId: 'gpt-4o-mini',
-    baseUrl: 'https://api.openai.com',
+    baseUrl: FIXED_MODEL_BASE_URL,
     note: getTextProviderDescription('openai-chat-completions'),
   },
 ];
@@ -237,7 +240,7 @@ function normalizeImageModelConfig(raw: Partial<ImageModelConfig>): ImageModelCo
     name: String(raw.name || '').trim(),
     modelId: String(raw.modelId || '').trim(),
     apiKey: String(raw.apiKey || '').trim(),
-    baseUrl: String(raw.baseUrl || preset.baseUrl).trim(),
+    baseUrl: String(raw.baseUrl || preset.baseUrl || FIXED_MODEL_BASE_URL).trim(),
     builtinPreset: presetId,
     maxRefImages: Number.isFinite(raw.maxRefImages) && Number(raw.maxRefImages) >= 0
       ? Math.max(0, Math.floor(Number(raw.maxRefImages)))
@@ -260,7 +263,7 @@ function normalizeTextModelConfig(raw: Partial<TextModelConfig>): TextModelConfi
     name: String(raw.name || '').trim(),
     modelId: String(raw.modelId || '').trim(),
     apiKey: String(raw.apiKey || '').trim(),
-    baseUrl: String(raw.baseUrl || template.baseUrl).trim(),
+    baseUrl: FIXED_MODEL_BASE_URL,
     note: typeof raw.note === 'string' ? raw.note : (template.note || getTextProviderDescription(protocol)),
   };
 }
@@ -331,7 +334,7 @@ export function loadRegistry(): NovaModelRegistry {
     return getInitialRegistry();
   }
 
-  const raw = localStorage.getItem(REGISTRY_KEY);
+  const raw = runtimeStorage.getItem(REGISTRY_KEY);
   if (!raw) {
     return getInitialRegistry();
   }
@@ -354,7 +357,7 @@ export function saveRegistry(registry: NovaModelRegistry): void {
     defaults: ensureDefaults(registry.defaults, imageModels, textModels),
   };
 
-  localStorage.setItem(REGISTRY_KEY, JSON.stringify(normalized));
+  runtimeStorage.setItem(REGISTRY_KEY, JSON.stringify(normalized));
 }
 
 export function getImageModelById(registry: NovaModelRegistry, id: string): ImageModelConfig | undefined {

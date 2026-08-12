@@ -1,6 +1,9 @@
 import type { GptImageBackground, GptImageQuality, GptImageStyle } from '@/lib/model-capabilities';
 import { makeStoredBlobRef, type ImageDownloadProgressItem } from '@/lib/image-downloader';
 import { openImageDb, IMG_STORE } from '@/lib/image-db';
+import { getDesktopBridge } from '@/lib/desktop-bridge';
+import { blobToBytes, blobToDataUrl, dataUrlToBlob, storedFileToBlob } from '@/lib/desktop-binary';
+import { runtimeStorage } from '@/lib/runtime-storage';
 
 export type Mode = 'text-to-image' | 'image-to-image' | 'prompt-gallery';
 export type OutputSize = 'auto' | '512' | '1K' | '2K' | '4K';
@@ -85,6 +88,26 @@ function toPersistedImageRefs(result: StoredJob): string[] | undefined {
 }
 
 export async function saveImage(result: StoredJob) {
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    const refImages = await Promise.all((result.refImages || []).map(async (refImage, index) => {
+      const blob = dataUrlToBlob(refImage.dataUrl);
+      if (!blob) return refImage;
+      await desktop.files.write('history', `${result.id}:ref:${index}`, await blobToBytes(blob), blob.type || refImage.mimeType);
+      return { ...refImage, dataUrl: '' };
+    }));
+    const images = toPersistedImageRefs(result);
+    await desktop.records.put('image-records', result.id, {
+      id: result.id,
+      jobId: result.id,
+      status: result.status,
+      imageData: images?.[0] || result.imageData,
+      images,
+      refImages,
+      error: result.error,
+    });
+    return;
+  }
   const db = await openDB();
   if (!db) return;
 
@@ -107,6 +130,13 @@ export async function saveImage(result: StoredJob) {
 }
 
 export async function deleteImage(jobId: string) {
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    const record = await desktop.records.get<StoredJob>('image-records', jobId);
+    await Promise.all((record?.refImages || []).map((_, index) => desktop.files.delete('history', `${jobId}:ref:${index}`)));
+    await desktop.records.delete('image-records', jobId);
+    return;
+  }
   const db = await openDB();
   if (!db) return;
 
@@ -121,7 +151,7 @@ export async function deleteImage(jobId: string) {
 export function loadJobs(): StoredJob[] {
   if (typeof window === 'undefined') return [];
   try {
-    const parsed = JSON.parse(localStorage.getItem(JOBS_KEY) || '[]');
+    const parsed = JSON.parse(runtimeStorage.getItem(JOBS_KEY) || '[]');
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
@@ -140,8 +170,33 @@ export function saveJobs(jobs: StoredJob[]) {
     return job;
   });
   try {
-    localStorage.setItem(JOBS_KEY, JSON.stringify(lightweight));
+    runtimeStorage.setItem(JOBS_KEY, JSON.stringify(lightweight));
   } catch {
     // Keep the in-memory job list usable when storage quota or browser policy blocks writes.
   }
+}
+
+export async function loadStoredImages(): Promise<StoredJob[]> {
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    const entries = await desktop.records.list<StoredJob>('image-records');
+    return Promise.all(entries.map(async entry => {
+      const record = entry.value;
+      const refImages = await Promise.all((record.refImages || []).map(async (refImage, index) => {
+        if (refImage.dataUrl) return refImage;
+        const stored = await desktop.files.read('history', `${record.id}:ref:${index}`);
+        if (!stored) return refImage;
+        return { ...refImage, dataUrl: await blobToDataUrl(storedFileToBlob(stored)) };
+      }));
+      return { ...record, refImages };
+    }));
+  }
+
+  const db = await openDB();
+  if (!db) return [];
+  return new Promise(resolve => {
+    const request = db.transaction(IMG_STORE, 'readonly').objectStore(IMG_STORE).getAll();
+    request.onsuccess = () => resolve((request.result as StoredJob[]) || []);
+    request.onerror = () => resolve([]);
+  });
 }

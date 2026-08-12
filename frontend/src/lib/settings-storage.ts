@@ -1,6 +1,7 @@
 'use client';
 
 import { getCompleteImageModels, getCompleteTextModels, loadRegistry } from '@/lib/nova-models';
+import { runtimeStorage } from '@/lib/runtime-storage';
 
 export function getStoredApiKey(): string {
   const registry = loadRegistry();
@@ -32,11 +33,11 @@ export function hasAnyApiKey(): boolean {
 
 export function loadJsonFromStorage<T>(key: string): Partial<T> {
   if (typeof window === 'undefined') return {};
-  const raw = localStorage.getItem(key);
+  const raw = runtimeStorage.getItem(key);
   return raw ? JSON.parse(raw) : {};
 }
 
 export function saveJsonToStorage<T>(key: string, value: T): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(key, JSON.stringify(value));
+  runtimeStorage.setItem(key, JSON.stringify(value));
 }

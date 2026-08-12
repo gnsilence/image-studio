@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Check, FileText, Grid3X3, ImageIcon, Loader2, Search, X } from 'lucide-react';
+import { Check, Cloud, FileText, Grid3X3, HardDrive, ImageIcon, Loader2, Search, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { S3AssetBrowser } from '@/components/assets/S3AssetBrowser';
 import {
   getAssetThumbnailBlob,
   listImageAssets,
@@ -15,12 +16,19 @@ import {
   type TextAsset,
 } from '@/lib/asset-store';
 import { cn } from '@/lib/utils';
+import { getDesktopBridge, type S3ImageObject } from '@/lib/desktop-bridge';
+import {
+  localAssetSelection,
+  s3AssetSelection,
+  type ImageAssetSelection,
+} from '@/lib/s3-assets';
 
 interface AgentAssetPickerDialogProps {
   open: boolean;
   maxSelected?: number;
   onOpenChange: (open: boolean) => void;
-  onConfirm: (assets: ImageAsset[]) => void;
+  onConfirm: (assets: ImageAssetSelection[]) => void;
+  onConfigure?: () => void;
 }
 
 interface AgentTextAssetPickerDialogProps {
@@ -237,12 +245,15 @@ export function AgentAssetPickerDialog({
   maxSelected = 5,
   onOpenChange,
   onConfirm,
+  onConfigure,
 }: AgentAssetPickerDialogProps) {
   const [assets, setAssets] = useState<ImageAsset[]>([]);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedS3Objects, setSelectedS3Objects] = useState<Map<string, S3ImageObject>>(new Map());
+  const [source, setSource] = useState<'local' | 's3'>('local');
   const scrollRef = useRef<HTMLDivElement>(null);
   const tagDragRef = useRef({ pointerId: -1, startX: 0, scrollLeft: 0, dragged: false });
   const [cols, setCols] = useState<number>(COLS.mobile);
@@ -268,6 +279,8 @@ export function AgentAssetPickerDialog({
       setQuery('');
       setSelectedTag('');
       setSelectedIds(new Set());
+      setSelectedS3Objects(new Map());
+      setSource('local');
     }
   }, [open]);
 
@@ -287,10 +300,14 @@ export function AgentAssetPickerDialog({
     [assets, query, selectedTag],
   );
 
-  const selectedAssets = useMemo(
-    () => assets.filter(asset => selectedIds.has(asset.id)),
-    [assets, selectedIds],
+  const selectedAssets = useMemo<ImageAssetSelection[]>(
+    () => [
+      ...assets.filter(asset => selectedIds.has(asset.id)).map(localAssetSelection),
+      ...Array.from(selectedS3Objects.values()).map(s3AssetSelection),
+    ],
+    [assets, selectedIds, selectedS3Objects],
   );
+  const selectedCount = selectedAssets.length;
 
   // 监听容器宽度变化以动态计算列数。列表容器在加载/空状态不会渲染，需要等结果出现后再绑定。
   useEffect(() => {
@@ -337,11 +354,24 @@ export function AgentAssetPickerDialog({
         next.delete(assetId);
         return next;
       }
-      if (next.size >= maxSelected) return next;
+      if (next.size + selectedS3Objects.size >= maxSelected) return next;
       next.add(assetId);
       return next;
     });
-  }, [maxSelected]);
+  }, [maxSelected, selectedS3Objects.size]);
+
+  const toggleS3Object = useCallback((object: S3ImageObject) => {
+    setSelectedS3Objects(prev => {
+      const next = new Map(prev);
+      if (next.has(object.key)) {
+        next.delete(object.key);
+        return next;
+      }
+      if (next.size + selectedIds.size >= maxSelected) return next;
+      next.set(object.key, object);
+      return next;
+    });
+  }, [maxSelected, selectedIds.size]);
 
   const handleConfirm = useCallback(() => {
     if (selectedAssets.length === 0) return;
@@ -357,13 +387,19 @@ export function AgentAssetPickerDialog({
             <Grid3X3 className="h-4 w-4" />
             从素材库导入
             <span className="text-xs font-normal text-muted-foreground">
-              已选 {selectedIds.size} / {maxSelected}
+              已选 {selectedCount} / {maxSelected}
             </span>
           </DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-wrap items-center gap-2 border-b pb-2">
-          <div className="relative min-w-56 flex-1">
+          {getDesktopBridge() && (
+            <div className="flex h-8 items-center rounded-md border bg-muted/30 p-0.5">
+              <button type="button" onClick={() => setSource('local')} className={cn('flex h-7 items-center gap-1.5 rounded px-2 text-xs', source === 'local' ? 'bg-background font-medium shadow-sm' : 'text-muted-foreground')}><HardDrive className="h-3.5 w-3.5" />本地</button>
+              <button type="button" onClick={() => setSource('s3')} className={cn('flex h-7 items-center gap-1.5 rounded px-2 text-xs', source === 's3' ? 'bg-background font-medium shadow-sm' : 'text-muted-foreground')}><Cloud className="h-3.5 w-3.5" />S3</button>
+            </div>
+          )}
+          {source === 'local' && <div className="relative min-w-56 flex-1">
             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <input
               type="text"
@@ -382,16 +418,17 @@ export function AgentAssetPickerDialog({
                 <X className="h-3.5 w-3.5" />
               </button>
             )}
-          </div>
+          </div>}
+          {source === 's3' && <div className="min-w-8 flex-1" />}
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
             取消
           </Button>
-          <Button size="sm" onClick={handleConfirm} disabled={selectedIds.size === 0}>
+          <Button size="sm" onClick={handleConfirm} disabled={selectedCount === 0}>
             导入选中
           </Button>
         </div>
 
-        {allTags.length > 0 && (
+        {source === 'local' && allTags.length > 0 && (
           <div
             className="flex gap-1.5 overflow-x-auto border-b pb-2 touch-pan-x select-none overscroll-x-contain [&::-webkit-scrollbar]:hidden"
             style={{ scrollbarWidth: 'none' }}
@@ -442,7 +479,15 @@ export function AgentAssetPickerDialog({
           </div>
         )}
 
-        {loading ? (
+        {source === 's3' ? (
+          <S3AssetBrowser
+            mode="picker"
+            selectedKeys={new Set(selectedS3Objects.keys())}
+            onToggleObject={toggleS3Object}
+            onConfigure={onConfigure}
+            className="min-h-0 flex-1"
+          />
+        ) : loading ? (
           <div className="flex min-h-48 items-center justify-center text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin" />
           </div>
@@ -477,7 +522,7 @@ export function AgentAssetPickerDialog({
                     <div className="grid gap-2 pb-2" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
                       {rowItems.map(asset => {
                         const selected = selectedIds.has(asset.id);
-                        const disabled = !selected && selectedIds.size >= maxSelected;
+                        const disabled = !selected && selectedCount >= maxSelected;
                         return (
                           <button
                             key={asset.id}

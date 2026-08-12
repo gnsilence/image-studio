@@ -68,3 +68,7 @@ frontend/public/workbox-*.js
 
 # other
 infinite-canvas-main/
+
+# local desktop packaging artifacts
+release*/
+output/

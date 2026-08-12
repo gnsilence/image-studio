@@ -1,0 +1,176 @@
+const assert = require('node:assert/strict');
+const { fork } = require('node:child_process');
+const fs = require('node:fs');
+const http = require('node:http');
+const os = require('node:os');
+const path = require('node:path');
+const test = require('node:test');
+
+function waitForMessage(child, type) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error(`Timed out waiting for ${type}`)), 15_000);
+    const onMessage = message => {
+      if (message?.type !== type) return;
+      clearTimeout(timeout);
+      child.off('message', onMessage);
+      resolve(message);
+    };
+    child.on('message', onMessage);
+    child.once('exit', code => {
+      clearTimeout(timeout);
+      reject(new Error(`Server exited before ${type} with code ${code}`));
+    });
+  });
+}
+
+function waitForExit(child) {
+  return new Promise(resolve => child.once('exit', (code, signal) => resolve({ code, signal })));
+}
+
+function listen(server) {
+  return new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => resolve(server.address()));
+  });
+}
+
+function closeServer(server) {
+  return new Promise(resolve => server.close(() => resolve()));
+}
+
+test('desktop server uses an ephemeral port, enforces its token, and stops cleanly', async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nova-backend-test-'));
+  const token = 'test-desktop-session-token';
+  const child = fork(path.join(__dirname, 'server.js'), [], {
+    cwd: path.join(__dirname, '..'),
+    silent: true,
+    env: {
+      ...process.env,
+      NODE_ENV: 'production',
+      HOSTNAME: '127.0.0.1',
+      PORT: '0',
+      NOVA_TASK_DB: path.join(tempDir, 'tasks.sqlite'),
+      NOVA_IMAGE_DIR: path.join(tempDir, 'images'),
+      NOVA_DESKTOP_SESSION_TOKEN: token,
+    },
+  });
+
+  try {
+    const ready = await waitForMessage(child, 'ready');
+    assert.equal(ready.host, '127.0.0.1');
+    assert.ok(Number.isInteger(ready.port) && ready.port > 0);
+
+    const home = await fetch(`${ready.url}/`);
+    assert.equal(home.status, 200);
+    assert.match(await home.text(), /AIOSS Image/i);
+
+    const unauthorized = await fetch(`${ready.url}/api/nova/queue-status`);
+    assert.equal(unauthorized.status, 401);
+
+    const authorized = await fetch(`${ready.url}/api/nova/queue-status`, {
+      headers: { 'X-Nova-Desktop-Token': token },
+    });
+    assert.equal(authorized.status, 200);
+    const queueStatus = await authorized.json();
+    assert.equal(typeof queueStatus.processingCount, 'number');
+    assert.equal(typeof queueStatus.queuedCount, 'number');
+
+    const exitPromise = waitForExit(child);
+    child.send({ type: 'stop' });
+    const exit = await exitPromise;
+    assert.equal(exit.code, 0);
+    await assert.rejects(fetch(`${ready.url}/api/nova/queue-status`));
+  } finally {
+    if (child.connected) child.kill('SIGKILL');
+    child.stdout?.destroy();
+    child.stderr?.destroy();
+    try {
+      fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    } catch {
+      // Windows may retain the SQLite file handle briefly after child exit.
+    }
+  }
+});
+
+test('image tasks call the configured Base URL', async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nova-image-base-url-test-'));
+  const token = 'test-custom-image-base-url-token';
+  const upstreamRequests = [];
+  const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lW2mWQAAAABJRU5ErkJggg==';
+  const upstream = http.createServer((req, res) => {
+    upstreamRequests.push({ url: req.url, authorization: req.headers.authorization });
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ data: [{ b64_json: pngBase64 }] }));
+  });
+  const upstreamAddress = await listen(upstream);
+  const child = fork(path.join(__dirname, 'server.js'), [], {
+    cwd: path.join(__dirname, '..'),
+    silent: true,
+    env: {
+      ...process.env,
+      NODE_ENV: 'production',
+      HOSTNAME: '127.0.0.1',
+      PORT: '0',
+      NOVA_TASK_DB: path.join(tempDir, 'tasks.sqlite'),
+      NOVA_IMAGE_DIR: path.join(tempDir, 'images'),
+      NOVA_DESKTOP_SESSION_TOKEN: token,
+    },
+  });
+
+  try {
+    const ready = await waitForMessage(child, 'ready');
+    const headers = {
+      'Content-Type': 'application/json',
+      'X-Nova-Desktop-Token': token,
+    };
+    const response = await fetch(`${ready.url}/api/nova/tasks`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        apiKey: 'custom-image-key',
+        baseUrl: `http://127.0.0.1:${upstreamAddress.port}/v1/`,
+        protocol: 'openai',
+        mode: 'text-to-image',
+        prompt: 'test image',
+        outputSize: '1K',
+        aspectRatio: '1:1',
+        temperature: 1,
+        model: 'gpt-image-2',
+        parallelCount: 1,
+        images: [],
+      }),
+    });
+    assert.equal(response.status, 202);
+    const { taskId } = await response.json();
+
+    let task;
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+      const taskResponse = await fetch(`${ready.url}/api/nova/tasks/${taskId}`, { headers });
+      task = await taskResponse.json();
+      if (task.status === 'completed' || task.status === 'failed') break;
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+
+    assert.equal(task?.status, 'completed', task?.error);
+    assert.equal(upstreamRequests.length, 1);
+    assert.equal(upstreamRequests[0].url, '/v1/images/generations');
+    assert.equal(upstreamRequests[0].authorization, 'Bearer custom-image-key');
+  } finally {
+    if (child.connected) {
+      const exitPromise = waitForExit(child);
+      child.send({ type: 'stop' });
+      await exitPromise;
+    } else if (!child.killed) {
+      child.kill('SIGKILL');
+    }
+    child.stdout?.destroy();
+    child.stderr?.destroy();
+    await closeServer(upstream);
+    try {
+      fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    } catch {
+      // Windows may retain the SQLite file handle briefly after child exit.
+    }
+  }
+});

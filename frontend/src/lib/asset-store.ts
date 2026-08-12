@@ -1,5 +1,8 @@
 'use client';
 
+import { getDesktopBridge } from '@/lib/desktop-bridge';
+import { blobToBytes, storedFileToBlob } from '@/lib/desktop-binary';
+
 export type AssetSourceKind =
   | 'text-to-image'
   | 'image-to-image'
@@ -148,6 +151,12 @@ function isImageAsset(asset: AssetItem | null | undefined): asset is ImageAsset 
   return Boolean(asset) && asset?.kind !== 'text';
 }
 
+async function listDesktopAssets(): Promise<AssetItem[] | null> {
+  const desktop = getDesktopBridge();
+  if (!desktop) return null;
+  return (await desktop.records.list<AssetItem>('assets')).map(entry => entry.value);
+}
+
 export function getAssetFileExtension(mimeType: string): string {
   const normalized = mimeType.toLowerCase();
   if (normalized.includes('jpeg')) return 'jpg';
@@ -272,6 +281,45 @@ export async function addImageAsset(input: AddImageAssetInput): Promise<ImageAss
   const hash = await hashBlob(sourceBlob);
   const key = hash;
   const createdAt = now();
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    const existingAssets = (await listDesktopAssets()) || [];
+    const sameSourceAsset = existingAssets.filter(isImageAsset).find(asset =>
+      asset.hash === hash && asset.sourceKind === input.sourceKind && asset.sourceRef && asset.sourceRef === input.sourceRef
+    );
+    if (sameSourceAsset) {
+      const updated = {
+        ...sameSourceAsset,
+        lastUsedAt: createdAt,
+        updatedAt: createdAt,
+        tags: sanitizeTags([...sameSourceAsset.tags, ...(input.tags || [])]),
+        note: input.note || sameSourceAsset.note,
+      };
+      await desktop.records.put('assets', updated.id, updated);
+      return updated;
+    }
+
+    const existingBlob = existingAssets.some(asset => isImageAsset(asset) && asset.hash === hash);
+    const dimensions = existingBlob ? {} : await getImageDimensionsAndThumbnail(sourceBlob);
+    if (!existingBlob) {
+      await desktop.files.write('assets', `blob:${key}`, await blobToBytes(sourceBlob), mimeType);
+      if (dimensions.thumbnailBlob) {
+        await desktop.files.write('assets', `thumb:${key}`, await blobToBytes(dimensions.thumbnailBlob), dimensions.thumbnailBlob.type || 'image/webp');
+      }
+    }
+    const asset: ImageAsset = {
+      id: makeId(), kind: 'image', blobKey: key, hash,
+      name: input.name?.trim() || `素材-${new Date(createdAt).toLocaleString()}`,
+      mimeType, sizeBytes: sourceBlob.size,
+      width: dimensions.width ?? existingAssets.filter(isImageAsset).find(asset => asset.hash === hash)?.width,
+      height: dimensions.height ?? existingAssets.filter(isImageAsset).find(asset => asset.hash === hash)?.height,
+      tags: sanitizeTags(input.tags), note: input.note?.trim() || '',
+      sourceKind: input.sourceKind, sourceLabel: input.sourceLabel || getSourceKindLabel(input.sourceKind),
+      sourceRef: input.sourceRef, prompt: input.prompt, createdAt, updatedAt: createdAt, lastUsedAt: createdAt,
+    };
+    await desktop.records.put('assets', asset.id, asset);
+    return asset;
+  }
   const db = await openAssetsDB();
   if (!db) {
     throw new Error('当前浏览器不支持素材库本地存储');
@@ -347,6 +395,24 @@ export async function addTextAsset(input: AddTextAssetInput): Promise<TextAsset>
   if (!content) throw new Error('提示词内容不能为空');
   const hash = await hashText(content);
   const createdAt = now();
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    const assets = (await listDesktopAssets()) || [];
+    const existing = assets.find(asset => isTextAsset(asset) && asset.hash === hash);
+    if (existing && isTextAsset(existing)) {
+      const updated = { ...existing, lastUsedAt: createdAt, updatedAt: createdAt };
+      await desktop.records.put('assets', updated.id, updated);
+      return updated;
+    }
+    const asset: TextAsset = {
+      id: makeId('text-asset'), kind: 'text', hash, content,
+      sizeBytes: new TextEncoder().encode(content).byteLength,
+      sourceKind: input.sourceKind, sourceLabel: input.sourceLabel || getSourceKindLabel(input.sourceKind),
+      sourceRef: input.sourceRef, createdAt, updatedAt: createdAt, lastUsedAt: createdAt,
+    };
+    await desktop.records.put('assets', asset.id, asset);
+    return asset;
+  }
   const db = await openAssetsDB();
   if (!db) {
     throw new Error('当前浏览器不支持素材库本地存储');
@@ -384,6 +450,8 @@ export async function addTextAsset(input: AddTextAssetInput): Promise<TextAsset>
 
 export async function findImageAssetByBlob(blob: Blob): Promise<ImageAsset | null> {
   const hash = await hashBlob(blob);
+  const desktopAssets = await listDesktopAssets();
+  if (desktopAssets) return desktopAssets.filter(isImageAsset).find(asset => asset.hash === hash) || null;
   const db = await openAssetsDB();
   if (!db) return null;
   const assets = await getAllFromStore<AssetItem>(db, ASSETS_STORE);
@@ -392,6 +460,11 @@ export async function findImageAssetByBlob(blob: Blob): Promise<ImageAsset | nul
 }
 
 export async function listAssets(kind?: AssetKind): Promise<AssetItem[]> {
+  const desktopAssets = await listDesktopAssets();
+  if (desktopAssets) {
+    return desktopAssets.filter(asset => !kind || (kind === 'image' ? isImageAsset(asset) : isTextAsset(asset)))
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  }
   const db = await openAssetsDB();
   if (!db) return [];
   const assets = await getAllFromStore<AssetItem>(db, ASSETS_STORE);
@@ -416,6 +489,8 @@ export async function listTextAssets(): Promise<TextAsset[]> {
 }
 
 export async function getImageAsset(assetId: string): Promise<ImageAsset | null> {
+  const desktop = getDesktopBridge();
+  if (desktop) return (await desktop.records.get<AssetItem>('assets', assetId)) as ImageAsset | null;
   const db = await openAssetsDB();
   if (!db) return null;
   const asset = await getFromStore<AssetItem>(db, ASSETS_STORE, assetId);
@@ -424,6 +499,8 @@ export async function getImageAsset(assetId: string): Promise<ImageAsset | null>
 }
 
 export async function getTextAsset(assetId: string): Promise<TextAsset | null> {
+  const desktop = getDesktopBridge();
+  if (desktop) return (await desktop.records.get<AssetItem>('assets', assetId)) as TextAsset | null;
   const db = await openAssetsDB();
   if (!db) return null;
   const asset = await getFromStore<AssetItem>(db, ASSETS_STORE, assetId);
@@ -434,6 +511,11 @@ export async function getTextAsset(assetId: string): Promise<TextAsset | null> {
 export async function getAssetBlob(assetId: string): Promise<Blob | null> {
   const asset = await getImageAsset(assetId);
   if (!asset) return null;
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    const stored = await desktop.files.read('assets', `blob:${asset.blobKey}`);
+    return stored ? storedFileToBlob(stored) : null;
+  }
   const db = await openAssetsDB();
   if (!db) return null;
   const record = await getFromStore<AssetBlobRecord>(db, BLOBS_STORE, asset.blobKey);
@@ -442,6 +524,12 @@ export async function getAssetBlob(assetId: string): Promise<Blob | null> {
 }
 
 export async function getAssetThumbnailBlob(asset: ImageAsset): Promise<Blob | null> {
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    const stored = await desktop.files.read('assets', `thumb:${asset.blobKey}`)
+      || await desktop.files.read('assets', `blob:${asset.blobKey}`);
+    return stored ? storedFileToBlob(stored) : null;
+  }
   const db = await openAssetsDB();
   if (!db) return null;
   const record = await getFromStore<AssetBlobRecord>(db, BLOBS_STORE, asset.blobKey);
@@ -459,16 +547,32 @@ export async function updateImageAsset(assetId: string, input: UpdateImageAssetI
     note: typeof input.note === 'string' ? input.note : current.note,
     updatedAt: now(),
   };
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    await desktop.records.put('assets', assetId, updated);
+    return;
+  }
   await putAssetAndBlob(updated, null);
 }
 
 export async function touchImageAsset(assetId: string): Promise<void> {
   const current = await getImageAsset(assetId);
   if (!current) return;
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    await desktop.records.put('assets', assetId, { ...current, lastUsedAt: now(), updatedAt: now() });
+    return;
+  }
   await putAssetAndBlob({ ...current, lastUsedAt: now(), updatedAt: now() }, null);
 }
 
 export async function touchAsset(assetId: string): Promise<void> {
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    const asset = await desktop.records.get<AssetItem>('assets', assetId);
+    if (asset) await desktop.records.put('assets', assetId, { ...asset, lastUsedAt: now(), updatedAt: now() });
+    return;
+  }
   const db = await openAssetsDB();
   if (!db) return;
   const asset = await getFromStore<AssetItem>(db, ASSETS_STORE, assetId);
@@ -478,6 +582,20 @@ export async function touchAsset(assetId: string): Promise<void> {
 }
 
 export async function deleteAsset(assetId: string): Promise<void> {
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    const asset = await desktop.records.get<AssetItem>('assets', assetId);
+    if (!asset) throw new Error('素材不存在');
+    const assets = (await listDesktopAssets()) || [];
+    await desktop.records.delete('assets', assetId);
+    if (isImageAsset(asset) && !assets.some(item => isImageAsset(item) && item.id !== assetId && item.blobKey === asset.blobKey)) {
+      await Promise.all([
+        desktop.files.delete('assets', `blob:${asset.blobKey}`),
+        desktop.files.delete('assets', `thumb:${asset.blobKey}`),
+      ]);
+    }
+    return;
+  }
   const db = await openAssetsDB();
   if (!db) throw new Error('当前浏览器不支持素材库本地存储');
   const asset = await getFromStore<AssetItem>(db, ASSETS_STORE, assetId);

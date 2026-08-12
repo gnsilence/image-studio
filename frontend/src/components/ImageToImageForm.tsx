@@ -16,7 +16,8 @@ import { AgentAssetPickerDialog, AgentTextAssetPickerDialog } from '@/components
 import { ConfirmDialog } from '@/components/workspace/dialogs/ConfirmDialog';
 import { streamPromptOptimize, type StreamPromptOptimizeHandle } from '@/lib/prompt-optimize-client';
 import { requireDefaultConfiguredTextModel } from '@/lib/model-endpoints';
-import { addTextAsset, getAssetBlob, type ImageAsset, type TextAsset } from '@/lib/asset-store';
+import { addTextAsset, type TextAsset } from '@/lib/asset-store';
+import { getSelectionBlob, getSelectionMimeType, getSelectionName, type ImageAssetSelection } from '@/lib/s3-assets';
 import {
   Popover,
   PopoverContent,
@@ -481,7 +482,7 @@ export function ImageToImageForm({
     }
   }, [pendingFiles.length, maxImages, autoLayoutLocked, model, detectImageAspectRatio]);
 
-  const handleImportAssets = useCallback(async (selectedAssets: ImageAsset[]) => {
+  const handleImportAssets = useCallback(async (selectedAssets: ImageAssetSelection[]) => {
     if (selectedAssets.length === 0) return;
 
     const remainingSlots = Math.max(0, maxImages - pendingFiles.length);
@@ -498,14 +499,15 @@ export function ImageToImageForm({
       let firstDetectedRatio: AspectRatio | null = null;
 
       for (const asset of selectedAssets.slice(0, Math.min(remainingSlots, MAX_ASSET_IMPORTS))) {
-        const blob = await getAssetBlob(asset.id);
+        const blob = await getSelectionBlob(asset);
         if (!blob) continue;
 
-        const file = new File([blob], asset.name, { type: asset.mimeType || blob.type || 'image/png' });
+        const assetName = getSelectionName(asset);
+        const file = new File([blob], assetName, { type: getSelectionMimeType(asset) || blob.type || 'image/png' });
         const optimized = await prepareUploadImage(file);
 
         if (optimized.processedSize > MAX_UPLOAD_SIZE_BYTES) {
-          setUploadError(`文件过大: ${asset.name}，压缩后仍超过 10MB`);
+          setUploadError(`文件过大: ${assetName}，压缩后仍超过 10MB`);
           continue;
         }
 
@@ -519,7 +521,7 @@ export function ImageToImageForm({
           preview: optimized.preview,
           dataUrl: optimized.dataUrl,
           mimeType: optimized.mimeType,
-          badge: '素材库',
+          badge: asset.source === 's3' ? 'S3' : '素材库',
         });
       }
 
@@ -987,6 +989,7 @@ export function ImageToImageForm({
         maxSelected={Math.min(MAX_ASSET_IMPORTS, Math.max(1, maxImages - pendingFiles.length))}
         onOpenChange={setAssetPickerOpen}
         onConfirm={(assets) => void handleImportAssets(assets)}
+        onConfigure={onConfigureApiKey}
       />
       <AgentTextAssetPickerDialog
         open={textAssetPickerOpen}

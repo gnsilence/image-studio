@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AgentAssetPickerDialog, AgentTextAssetPickerDialog } from "@/components/agent/AgentAssetPickerDialog";
-import { addImageAsset, addTextAsset, getAssetBlob, type ImageAsset, type TextAsset } from "@/lib/asset-store";
+import { addImageAsset, addTextAsset, type TextAsset } from "@/lib/asset-store";
+import { getSelectionBlob, type ImageAssetSelection } from "@/lib/s3-assets";
 import { InfiniteCanvas } from "./components/infinite-canvas";
 import { CanvasNode, type ResizeCorner } from "./components/canvas-node";
 import { ActiveConnectionPath, ConnectionPath } from "./components/canvas-connections";
@@ -516,12 +517,12 @@ export function CanvasEditor({ projectId, onBack, onRequireApiKey, showToast, sh
   }, []);
 
   const handleAssetPickerConfirm = useCallback(
-    async (assets: ImageAsset[]) => {
+    async (assets: ImageAssetSelection[]) => {
       const targetId = assetPicker.nodeId;
       const asset = assets[0];
       if (!asset || !targetId) return;
       try {
-        const blob = await getAssetBlob(asset.id);
+        const blob = await getSelectionBlob(asset);
         if (!blob) {
           showToast("素材读取失败", "error");
           return;
@@ -1900,7 +1901,7 @@ export function CanvasEditor({ projectId, onBack, onRequireApiKey, showToast, sh
         }}
       />
 
-      <AgentAssetPickerDialog open={assetPicker.open} maxSelected={1} onOpenChange={(open) => setAssetPicker((prev) => ({ ...prev, open }))} onConfirm={(assets) => void handleAssetPickerConfirm(assets)} />
+      <AgentAssetPickerDialog open={assetPicker.open} maxSelected={1} onOpenChange={(open) => setAssetPicker((prev) => ({ ...prev, open }))} onConfirm={(assets) => void handleAssetPickerConfirm(assets)} onConfigure={onRequireApiKey} />
       <AgentTextAssetPickerDialog open={textAssetPicker.open} onOpenChange={(open) => setTextAssetPicker((prev) => ({ ...prev, open }))} onConfirm={handleTextAssetPickerConfirm} />
 
       <CanvasPromptGalleryImportDialog open={promptGalleryOpen} importing={promptGalleryImporting} onOpenChange={setPromptGalleryOpen} onConfirm={(prompt) => void importPromptGalleryTemplate(prompt)} />

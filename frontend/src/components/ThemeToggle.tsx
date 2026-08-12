@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { runtimeStorage } from '@/lib/runtime-storage';
 
 type Theme = 'light' | 'dark' | 'system';
 
@@ -45,7 +46,7 @@ export function ThemeToggle() {
 
       setMounted(true);
       try {
-        const stored = localStorage.getItem('theme');
+        const stored = runtimeStorage.getItem('theme');
         if (!isTheme(stored)) return;
         setTheme(stored);
         applyTheme(stored);
@@ -63,7 +64,7 @@ export function ThemeToggle() {
     if (!isTheme(newTheme)) return;
     setTheme(newTheme);
     try {
-      localStorage.setItem('theme', newTheme);
+      runtimeStorage.setItem('theme', newTheme);
     } catch {
       // Storage can be unavailable in hardened/private browser modes.
     }

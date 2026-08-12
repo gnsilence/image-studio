@@ -1,0 +1,63 @@
+appId: com.nova.image.studio
+productName: AIOSS Image
+copyright: Copyright (c) AIOSS Image contributors
+
+directories:
+  output: release
+
+files:
+  - desktop/**/*
+  - backend/server.js
+  - backend/prompts.json
+  - backend/blacklist.json
+  - frontend/out/**/*
+  - "!frontend/out/sw.js"
+  - "!frontend/out/workbox-*.js"
+  - package.json
+  - node_modules/**/*
+  - LICENSE
+
+asar: true
+afterPack: desktop/after-pack.js
+asarUnpack:
+  - backend/**/*
+  - node_modules/better-sqlite3/**/*
+  - node_modules/bindings/**/*
+  - node_modules/file-uri-to-path/**/*
+  - node_modules/sharp/**/*
+  - node_modules/@img/**/*
+
+npmRebuild: true
+
+win:
+  icon: frontend/public/app.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: AIOSS-Image-${version}-${arch}-Setup.${ext}
+
+mac:
+  icon: frontend/public/app.icns
+  category: public.app-category.graphics-design
+  target:
+    - dmg
+    - zip
+  artifactName: AIOSS-Image-${version}-${arch}.${ext}
+
+dmg:
+  title: AIOSS Image ${version}
+  artifactName: AIOSS-Image-${version}-${arch}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: AIOSS Image
+
+publish:
+  provider: generic
+  url: ${env.NOVA_UPDATE_URL}

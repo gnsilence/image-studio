@@ -1,10 +1,20 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { TextToImageForm } from '../TextToImageForm'
+import { BUILTIN_IMAGE_PRESETS, DEFAULT_DEFAULTS } from '@/lib/nova-models'
 
 describe('TextToImageForm', () => {
   beforeEach(() => {
     localStorage.clear()
+    const imageModels = [
+      BUILTIN_IMAGE_PRESETS['gemini-3-pro-image-preview'],
+      BUILTIN_IMAGE_PRESETS['gpt-image-2'],
+    ].map(preset => ({ ...preset, apiKey: 'test-key', builtinPreset: preset.id }))
+    localStorage.setItem('nova-model-registry', JSON.stringify({
+      imageModels,
+      textModels: [],
+      defaults: DEFAULT_DEFAULTS,
+    }))
   })
 
   it('renders the form with placeholder text', () => {

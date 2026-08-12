@@ -3,6 +3,7 @@
 import {
   getDefaultTextModel,
   getTextModelById,
+  FIXED_MODEL_BASE_URL,
   loadRegistry,
   type ProviderProtocol,
   type TextModelConfig,
@@ -32,17 +33,19 @@ export function normalizeModelBaseUrl(protocol: ProviderProtocol, baseUrl: strin
 }
 
 export function normalizeTextModelBaseUrl(protocol: TextProviderProtocol, baseUrl: string): string {
-  return protocol === 'google-gemini'
-    ? ensureGoogleBaseUrl(baseUrl)
-    : ensureOpenAiBaseUrl(baseUrl);
+  void protocol;
+  void baseUrl;
+  return FIXED_MODEL_BASE_URL;
 }
 
 export function buildResponsesApiUrl(baseUrl: string): string {
-  return `${ensureOpenAiBaseUrl(baseUrl)}/v1/responses`;
+  void baseUrl;
+  return `${FIXED_MODEL_BASE_URL}/v1/responses`;
 }
 
 export function buildGeminiStreamGenerateContentUrl(baseUrl: string, modelId: string): string {
-  return `${ensureGoogleBaseUrl(baseUrl)}/v1beta/models/${encodeURIComponent(modelId)}:streamGenerateContent?alt=sse`;
+  void baseUrl;
+  return `${FIXED_MODEL_BASE_URL}/v1beta/models/${encodeURIComponent(modelId)}:streamGenerateContent?alt=sse`;
 }
 
 export function getConfiguredTextModel(modelId: string): TextModelConfig | undefined {

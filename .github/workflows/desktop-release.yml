@@ -1,0 +1,76 @@
+name: Build desktop installers
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+env:
+  NOVA_UPDATE_URL: ${{ vars.NOVA_UPDATE_URL || 'https://www.aioss.cc/updates/aioss-image' }}
+  CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+jobs:
+  windows:
+    name: Windows x64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+            backend/package-lock.json
+      - run: npm ci
+      - run: npm ci --prefix frontend
+      - run: npm ci --prefix backend
+      - run: npm run desktop:dist:win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AIOSS-Image-1.0.0-windows-x64
+          path: |
+            release/*.exe
+            release/*.exe.blockmap
+            release/latest.yml
+          if-no-files-found: error
+
+  macos:
+    name: macOS ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: macos-15-intel
+          - arch: arm64
+            runner: macos-15-arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+            backend/package-lock.json
+      - run: npm ci
+      - run: npm ci --prefix frontend
+      - run: npm ci --prefix backend
+      - run: npm run desktop:dist:mac:${{ matrix.arch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AIOSS-Image-1.0.0-macos-${{ matrix.arch }}
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.blockmap
+            release/latest-mac.yml
+          if-no-files-found: error

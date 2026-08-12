@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { runtimeStorage } from '@/lib/runtime-storage';
 
 /**
  * 泛型 localStorage 持久化 Hook
@@ -35,7 +36,7 @@ export function usePersistedSettings<T extends Record<string, unknown>>(
     queueMicrotask(() => {
       if (cancelled) return;
       try {
-        const raw = localStorage.getItem(key);
+        const raw = runtimeStorage.getItem(key);
         if (raw) {
           const saved: Partial<T> = JSON.parse(raw);
           // 仅覆盖 defaults 中已有的字段，忽略未知字段
@@ -63,7 +64,7 @@ export function usePersistedSettings<T extends Record<string, unknown>>(
   useEffect(() => {
     if (!readyRef.current) return;
     try {
-      localStorage.setItem(key, JSON.stringify(values));
+      runtimeStorage.setItem(key, JSON.stringify(values));
     } catch {
       // 忽略存储不可用或配额超限
     }

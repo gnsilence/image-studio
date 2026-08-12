@@ -1,4 +1,6 @@
 import { openImageDb, BLOBS_STORE } from '@/lib/image-db';
+import { getDesktopBridge } from '@/lib/desktop-bridge';
+import { blobToBytes, storedFileToBlob } from '@/lib/desktop-binary';
 
 const MAX_FALLBACK_STORE_SIZE = 50;
 
@@ -184,6 +186,11 @@ export async function fetchImageAsBlob(
 }
 
 async function storeImageBlobInternal(jobId: string, imageIndex: number, blob: Blob): Promise<void> {
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    await desktop.files.write('history', `${jobId}-${imageIndex}`, await blobToBytes(blob), blob.type || 'image/png');
+    return;
+  }
   const db = await openImageDb();
   if (!db) {
     setFallbackBlob(`${jobId}-${imageIndex}`, blob);
@@ -209,6 +216,12 @@ export async function getStoredBlob(jobId: string, imageIndex: number): Promise<
   const fallbackKey = `${jobId}-${imageIndex}`;
   const fallback = getFallbackBlob(fallbackKey);
   if (fallback) return fallback;
+
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    const stored = await desktop.files.read('history', fallbackKey);
+    return stored ? storedFileToBlob(stored) : null;
+  }
 
   const db = await openImageDb();
   if (!db) return null;
@@ -254,6 +267,17 @@ export async function deleteStoredBlobs(jobId: string, imageCount?: number): Pro
     if (key.startsWith(fallbackPrefix)) {
       blobFallbackStore.delete(key);
     }
+  }
+
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    if (typeof imageCount === 'number') {
+      await Promise.all(Array.from({ length: imageCount }, (_, index) => desktop.files.delete('history', `${jobId}-${index}`)));
+    } else {
+      const files = await desktop.files.list('history');
+      await Promise.all(files.filter(file => file.id.startsWith(`${jobId}-`)).map(file => desktop.files.delete('history', file.id)));
+    }
+    return;
   }
 
   const db = await openImageDb();

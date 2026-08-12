@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 
 import type { CanvasGenerationConfig } from "../canvas-generation-service";
+import { runtimeStorage } from "@/lib/runtime-storage";
 
 export const defaultCanvasConfig: CanvasGenerationConfig = {
   model: "gemini-3-pro-image-preview",
@@ -32,7 +33,7 @@ export const useCanvasConfigStore = create<CanvasConfigStore>()(
     }),
     {
       name: "nova-image:canvas_config",
-      storage: createJSONStorage(() => (typeof window !== "undefined" ? window.localStorage : (undefined as unknown as Storage))),
+      storage: createJSONStorage(() => (typeof window !== "undefined" ? runtimeStorage : (undefined as unknown as Storage))),
       merge: (persisted, current) => {
         const persistedConfig = ((persisted as Partial<CanvasConfigStore>)?.config || {}) as Partial<CanvasGenerationConfig>;
         return { ...current, config: { ...defaultCanvasConfig, ...persistedConfig } };

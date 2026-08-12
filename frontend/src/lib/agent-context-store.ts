@@ -8,6 +8,8 @@
 import { storeImageBlob, getStoredBlob, deleteStoredBlobs } from '@/lib/image-downloader';
 import type { AgentMessage, AgentImageRecord, AgentProposal } from '@/lib/agent-chat-config';
 import type { GptImageBackground, GptImageQuality, GptImageStyle } from '@/lib/model-capabilities';
+import { getDesktopBridge } from '@/lib/desktop-bridge';
+import { blobToBytes, storedFileToBlob } from '@/lib/desktop-binary';
 
 const DB_NAME = 'nova-agent-db';
 const DB_VERSION = 1;
@@ -55,6 +57,19 @@ export interface AgentSessionSnapshot {
 }
 
 export async function loadAgentSession(): Promise<AgentSessionSnapshot> {
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    const [messages, images, imageModel] = await Promise.all([
+      desktop.records.list<AgentMessage>('agent-messages'),
+      desktop.records.list<AgentImageRecord>('agent-images'),
+      desktop.records.get<string>('agent-meta', 'imageModel'),
+    ]);
+    return {
+      messages: messages.map(entry => entry.value).sort((a, b) => a.createdAt - b.createdAt),
+      images: images.map(entry => entry.value).sort((a, b) => a.createdAt - b.createdAt),
+      imageModel,
+    };
+  }
   const db = await openAgentDB();
   if (!db) return { messages: [], images: [], imageModel: null };
 
@@ -74,6 +89,11 @@ export async function loadAgentSession(): Promise<AgentSessionSnapshot> {
 // ===== 消息读写 =====
 
 export async function putMessage(message: AgentMessage): Promise<void> {
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    await desktop.records.put('agent-messages', message.id, message);
+    return;
+  }
   const db = await openAgentDB();
   if (!db) return;
 
@@ -88,6 +108,11 @@ export async function putMessage(message: AgentMessage): Promise<void> {
 // ===== 图片登记表读写 =====
 
 export async function putImageRecord(record: AgentImageRecord): Promise<void> {
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    await desktop.records.put('agent-images', record.imgId, record);
+    return;
+  }
   const db = await openAgentDB();
   if (!db) return;
 
@@ -102,6 +127,11 @@ export async function putImageRecord(record: AgentImageRecord): Promise<void> {
 // ===== 元信息 =====
 
 export async function saveImageModel(model: string): Promise<void> {
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    await desktop.records.put('agent-meta', 'imageModel', model);
+    return;
+  }
   const db = await openAgentDB();
   if (!db) return;
 
@@ -117,6 +147,11 @@ export async function saveImageModel(model: string): Promise<void> {
 
 export async function deleteMessages(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    await Promise.all(ids.map(id => desktop.records.delete('agent-messages', id)));
+    return;
+  }
   const db = await openAgentDB();
   if (!db) return;
 
@@ -132,6 +167,11 @@ export async function deleteMessages(ids: string[]): Promise<void> {
 /** 从 nova-agent-db 中删除图片登记记录 */
 export async function deleteImageRecords(imgIds: string[]): Promise<void> {
   if (imgIds.length === 0) return;
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    await Promise.all(imgIds.map(id => desktop.records.delete('agent-images', id)));
+    return;
+  }
   const db = await openAgentDB();
   if (!db) return;
 
@@ -146,12 +186,28 @@ export async function deleteImageRecords(imgIds: string[]): Promise<void> {
 
 /** 从 nova-image-db 中删除 agent 图片的 blob 字节 */
 export async function deleteAgentImageBytes(imgId: string): Promise<void> {
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    await desktop.files.delete('agent', imgId);
+    return;
+  }
   await deleteStoredBlobs(imgId, 1);
 }
 
 // ===== 清空会话（清空重开） =====
 
 export async function clearAgentSession(): Promise<void> {
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    const imageFiles = await desktop.files.list('agent');
+    await Promise.all([
+      desktop.records.clear('agent-messages'),
+      desktop.records.clear('agent-images'),
+      desktop.records.clear('agent-meta'),
+      ...imageFiles.map(file => desktop.files.delete('agent', file.id)),
+    ]);
+    return;
+  }
   const db = await openAgentDB();
   if (!db) return;
 
@@ -179,6 +235,11 @@ export interface PendingProposalData {
 const PENDING_PROPOSAL_KEY = 'pendingProposal';
 
 export async function savePendingProposal(data: PendingProposalData): Promise<void> {
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    await desktop.records.put('agent-meta', PENDING_PROPOSAL_KEY, data);
+    return;
+  }
   const db = await openAgentDB();
   if (!db) return;
 
@@ -191,6 +252,8 @@ export async function savePendingProposal(data: PendingProposalData): Promise<vo
 }
 
 export async function loadPendingProposal(): Promise<PendingProposalData | null> {
+  const desktop = getDesktopBridge();
+  if (desktop) return desktop.records.get<PendingProposalData>('agent-meta', PENDING_PROPOSAL_KEY);
   const db = await openAgentDB();
   if (!db) return null;
 
@@ -211,6 +274,11 @@ export async function loadPendingProposal(): Promise<PendingProposalData | null>
 }
 
 export async function clearPendingProposal(): Promise<void> {
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    await desktop.records.delete('agent-meta', PENDING_PROPOSAL_KEY);
+    return;
+  }
   const db = await openAgentDB();
   if (!db) return;
 
@@ -247,6 +315,11 @@ export interface PendingGenerationData {
 const PENDING_GENERATION_KEY = 'pendingGeneration';
 
 export async function savePendingGeneration(data: PendingGenerationData): Promise<void> {
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    await desktop.records.put('agent-meta', PENDING_GENERATION_KEY, data);
+    return;
+  }
   const db = await openAgentDB();
   if (!db) return;
 
@@ -259,6 +332,8 @@ export async function savePendingGeneration(data: PendingGenerationData): Promis
 }
 
 export async function loadPendingGeneration(): Promise<PendingGenerationData | null> {
+  const desktop = getDesktopBridge();
+  if (desktop) return desktop.records.get<PendingGenerationData>('agent-meta', PENDING_GENERATION_KEY);
   const db = await openAgentDB();
   if (!db) return null;
 
@@ -279,6 +354,11 @@ export async function loadPendingGeneration(): Promise<PendingGenerationData | n
 }
 
 export async function clearPendingGeneration(): Promise<void> {
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    await desktop.records.delete('agent-meta', PENDING_GENERATION_KEY);
+    return;
+  }
   const db = await openAgentDB();
   if (!db) return;
 
@@ -294,6 +374,11 @@ export async function clearPendingGeneration(): Promise<void> {
 // 约定：每张 agent 图片用 imgId 作为 jobId 命名空间，imageIndex 固定 0。
 
 export async function storeAgentImageBytes(imgId: string, blob: Blob): Promise<void> {
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    await desktop.files.write('agent', imgId, await blobToBytes(blob), blob.type || 'image/png');
+    return;
+  }
   await storeImageBlob(imgId, 0, blob);
 }
 
@@ -330,6 +415,8 @@ function getFromUploadCache(db: IDBDatabase, key: string): Promise<UploadCacheRe
 
 /** 从 nova-agent-db 的 images store 中查询单条图片登记记录 */
 export async function getAgentImageRecord(imgId: string): Promise<AgentImageRecord | null> {
+  const desktop = getDesktopBridge();
+  if (desktop) return desktop.records.get<AgentImageRecord>('agent-images', imgId);
   const db = await openAgentDB();
   if (!db) return null;
   return new Promise((resolve) => {
@@ -341,6 +428,16 @@ export async function getAgentImageRecord(imgId: string): Promise<AgentImageReco
 }
 
 export async function getAgentImageBytes(imgId: string): Promise<Blob | null> {
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    const record = await getAgentImageRecord(imgId);
+    if (record?.contentHash) {
+      const cached = await desktop.files.read('cache', `upload:${record.contentHash}`);
+      if (cached) return storedFileToBlob(cached);
+    }
+    const stored = await desktop.files.read('agent', imgId);
+    return stored ? storedFileToBlob(stored) : null;
+  }
   // 1) 先查 nova-upload-cache（上传图片已压缩缓存于此，与其余模式共享）
   const record = await getAgentImageRecord(imgId);
   if (record?.contentHash) {

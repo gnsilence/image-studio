@@ -4,6 +4,8 @@ import localforage from "localforage";
 
 import { nanoid } from "nanoid";
 import { readImageMeta } from "./image-utils";
+import { getDesktopBridge } from "@/lib/desktop-bridge";
+import { blobToBytes, storedFileToBlob } from "@/lib/desktop-binary";
 
 export type UploadedImage = {
   url: string;
@@ -21,7 +23,9 @@ const objectUrls = new Map<string, string>();
 export async function uploadImage(input: string | Blob): Promise<UploadedImage> {
   const blob = typeof input === "string" ? await (await fetch(input)).blob() : input;
   const storageKey = `image:${nanoid()}`;
-  await store.setItem(storageKey, blob);
+  const desktop = getDesktopBridge();
+  if (desktop) await desktop.files.write('canvas', storageKey, await blobToBytes(blob), blob.type || 'image/png');
+  else await store.setItem(storageKey, blob);
   const url = URL.createObjectURL(blob);
   objectUrls.set(storageKey, url);
   const meta = await readImageMeta(url);
@@ -32,7 +36,9 @@ export async function resolveImageUrl(storageKey?: string, fallback = "") {
   if (!storageKey) return fallback;
   const cached = objectUrls.get(storageKey);
   if (cached) return cached;
-  const blob = await store.getItem<Blob>(storageKey);
+  const desktop = getDesktopBridge();
+  const stored = desktop ? await desktop.files.read('canvas', storageKey) : null;
+  const blob = stored ? storedFileToBlob(stored) : await store.getItem<Blob>(storageKey);
   if (!blob) return fallback;
   const url = URL.createObjectURL(blob);
   objectUrls.set(storageKey, url);
@@ -40,11 +46,18 @@ export async function resolveImageUrl(storageKey?: string, fallback = "") {
 }
 
 export async function getImageBlob(storageKey: string) {
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    const stored = await desktop.files.read('canvas', storageKey);
+    return stored ? storedFileToBlob(stored) : null;
+  }
   return store.getItem<Blob>(storageKey);
 }
 
 export async function setImageBlob(storageKey: string, blob: Blob) {
-  await store.setItem(storageKey, blob);
+  const desktop = getDesktopBridge();
+  if (desktop) await desktop.files.write('canvas', storageKey, await blobToBytes(blob), blob.type || 'image/png');
+  else await store.setItem(storageKey, blob);
   const url = URL.createObjectURL(blob);
   objectUrls.set(storageKey, url);
   return url;
@@ -53,7 +66,7 @@ export async function setImageBlob(storageKey: string, blob: Blob) {
 export async function imageToDataUrl(image: { url?: string; dataUrl?: string; storageKey?: string }): Promise<string> {
   // 优先用 storageKey（IndexedDB），避免刷新后 blob: URL 失效导致 fetch 失败
   if (image.storageKey) {
-    const blob = await store.getItem<Blob>(image.storageKey);
+    const blob = await getImageBlob(image.storageKey);
     if (blob) return blobToDataUrl(blob);
   }
   const url = image.dataUrl || image.url || "";
@@ -75,7 +88,9 @@ export async function deleteStoredImages(keys: Iterable<string>) {
       const url = objectUrls.get(key);
       if (url) URL.revokeObjectURL(url);
       objectUrls.delete(key);
-      await store.removeItem(key);
+      const desktop = getDesktopBridge();
+      if (desktop) await desktop.files.delete('canvas', key);
+      else await store.removeItem(key);
     }),
   );
 }
@@ -83,9 +98,15 @@ export async function deleteStoredImages(keys: Iterable<string>) {
 export async function cleanupUnusedImages(usedData: unknown) {
   const usedKeys = collectImageStorageKeys(usedData);
   const unused: string[] = [];
-  await store.iterate((_value, key) => {
-    if (!usedKeys.has(key)) unused.push(key);
-  });
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    const files = await desktop.files.list('canvas');
+    for (const file of files) if (!usedKeys.has(file.id)) unused.push(file.id);
+  } else {
+    await store.iterate((_value, key) => {
+      if (!usedKeys.has(key)) unused.push(key);
+    });
+  }
   await deleteStoredImages(unused);
 }
 

@@ -1,8 +1,9 @@
 {
   "name": "nova-image",
-  "version": "3.1.3",
+  "version": "1.0.0",
   "private": true,
-  "description": "Nova Image - AI 图像生成工作台",
+  "description": "AIOSS Image - AI 图像生成工作台",
+  "main": "desktop/main.js",
   "scripts": {
     "dev": "cd frontend && npm run build && cd ../backend && cross-env NODE_ENV=production node server.js",
     "dev:old": "cd ../backend && cross-env NODE_ENV=production node server.js",
@@ -14,11 +15,34 @@
     "test": "cd frontend && npm run test",
     "test:ui": "cd frontend && npm run test:ui",
     "test:run": "cd frontend && npm run test:run",
+    "test:desktop": "node --test backend/server.test.js desktop/storage/storage.test.js desktop/storage/backup-service.test.js desktop/s3-service.test.js desktop/updater.test.js",
+    "desktop:dev": "cross-env NOVA_DESKTOP_BUILD=1 npm run build && electron .",
+    "desktop:build": "node scripts/desktop-build.js --dir",
+    "desktop:dist": "node scripts/desktop-build.js --dist",
+    "desktop:build:win": "node scripts/desktop-build.js --win --dir",
+    "desktop:dist:win": "node scripts/desktop-build.js --win --dist",
+    "desktop:build:mac:x64": "node scripts/desktop-build.js --mac --x64 --dir",
+    "desktop:dist:mac:x64": "node scripts/desktop-build.js --mac --x64 --dist",
+    "desktop:build:mac:arm64": "node scripts/desktop-build.js --mac --arm64 --dir",
+    "desktop:dist:mac:arm64": "node scripts/desktop-build.js --mac --arm64 --dist",
     "go": "node scripts/pack.js",
     "install:all": "cd frontend && npm install && cd ../backend && npm install"
   },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1107.0",
+    "archiver": "^8.0.0",
+    "better-sqlite3": "^12.5.0",
+    "electron-updater": "^6.8.9",
+    "fflate": "^0.8.3",
+    "sharp": "^0.35.3",
+    "undici": "^8.2.0",
+    "unzipper": "^0.12.5",
+    "ws": "^8.20.0"
+  },
   "devDependencies": {
     "concurrently": "^8.2.2",
-    "cross-env": "^10.1.0"
+    "cross-env": "^10.1.0",
+    "electron": "^43.1.1",
+    "electron-builder": "^26.15.3"
   }
 }

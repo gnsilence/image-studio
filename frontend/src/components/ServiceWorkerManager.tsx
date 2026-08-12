@@ -10,6 +10,12 @@ export function ServiceWorkerManager() {
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
 
+    if (window.novaDesktop) {
+      void navigator.serviceWorker.getRegistrations()
+        .then(registrations => Promise.all(registrations.map(registration => registration.unregister())));
+      return;
+    }
+
     const handleControllerChange = () => {
       // 新 SW 接管后立即刷新，确保页面使用最新的 JS 包
       window.location.reload();

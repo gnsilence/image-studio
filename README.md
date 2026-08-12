@@ -1,4 +1,4 @@
-# Nova Image Studio
+# AIOSS Image
 
 <div align="center">
 
@@ -16,15 +16,15 @@
 
 ## 📖 简介
 
-Nova Image Studio（简称 Nova Image）是一个面向个人/团队的 AI 图像生成工作台。前端使用 Next.js 16 + React 19 静态导出（PWA），后端是轻量 Node.js 服务（`server.js` + SQLite + WebSocket），统一调度任务并代理图像生成 API。
+AIOSS Image 是一个面向个人/团队的 AI 图像生成工作台。前端使用 Next.js 16 + React 19 静态导出（PWA），后端是轻量 Node.js 服务（`server.js` + SQLite + WebSocket），统一调度任务并代理图像生成 API。
 
 **开源版特性：**
-- 支持分别配置图片模型与文本模型，模型级独立保存 API Key 与 Base URL
+- 支持分别配置图片模型与文本模型；图片模型可独立设置 Base URL，文本模型固定使用 `https://www.aioss.cc`
 - 用户自定义模型列表和 API 端点，后端按协议路由并透传已配置参数
-- 所有配置存储在浏览器 localStorage
+- Web 版配置存储在浏览器 localStorage；Electron 客户端使用本地 SQLite 和系统加密
 - 文字模型支持 Google（generateContent）和 OpenAI（Response 协议）
 
-> 当前版本：**v3.1.2**
+> 当前版本：**v1.0.0**
 
 ## 💎 赞助商
 
@@ -90,9 +90,9 @@ Nova Image Studio（简称 Nova Image）是一个面向个人/团队的 AI 图�
 
 ### 模型系统
 
-Nova Image 采用**用户自定义模型**架构：
+AIOSS Image 采用**用户自定义模型**架构：
 
-- **模型级配置**：每个图片模型和文本模型都独立保存协议、显示名称、模型 ID、API Key 与 Base URL
+- **模型级配置**：每个模型独立保存协议、显示名称、模型 ID 与 API Key；图片模型可修改 Base URL，文本模型固定使用 `https://www.aioss.cc`
 - **图像模型**：用户自由添加、编辑、删除，支持设置协议、显示名称、模型 ID、最大参考图数量、最大分辨率
 - **Image 2 额外参数**：仅 OpenAI 图片模型显示，透明背景、质量、风格控件默认开启，用户可手动关闭
 - **文字模型**：支持自定义扩展，兼容 Gemini 和 OpenAI Response
@@ -112,7 +112,7 @@ Nova Image 采用**用户自定义模型**架构：
 - 三端兼容 UI：桌面端、平板端、移动端自适应布局，提供一致的用户体验
 - 暗色 / 亮色主题切换
 - 宽屏 / 窄屏自适应布局（左侧垂直 Tab + 右侧内容）
-- 历史任务持久化（IndexedDB / localStorage）
+- 历史任务持久化（Web：IndexedDB / localStorage；Electron：SQLite + 本地文件）
 - 一键备份 / 恢复（`JSZip` 打包 localStorage + IndexedDB，支持跳过不兼容旧配置并恢复其余数据）
 - 历史图片懒加载（`@tanstack/react-virtual`）
 - 随机图、Toast 通知、确认对话框
@@ -312,6 +312,75 @@ npm test               # 前端 Vitest watch
 npm run test:run       # 前端 Vitest 单次
 npm run go             # 打包：build + 汇总到根 out.zip
 ```
+
+</details>
+
+<details>
+<summary><strong>Windows / macOS Electron 客户端</strong></summary>
+
+### 支持范围
+
+- Windows x64：NSIS 按用户安装，不需要管理员权限
+- macOS：Intel x64 和 Apple Silicon arm64，生成 DMG 与自动更新 ZIP
+- 客户端随应用启动本地任务服务，不依赖单独安装 Node.js 或 Docker
+- 首版不支持切换到远程 AIOSS Image 服务
+
+### 开发与构建
+
+先安装根目录、前端和后端依赖：
+
+```powershell
+npm install
+npm --prefix frontend install
+npm --prefix backend install
+```
+
+```powershell
+# Windows x64（必须在 Windows 上执行）
+npm run desktop:build:win
+
+# 生成 Windows NSIS 安装包
+$env:NOVA_UPDATE_URL = "https://updates.example.com/nova-image-studio"
+npm run desktop:dist:win
+```
+
+Windows 构建默认会重建 Electron 原生模块，需要安装 Visual Studio 的“使用 C++ 的桌面开发”、MSVC 与 Windows SDK。只有已经准备好与当前 Electron ABI 完全匹配的原生二进制时，才可设置 `NOVA_SKIP_NATIVE_REBUILD=1` 跳过重建。
+
+在 macOS 构建机上执行：
+
+```bash
+# Intel Mac
+NOVA_UPDATE_URL="https://updates.example.com/nova-image-studio" npm run desktop:dist:mac:x64
+
+# Apple Silicon Mac
+NOVA_UPDATE_URL="https://updates.example.com/nova-image-studio" npm run desktop:dist:mac:arm64
+```
+
+`desktop:dist:*` 要求 `NOVA_UPDATE_URL` 为 HTTPS 地址。Windows 发布 `Setup.exe`、`.blockmap` 和 `latest.yml`；macOS 发布 `.dmg`、`.zip` 和 `latest-mac.yml`。更新目录需要支持 HTTP Range，并避免长期缓存更新元数据文件。
+
+### 本地数据
+
+为兼容已有客户端数据，Windows 数据仍默认位于 `%LOCALAPPDATA%\Nova Image Studio`，macOS 位于 `~/Library/Application Support/Nova Image Studio`：
+
+- `data/app.sqlite` - 设置、历史、素材、Agent、反推和画布元数据
+- `data/tasks.sqlite` - 临时任务队列
+- `files/` - 历史图片、素材、Agent 图片、画布文件和缓存
+- `runtime/task-images/` - 服务端任务临时产物
+
+API Key 使用 Electron `safeStorage`（Windows DPAPI）加密后写入 `app.sqlite`。桌面备份默认不包含 API Key，换机恢复后需要重新填写。
+
+### 从 Web/PWA 迁移
+
+1. 在原 Web/PWA 的“设置 → 备份”中导出完整 ZIP。
+2. 安装并打开 Electron 客户端。
+3. 在“设置 → 备份”中选择该 ZIP。
+4. 客户端校验并导入到临时数据库，成功后替换正式数据并刷新页面。
+
+旧 Web 备份可能包含明文 API Key；导入后客户端会立即将密钥拆出并使用 DPAPI 加密。请妥善删除不再使用的旧备份文件。
+
+### 签名说明
+
+未配置 Authenticode 或 Apple Developer ID 证书时可以生成内测安装包，但系统会显示未知发布者或阻止直接打开。正式公开发布与自动更新必须对 Windows 安装包签名，并对 macOS 应用完成 Developer ID 签名和公证。
 
 </details>
 

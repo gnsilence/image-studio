@@ -42,7 +42,8 @@ import { generateUUID } from '@/lib/uuid';
 import { prepareUploadImage, getOptimizationBadge } from '@/lib/upload-image-cache';
 import { useAgentChat, type PendingUpload, type AgentPhase } from '@/hooks/useAgentChat';
 import { MODEL_OPTIONS, type ModelId } from '@/lib/gemini-config';
-import { addTextAsset, getAssetBlob, type ImageAsset, type TextAsset } from '@/lib/asset-store';
+import { addTextAsset, type TextAsset } from '@/lib/asset-store';
+import { getSelectionBlob, getSelectionMimeType, getSelectionName, type ImageAssetSelection } from '@/lib/s3-assets';
 import type { OutputSize, AspectRatio } from '@/lib/job-store';
 import {
   getAspectRatioOptions,
@@ -273,7 +274,7 @@ export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfi
     }
   }, [agent, onCooldown, showToast]);
 
-  const handleImportAssets = useCallback(async (selectedAssets: ImageAsset[]) => {
+  const handleImportAssets = useCallback(async (selectedAssets: ImageAssetSelection[]) => {
     if (!agent.hasApiKey) {
       setMissingApiKeyDialogOpen(true);
       return;
@@ -282,9 +283,9 @@ export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfi
     setUploading(true);
     try {
       for (const asset of selectedAssets.slice(0, MAX_AGENT_ASSET_IMPORTS)) {
-        const blob = await getAssetBlob(asset.id);
+        const blob = await getSelectionBlob(asset);
         if (!blob) continue;
-        const file = new File([blob], asset.name, { type: asset.mimeType || blob.type || 'image/png' });
+        const file = new File([blob], getSelectionName(asset), { type: getSelectionMimeType(asset) || blob.type || 'image/png' });
         const prepared = await prepareUploadImage(file);
         addPreparedUpload({ ...prepared, source: 'asset' });
       }
@@ -558,7 +559,7 @@ export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfi
     <div
       ref={containerRef}
       className={cn(
-        'relative flex h-full flex-1 min-h-[400px] flex-col rounded-2xl border border-border bg-card/60',
+        'nova-agent-workspace relative flex h-full flex-1 min-h-[400px] flex-col rounded-2xl border border-border bg-card/60',
         wideMode && 'h-full min-h-0 w-full'
       )}
       onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
@@ -569,7 +570,7 @@ export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfi
         void handleFiles(e.dataTransfer.files);
       }}
     >
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-border px-4 py-2.5">
+      <div className="nova-agent-toolbar flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-border px-4 py-2.5">
         <div className="flex shrink-0 items-center gap-2 text-sm font-medium">
           <Bot className="h-4 w-4 text-primary" />
           Agent
@@ -602,7 +603,7 @@ export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfi
 
       <div
         ref={scrollRef}
-        className="flex-1 space-y-4 overflow-y-auto px-4 py-4"
+        className="nova-agent-messages flex-1 space-y-4 overflow-y-auto px-4 py-4"
       >
         {agent.messages.length === 0 && !agent.streamingText && (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-muted-foreground">
@@ -760,7 +761,7 @@ export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfi
         </div>
       )}
 
-      <div className="border-t border-border p-3 pt-2">
+      <div className="nova-agent-composer border-t border-border p-3 pt-2">
         {uploads.length > 0 && (
           <div className="mb-2">
             <AttachmentChips
@@ -1126,6 +1127,7 @@ export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfi
         maxSelected={MAX_AGENT_ASSET_IMPORTS}
         onOpenChange={setAssetPickerOpen}
         onConfirm={(assets) => void handleImportAssets(assets)}
+        onConfigure={onConfigureApiKey}
       />
       <AgentTextAssetPickerDialog
         open={textAssetPickerOpen}
