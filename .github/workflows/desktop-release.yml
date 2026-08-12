@@ -7,10 +7,10 @@ on:
       - "v*"
 
 permissions:
-  contents: read
+  contents: write
 
 env:
-  NOVA_UPDATE_URL: ${{ vars.NOVA_UPDATE_URL || 'https://www.aioss.cc/updates/aioss-image' }}
+  NOVA_UPDATE_URL: ${{ vars.NOVA_UPDATE_URL || 'https://github.com/gnsilence/image-studio/releases/latest/download' }}
   CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
 jobs:
@@ -72,5 +72,32 @@ jobs:
             release/*.dmg
             release/*.zip
             release/*.blockmap
-            release/latest-mac.yml
           if-no-files-found: error
+
+  release:
+    name: GitHub Release
+    needs: [windows, macos]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          mapfile -t assets < <(find release-assets -type f | sort)
+          if [ "${#assets[@]}" -eq 0 ]; then
+            echo "No release assets found" >&2
+            exit 1
+          fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${assets[@]}" --clobber
+          else
+            gh release create "$TAG" "${assets[@]}" --title "$TAG" --generate-notes
+          fi
