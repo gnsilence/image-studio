@@ -174,3 +174,185 @@ test('image tasks call the configured Base URL', async () => {
     }
   }
 });
+
+test('OpenAI image tasks retry without streaming when the upstream rejects stream params', async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nova-image-stream-fallback-test-'));
+  const token = 'test-image-stream-fallback-token';
+  const upstreamBodies = [];
+  const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lW2mWQAAAABJRU5ErkJggg==';
+  const upstream = http.createServer((req, res) => {
+    let raw = '';
+    req.on('data', chunk => { raw += chunk; });
+    req.on('end', () => {
+      const body = raw ? JSON.parse(raw) : {};
+      upstreamBodies.push(body);
+      if (body.stream) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: { message: 'stream is unsupported for this model' } }));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ data: [{ b64_json: pngBase64 }] }));
+    });
+  });
+  const upstreamAddress = await listen(upstream);
+  const child = fork(path.join(__dirname, 'server.js'), [], {
+    cwd: path.join(__dirname, '..'),
+    silent: true,
+    env: {
+      ...process.env,
+      NODE_ENV: 'production',
+      HOSTNAME: '127.0.0.1',
+      PORT: '0',
+      NOVA_TASK_DB: path.join(tempDir, 'tasks.sqlite'),
+      NOVA_IMAGE_DIR: path.join(tempDir, 'images'),
+      NOVA_DESKTOP_SESSION_TOKEN: token,
+      NOVA_IMAGE_PARTIAL_IMAGES: '2',
+    },
+  });
+
+  try {
+    const ready = await waitForMessage(child, 'ready');
+    const headers = {
+      'Content-Type': 'application/json',
+      'X-Nova-Desktop-Token': token,
+    };
+    const response = await fetch(`${ready.url}/api/nova/tasks`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        apiKey: 'custom-image-key',
+        baseUrl: `http://127.0.0.1:${upstreamAddress.port}/v1/`,
+        protocol: 'openai',
+        mode: 'text-to-image',
+        prompt: 'test image',
+        outputSize: '1K',
+        aspectRatio: '1:1',
+        temperature: 1,
+        model: 'gpt-image-2',
+        parallelCount: 1,
+        images: [],
+      }),
+    });
+    assert.equal(response.status, 202);
+    const { taskId } = await response.json();
+
+    let task;
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+      const taskResponse = await fetch(`${ready.url}/api/nova/tasks/${taskId}`, { headers });
+      task = await taskResponse.json();
+      if (task.status === 'completed' || task.status === 'failed') break;
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+
+    assert.equal(task?.status, 'completed', task?.error);
+    assert.equal(upstreamBodies.length, 2);
+    assert.equal(upstreamBodies[0].stream, true);
+    assert.equal(upstreamBodies[0].partial_images, 2);
+    assert.equal(upstreamBodies[1].stream, undefined);
+    assert.equal(upstreamBodies[1].partial_images, undefined);
+  } finally {
+    if (child.connected) {
+      const exitPromise = waitForExit(child);
+      child.send({ type: 'stop' });
+      await exitPromise;
+    } else if (!child.killed) {
+      child.kill('SIGKILL');
+    }
+    child.stdout?.destroy();
+    child.stderr?.destroy();
+    await closeServer(upstream);
+    try {
+      fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    } catch {
+      // Windows may retain the SQLite file handle briefly after child exit.
+    }
+  }
+});
+
+test('NOVA_TASK_TTL_HOURS controls completed task expiration', async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nova-task-ttl-test-'));
+  const token = 'test-task-ttl-token';
+  const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lW2mWQAAAABJRU5ErkJggg==';
+  const upstream = http.createServer((req, res) => {
+    req.resume();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ data: [{ b64_json: pngBase64 }] }));
+  });
+  const upstreamAddress = await listen(upstream);
+  const child = fork(path.join(__dirname, 'server.js'), [], {
+    cwd: path.join(__dirname, '..'),
+    silent: true,
+    env: {
+      ...process.env,
+      NODE_ENV: 'production',
+      HOSTNAME: '127.0.0.1',
+      PORT: '0',
+      NOVA_TASK_DB: path.join(tempDir, 'tasks.sqlite'),
+      NOVA_IMAGE_DIR: path.join(tempDir, 'images'),
+      NOVA_DESKTOP_SESSION_TOKEN: token,
+      NOVA_TASK_TTL_HOURS: '1',
+      NOVA_IMAGE_STREAM: 'false',
+    },
+  });
+
+  try {
+    const ready = await waitForMessage(child, 'ready');
+    const headers = {
+      'Content-Type': 'application/json',
+      'X-Nova-Desktop-Token': token,
+    };
+    const response = await fetch(`${ready.url}/api/nova/tasks`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        apiKey: 'custom-image-key',
+        baseUrl: `http://127.0.0.1:${upstreamAddress.port}/v1/`,
+        protocol: 'openai',
+        mode: 'text-to-image',
+        prompt: 'test image',
+        outputSize: '1K',
+        aspectRatio: '1:1',
+        temperature: 1,
+        model: 'gpt-image-2',
+        parallelCount: 1,
+        images: [],
+      }),
+    });
+    assert.equal(response.status, 202);
+    const { taskId } = await response.json();
+
+    let task;
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+      const taskResponse = await fetch(`${ready.url}/api/nova/tasks/${taskId}`, { headers });
+      task = await taskResponse.json();
+      if (task.status === 'completed' || task.status === 'failed') break;
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+
+    assert.equal(task?.status, 'completed', task?.error);
+    const createdAt = Date.parse(task.createdAt);
+    const expiresAt = Date.parse(task.expiresAt);
+    assert.ok(Number.isFinite(createdAt));
+    assert.ok(Number.isFinite(expiresAt));
+    assert.ok(Math.abs((expiresAt - createdAt) - 60 * 60 * 1000) < 30_000);
+  } finally {
+    if (child.connected) {
+      const exitPromise = waitForExit(child);
+      child.send({ type: 'stop' });
+      await exitPromise;
+    } else if (!child.killed) {
+      child.kill('SIGKILL');
+    }
+    child.stdout?.destroy();
+    child.stderr?.destroy();
+    await closeServer(upstream);
+    try {
+      fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    } catch {
+      // Windows may retain the SQLite file handle briefly after child exit.
+    }
+  }
+});

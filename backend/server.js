@@ -115,10 +115,12 @@ function hashPromptGalleryPassword(password) {
 const PORT = Number(process.env.PORT || 3000);
 const HOSTNAME = process.env.HOSTNAME || '0.0.0.0';
 const DB_PATH = process.env.NOVA_TASK_DB || path.join(__dirname, 'nova-tasks.sqlite');
-const TASK_TTL_MS = 12 * 60 * 60 * 1000;
+const TASK_TTL_MS = (Number(process.env.NOVA_TASK_TTL_HOURS) || 12) * 60 * 60 * 1000;
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
-const IMAGE_STREAM_UNSUPPORTED_PATTERN = /(?:stream.*(?:unsupported|not supported|unknown|unrecognized|invalid)|(?:unsupported|not supported|unknown|unrecognized|invalid).*stream|stream.*(?:不支持|未知|无效)|(?:不支持|未知|无效).*stream)/i;
+const IMAGE_STREAM_ENABLED = String(process.env.NOVA_IMAGE_STREAM ?? 'true').toLowerCase() !== 'false';
+const IMAGE_STREAM_PARTIAL_IMAGES = Math.min(3, Math.max(0, Number.parseInt(process.env.NOVA_IMAGE_PARTIAL_IMAGES || '1', 10) || 1));
+const IMAGE_STREAM_UNSUPPORTED_PATTERN = /(?:(?:stream|partial_images).*(?:unsupported|not supported|unknown|unrecognized|invalid)|(?:unsupported|not supported|unknown|unrecognized|invalid).*(?:stream|partial_images)|(?:stream|partial_images).*(?:不支持|未知|无效)|(?:不支持|未知|无效).*(?:stream|partial_images))/i;
 // 开源版：不再硬编码模型列表，由前端通过 protocol 字段指定协议类型
 const VALID_PROTOCOLS = new Set(['google', 'openai', 'grok']);
 const GPT_IMAGE_QUALITIES = new Set(['auto', 'high', 'medium', 'low']);
@@ -152,6 +154,8 @@ const pendingCountByIp = new Map(); // ip -> count
 const pendingCountByApiKeyHash = new Map(); // apiKeyHash -> count
 const queue = [];
 let activeCount = 0;
+const runningTaskPromises = new Set();
+let isShuttingDown = false;
 
 // ===== WebSocket subscription state =====
 const taskSubscriptions = new Map(); // WebSocket -> Set<taskId>
@@ -346,7 +350,7 @@ function getQueueStats() {
   const processingCount = counts[TASK_STATUS.PROCESSING] || 0;
   const queuedCount = (counts[TASK_STATUS.QUEUED] || 0) + (counts[TASK_STATUS.LEGACY_QUEUED] || 0);
   const totalActiveTasks = processingCount + queuedCount;
-  const acceptingNewTasks = !isRejectNewTasksEnabled();
+  const acceptingNewTasks = !isShuttingDown && !isRejectNewTasksEnabled();
 
   return {
     concurrencyLimit: GLOBAL_TASK_CONCURRENCY,
@@ -708,7 +712,7 @@ function validateCreatePayload(body) {
 function createTask(body, req) {
   validateCreatePayload(body);
   const limitConfig = getLimitConfig();
-  if (isRejectNewTasksEnabled()) {
+  if (isShuttingDown || isRejectNewTasksEnabled()) {
     throw createHttpError(503, 'SERVER_NOT_ACCEPTING_TASKS', LIMIT_ERROR_MESSAGES.notAcceptingTasks, limitConfig.retryAfterSeconds);
   }
   const source = enforceRateLimit(req, body, limitConfig);
@@ -858,6 +862,7 @@ function createGptImageRequestInit(apiKey, request, resolvedSize, options = {}) 
   const prompt = request.prompt;
   const advancedParams = getGptImageRequestAdvancedParams(request);
   const stream = Boolean(options.stream);
+  const partialImages = Math.min(3, Math.max(0, Number(options.partialImages) || 0));
 
   if (request.mode === 'image-to-image') {
     const formData = new FormData();
@@ -866,6 +871,7 @@ function createGptImageRequestInit(apiKey, request, resolvedSize, options = {}) 
     formData.append('n', '1');
     if (stream) {
       formData.append('stream', 'true');
+      if (partialImages > 0) formData.append('partial_images', String(partialImages));
     }
     if (advancedParams) {
       formData.append('quality', advancedParams.quality);
@@ -899,7 +905,7 @@ function createGptImageRequestInit(apiKey, request, resolvedSize, options = {}) 
   const payload = {
     prompt,
     model: request.model,
-    ...(stream ? { stream: true } : {}),
+    ...(stream ? { stream: true, ...(partialImages > 0 ? { partial_images: partialImages } : {}) } : {}),
     ...(resolvedSize ? { size: resolvedSize } : {}),
     ...(advancedParams ? {
       quality: advancedParams.quality,
@@ -1311,7 +1317,22 @@ async function generateNovaImage(apiKey, request, trace) {
   // 开源版：根据前端传入的 protocol 字段路由到对应的 API 协议
   const baseUrl = request.baseUrl || resolveNovaApiBaseUrl();
   if (request.protocol === 'openai') {
-    return requestGptImage(apiKey, request, resolveGptImageRequestSize(request), { baseUrl, trace });
+    const resolvedSize = resolveGptImageRequestSize(request);
+    if (!IMAGE_STREAM_ENABLED) {
+      return requestGptImage(apiKey, request, resolvedSize, { baseUrl, trace });
+    }
+    try {
+      return await requestGptImage(apiKey, request, resolvedSize, {
+        baseUrl,
+        trace,
+        stream: true,
+        partialImages: IMAGE_STREAM_PARTIAL_IMAGES,
+      });
+    } catch (error) {
+      if (!isImageStreamUnsupportedError(error)) throw error;
+      console.warn('[image-stream] 上游不支持图片流式参数，回退非流式请求');
+      return requestGptImage(apiKey, request, resolvedSize, { baseUrl, trace });
+    }
   }
   if (request.protocol === 'grok') {
     return requestGrokImage(apiKey, request, { baseUrl, trace });
@@ -1381,6 +1402,7 @@ async function generateNovaGeminiImage(apiKey, request, options = {}) {
 }
 
 function drainQueue() {
+  if (isShuttingDown) return;
   const maxConcurrency = getMaxServerConcurrency();
   while (queue.length > 0) {
     const taskId = queue[0];
@@ -1397,10 +1419,12 @@ function drainQueue() {
 
     queue.shift();
     activeCount += imageSlots;
-    runTask(taskId).finally(() => {
+    const runPromise = runTask(taskId).finally(() => {
       activeCount -= imageSlots;
+      runningTaskPromises.delete(runPromise);
       drainQueue();
     });
+    runningTaskPromises.add(runPromise);
   }
 }
 
@@ -2179,6 +2203,7 @@ function closeHttpServer(server) {
 async function stopServer() {
   if (stoppingPromise) return stoppingPromise;
   stoppingPromise = (async () => {
+    isShuttingDown = true;
     if (cleanupExpiredTimer) clearInterval(cleanupExpiredTimer);
     if (cleanupRateLimitTimer) clearInterval(cleanupRateLimitTimer);
     if (wsHeartbeatTimer) clearInterval(wsHeartbeatTimer);
@@ -2193,6 +2218,8 @@ async function stopServer() {
     activeHttpServer = null;
     activeWebSocketServer = null;
     await Promise.all([closeWebSocketServer(wss), closeHttpServer(httpServer)]);
+    const running = Array.from(runningTaskPromises);
+    if (running.length > 0) await Promise.allSettled(running);
     try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch { /* ignore */ }
     try { db.close(); } catch { /* ignore */ }
     if (app && typeof app.close === 'function') {

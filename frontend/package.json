@@ -1,6 +1,6 @@
 {
   "name": "nova-image-frontend",
-  "version": "1.0.0",
+  "version": "1.0.1-test.1",
   "private": true,
   "description": "AIOSS Image 前端 - Next.js 应用",
   "scripts": {

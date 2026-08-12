@@ -1,14 +1,16 @@
 "use client";
 
-import { Lock, LockOpen, Sparkles, Wand2 } from "lucide-react";
+import { Eye, Lock, LockOpen, Sparkles, Wand2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { GenerationParamsBar, type GenerationParamsValue } from "@/components/GenerationParamsBar";
+import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { normalizeModel } from "@/lib/model-capabilities";
 import { CanvasMentionEditor } from "./canvas-mention-editor";
 import { Spinner } from "./canvas-ui";
-import type { CanvasGenerationConfig } from "../types";
+import { MANUAL_PROMPT_ROUTE_VALUE, promptRouteId, type CanvasPromptRoute } from "../lib/canvas-prompt-routes";
+import type { CanvasGenerationConfig, CanvasPromptRouteSelection } from "../types";
 import type { CanvasResourceReference } from "../utils/canvas-resource-references";
 
 /** 渲染在「编排节点」内部：提示词（@ 引用）+ 模型参数（复用宿主 GenerationParamsBar，含自定义分辨率）+ 生成按钮。 */
@@ -18,13 +20,19 @@ export function CanvasConfigNodePanel({
   config,
   lockResultNodes,
   referenceLimit,
+  promptRoutes,
+  routeSelection,
+  routeSelectionInvalid,
+  routesTruncated,
   busy,
   optimizing,
   onPromptChange,
   onConfigChange,
+  onRouteSelectionChange,
   onToggleLock,
   onSelect,
   onOptimizePrompt,
+  onPreview,
   onGenerate,
 }: {
   prompt: string;
@@ -32,13 +40,19 @@ export function CanvasConfigNodePanel({
   config: CanvasGenerationConfig;
   lockResultNodes: boolean;
   referenceLimit: { imageCount: number; max: number; exceeded: boolean };
+  promptRoutes?: CanvasPromptRoute[];
+  routeSelection?: CanvasPromptRouteSelection;
+  routeSelectionInvalid?: boolean;
+  routesTruncated?: boolean;
   busy: boolean;
   optimizing: boolean;
   onPromptChange: (value: string) => void;
   onConfigChange: (patch: Partial<CanvasGenerationConfig>) => void;
+  onRouteSelectionChange?: (selection: CanvasPromptRouteSelection | undefined) => void;
   onToggleLock: () => void;
   onSelect: () => void;
   onOptimizePrompt: () => void;
+  onPreview?: () => void;
   onGenerate: () => void;
 }) {
   const value: GenerationParamsValue = {
@@ -67,6 +81,15 @@ export function CanvasConfigNodePanel({
     onConfigChange(next);
   };
 
+  const routeOptions = [
+    { value: MANUAL_PROMPT_ROUTE_VALUE, label: "手动 @ 引用" },
+    ...(routeSelectionInvalid ? [{ value: "invalid", label: "已选路线失效，请重新选择", disabled: true }] : []),
+    ...(promptRoutes ?? []).map((route) => ({ value: route.id, label: route.label })),
+  ];
+  const selectedRouteId = routeSelection?.mode === "route"
+    ? (routeSelectionInvalid ? "invalid" : promptRouteId(routeSelection.connectionIds))
+    : MANUAL_PROMPT_ROUTE_VALUE;
+
   return (
     <div className="flex h-full flex-col gap-2 p-2 text-xs" onPointerDown={() => onSelect()}>
       <div className="min-h-0 flex-1 cursor-text overflow-auto rounded-lg border border-input bg-background p-1.5" data-no-drag>
@@ -74,12 +97,43 @@ export function CanvasConfigNodePanel({
       </div>
 
       <div className="shrink-0 space-y-2">
+        {onRouteSelectionChange && (
+          <div data-canvas-no-zoom className="space-y-1">
+            <Select
+              value={selectedRouteId}
+              onValueChange={(value) => {
+                if (value === MANUAL_PROMPT_ROUTE_VALUE) {
+                  onRouteSelectionChange({ mode: "manual" });
+                  return;
+                }
+                const route = (promptRoutes ?? []).find((item) => item.id === value);
+                if (route) onRouteSelectionChange({ mode: "route", connectionIds: route.connectionIds });
+              }}
+              options={routeOptions}
+              size="sm"
+              disabled={busy}
+              placeholder="提示词路线"
+              className={cn("text-xs", routeSelectionInvalid && "border-destructive text-destructive")}
+              contentClassName="max-w-[32rem]"
+            />
+            {(routeSelectionInvalid || routesTruncated) && (
+              <div className={cn("text-[10px] leading-tight", routeSelectionInvalid ? "text-destructive" : "text-muted-foreground")}>
+                {routeSelectionInvalid ? "已选路线失效，请重新选择" : "路线较多，仅显示前 100 条"}
+              </div>
+            )}
+          </div>
+        )}
         <GenerationParamsBar
           value={value}
           onChange={handleParamsChange}
           size="xs"
         />
         <div className="flex items-center gap-1.5">
+          {onPreview && (
+            <Button variant="outline" size="xs" onClick={onPreview} className="shrink-0" title="预览最终提示词" aria-label="预览最终提示词">
+              <Eye className="size-3.5" />
+            </Button>
+          )}
           <Button
             variant="outline"
             size="xs"
@@ -100,7 +154,7 @@ export function CanvasConfigNodePanel({
             {lockResultNodes ? <Lock className="size-3" /> : <LockOpen className="size-3" />}
             <span className="text-[11px]">{lockResultNodes ? "将覆盖已有结果节点" : "将新建结果节点"}</span>
           </Button>
-          <Button size="sm" onClick={onGenerate} disabled={busy || referenceLimit.exceeded} className="flex-1">
+          <Button size="sm" onClick={onGenerate} disabled={busy || routeSelectionInvalid || referenceLimit.exceeded} className="flex-1">
             {busy ? <Spinner className="size-4" /> : <Sparkles className="size-4" />}
             生成
           </Button>

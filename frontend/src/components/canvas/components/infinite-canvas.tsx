@@ -3,11 +3,12 @@
 import React, { useEffect, useRef, useState } from "react";
 
 import { canvasTheme, type CanvasBackgroundMode } from "../lib/canvas-theme";
-import type { ViewportTransform } from "../types";
+import type { CanvasInteractionMode, ViewportTransform } from "../types";
 
 type InfiniteCanvasProps = {
   containerRef: React.RefObject<HTMLDivElement | null>;
   viewport: ViewportTransform;
+  interactionMode: CanvasInteractionMode;
   backgroundMode?: CanvasBackgroundMode;
   onViewportChange: (viewport: ViewportTransform) => void;
   onCanvasMouseDown?: (event: React.PointerEvent<HTMLDivElement>) => void;
@@ -20,7 +21,7 @@ type InfiniteCanvasProps = {
 /** 浮层选择器：滚轮缩放时跳过弹窗/菜单/下拉，避免与其滚动冲突。 */
 const OVERLAY_SELECTOR = '[data-canvas-no-zoom],[role="dialog"],[role="menu"],[role="listbox"],[data-radix-popper-content-wrapper]';
 
-export function InfiniteCanvas({ containerRef, viewport, backgroundMode = "lines", onViewportChange, onCanvasMouseDown, onCanvasDeselect, onContextMenu, onDrop, children }: InfiniteCanvasProps) {
+export function InfiniteCanvas({ containerRef, viewport, interactionMode, backgroundMode = "lines", onViewportChange, onCanvasMouseDown, onCanvasDeselect, onContextMenu, onDrop, children }: InfiniteCanvasProps) {
   const theme = canvasTheme;
   const panState = useRef({
     isPanning: false,
@@ -92,15 +93,20 @@ export function InfiniteCanvas({ containerRef, viewport, backgroundMode = "lines
     if (target?.closest("[data-canvas-no-zoom]")) return;
     if (target?.closest("[data-connection-create-menu]")) return;
     const isBackgroundClick = !target?.closest("[data-node-id],[data-connection-id]");
+    const shouldPan = interactionMode === "pan" || isSpacePressed;
 
-    if (event.button === 0 && (event.ctrlKey || event.metaKey) && isBackgroundClick) {
+    if (isBackgroundClick && (event.button === 0 || event.button === 1) && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+
+    if (event.button === 0 && !shouldPan && isBackgroundClick) {
       event.preventDefault();
       event.currentTarget.setPointerCapture(event.pointerId);
       onCanvasMouseDown?.(event);
       return;
     }
 
-    if (event.button === 1 || (event.button === 0 && !isSpacePressed && isBackgroundClick)) {
+    if (event.button === 1 || (event.button === 0 && shouldPan && isBackgroundClick)) {
       event.preventDefault();
       event.currentTarget.setPointerCapture(event.pointerId);
       panState.current = {
@@ -113,10 +119,6 @@ export function InfiniteCanvas({ containerRef, viewport, backgroundMode = "lines
       };
       document.body.style.cursor = "grabbing";
       return;
-    }
-
-    if (event.button === 0 && isSpacePressed && isBackgroundClick) {
-      event.preventDefault();
     }
   };
 
@@ -177,7 +179,8 @@ export function InfiniteCanvas({ containerRef, viewport, backgroundMode = "lines
   return (
     <div
       ref={containerRef}
-      className="relative h-full w-full cursor-grab select-none overflow-hidden"
+      data-canvas-mode={interactionMode}
+      className={`relative h-full w-full select-none overflow-hidden ${interactionMode === "pan" || isSpacePressed ? "cursor-grab" : "cursor-crosshair"}`}
       style={{ background: theme.canvas.background }}
       onPointerDown={handlePointerDown}
       onWheel={handleWheel}

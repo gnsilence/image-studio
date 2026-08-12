@@ -33,7 +33,7 @@ jobs:
       - run: npm run desktop:dist:win
       - uses: actions/upload-artifact@v4
         with:
-          name: AIOSS-Image-1.0.0-windows-x64
+          name: AIOSS-Image-${{ github.ref_name }}-windows-x64
           path: |
             release/*.exe
             release/*.exe.blockmap
@@ -67,7 +67,7 @@ jobs:
       - run: npm run desktop:dist:mac:${{ matrix.arch }}
       - uses: actions/upload-artifact@v4
         with:
-          name: AIOSS-Image-1.0.0-macos-${{ matrix.arch }}
+          name: AIOSS-Image-${{ github.ref_name }}-macos-${{ matrix.arch }}
           path: |
             release/*.dmg
             release/*.zip
@@ -98,8 +98,13 @@ jobs:
             exit 1
           fi
 
+          release_args=(--title "$TAG" --generate-notes)
+          case "$TAG" in
+            *-test*|*-beta*|*-alpha*|*-rc*) release_args+=(--prerelease) ;;
+          esac
+
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "${assets[@]}" --clobber
           else
-            gh release create "$TAG" "${assets[@]}" --title "$TAG" --generate-notes
+            gh release create "$TAG" "${assets[@]}" "${release_args[@]}"
           fi

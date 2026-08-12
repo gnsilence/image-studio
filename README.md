@@ -103,7 +103,7 @@ AIOSS Image 采用**用户自定义模型**架构：
 - 提交后入队，服务端并发处理（默认上限 50，可通过 `NOVA_TASK_CONCURRENCY` 调整）
 - 浏览器通过 **WebSocket** 实时接收任务/队列状态，断线自动重连，失败 5 次后回退 **HTTP 轮询**（30 秒间隔）
 - 任务结果本地落盘（`backend/nova-images/`），HTTP 路由 `/api/nova/images/:taskId/:index` 直接提供
-- 任务 TTL 12 小时，过期自动清理（5 分钟一次）
+- 任务 TTL 12 小时（可通过 `NOVA_TASK_TTL_HOURS` 调整），过期自动清理（5 分钟一次）
 - 服务重启时把残留"处理中"任务标记为失败并删除产物，避免幽灵任务
 
 ### 体验与工程化
@@ -414,6 +414,9 @@ docker push tianjiangqiji/nova-image-studio:latest
 | `NODE_ENV` | **是** | `production` | **必须为 `production`**，否则会走 Next dev 模式 |
 | `NOVA_TASK_DB` | 否 | `./nova-tasks.sqlite` | SQLite 文件路径，建议放到持久化目录 |
 | `NOVA_TASK_CONCURRENCY` | 否 | `50` | 最大并发任务数（绝对上限 50） |
+| `NOVA_TASK_TTL_HOURS` | 否 | `12` | 任务清理时间（小时），超过该时间后任务和图片将被删除 |
+| `NOVA_IMAGE_STREAM` | 否 | `true` | OpenAI 图片接口优先尝试流式请求，不支持时自动回退非流式 |
+| `NOVA_IMAGE_PARTIAL_IMAGES` | 否 | `1` | OpenAI 图片流式请求的 `partial_images` 数量，范围 0-3 |
 | `NOVA_MAX_QUEUE_SIZE` | 否 | `200` | 全局最大待处理任务数 |
 | `NOVA_RATE_LIMIT_WINDOW_MS` | 否 | `60000` | 创建任务速率限制窗口，单位毫秒 |
 | `NOVA_RATE_LIMIT_MAX_REQUESTS_PER_IP` | 否 | `20` | 单 IP 在一个窗口内最多创建多少个任务 |
@@ -476,7 +479,7 @@ NOVA_ACCEPT_NEW_TASKS=false
 保存即生效。等待在飞任务完成后即可重启升级。再次开启设为 `true` 或留空。
 
 **任务多久会过期？**
-创建后 12 小时；前端在拿到结果后会调用 `/ack` 续期 2 分钟，给下载留时间。超过 TTL 服务端删除数据库记录与产物图片。
+默认创建后 12 小时（可通过 `NOVA_TASK_TTL_HOURS` 配置修改）；前端在拿到结果后会调用 `/ack` 续期 2 分钟，给下载留时间。超过 TTL 服务端删除数据库记录与产物图片。
 
 ---
 
