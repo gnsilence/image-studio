@@ -108,11 +108,17 @@ test('image tasks call the configured Base URL', async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nova-image-base-url-test-'));
   const token = 'test-custom-image-base-url-token';
   const upstreamRequests = [];
+  const upstreamBodies = [];
   const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lW2mWQAAAABJRU5ErkJggg==';
   const upstream = http.createServer((req, res) => {
     upstreamRequests.push({ url: req.url, authorization: req.headers.authorization });
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ data: [{ b64_json: pngBase64 }] }));
+    let raw = '';
+    req.on('data', chunk => { raw += chunk; });
+    req.on('end', () => {
+      upstreamBodies.push(raw ? JSON.parse(raw) : {});
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ data: [{ b64_json: pngBase64 }] }));
+    });
   });
   const upstreamAddress = await listen(upstream);
   const child = fork(path.join(__dirname, 'server.js'), [], {
@@ -126,6 +132,7 @@ test('image tasks call the configured Base URL', async () => {
       NOVA_TASK_DB: path.join(tempDir, 'tasks.sqlite'),
       NOVA_IMAGE_DIR: path.join(tempDir, 'images'),
       NOVA_DESKTOP_SESSION_TOKEN: token,
+      NOVA_IMAGE_STREAM: 'false',
     },
   });
 
@@ -145,7 +152,7 @@ test('image tasks call the configured Base URL', async () => {
         mode: 'text-to-image',
         prompt: 'test image',
         outputSize: '1K',
-        aspectRatio: '1:1',
+        aspectRatio: '2:3',
         temperature: 1,
         model: 'gpt-image-2',
         parallelCount: 1,
@@ -161,6 +168,8 @@ test('image tasks call the configured Base URL', async () => {
     assert.equal(upstreamRequests.length, 1);
     assert.equal(upstreamRequests[0].url, '/v1/images/generations');
     assert.equal(upstreamRequests[0].authorization, 'Bearer custom-image-key');
+    assert.equal(upstreamBodies.length, 1);
+    assert.equal(upstreamBodies[0].size, '1024x1536');
   } finally {
     if (child.connected) {
       const exitPromise = waitForExit(child);

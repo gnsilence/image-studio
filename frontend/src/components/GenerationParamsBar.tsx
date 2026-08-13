@@ -8,7 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { CustomSizeDialog } from '@/components/CustomSizeDialog';
 import { GptImageAdvancedParamsControl } from '@/components/GptImageAdvancedParamsControl';
 import { cn } from '@/lib/utils';
-import { MODEL_OPTIONS, type ModelId } from '@/lib/gemini-config';
+import { getModelOptions, type ModelId } from '@/lib/gemini-config';
 import {
   getAspectRatioOptions,
   getCustomSizeMaxSide,
@@ -57,6 +57,7 @@ export function GenerationParamsBar({ value, onChange, size = 'xs', className }:
   const [customSizeDialogOpen, setCustomSizeDialogOpen] = useState(false);
 
   const model = value.model;
+  const modelOptions = getModelOptions();
   const sizeOptions = getSizeOptions(model);
   const aspectRatioOptions = getAspectRatioOptions(model, value.outputSize);
   const supportsTemperature = getSupportsTemperature(model);
@@ -110,10 +111,10 @@ export function GenerationParamsBar({ value, onChange, size = 'xs', className }:
       <Popover open={modelPopoverOpen} onOpenChange={setModelPopoverOpen}>
         <PopoverTrigger className={cn(buttonVariants({ variant: 'outline', size }), 'gap-1')} title="模型选择">
           <Sparkles className="h-3 w-3" />
-          <span className="shrink-0 truncate text-[11px]">{MODEL_OPTIONS.find(o => o.value === model)?.label}</span>
+          <span className="shrink-0 truncate text-[11px]">{modelOptions.find(o => o.value === model)?.label || model}</span>
         </PopoverTrigger>
         <PopoverContent className="w-48 p-1" align="start">
-          {MODEL_OPTIONS.map((option) => (
+          {modelOptions.map((option) => (
             <button
               key={option.value}
               onClick={() => {

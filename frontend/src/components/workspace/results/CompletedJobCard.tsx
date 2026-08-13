@@ -192,67 +192,64 @@ export const CompletedJobCard = memo(function CompletedJobCard({ job, onClear, o
 
   return (
     <>
-      <div className="rounded-xl border border-border bg-card p-4">
-        <div className="flex items-center gap-3">
+      <article className="studio-result-card overflow-hidden rounded-xl border border-border bg-card">
+        <div className="flex flex-col gap-0">
           <div
             ref={lazyLoad.elementRef}
-            className="group relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg bg-muted"
+            className="studio-result-media group relative aspect-[4/3] w-full overflow-hidden bg-muted/35"
           >
             <button
               type="button"
               onClick={() => void openPreview()}
-              className="absolute inset-0 h-full w-full border-0 p-0"
+              className="absolute inset-0 h-full w-full border-0 p-3"
               title="看大图"
             >
               {isMultiple ? (
-                <div className="relative h-full w-full">
-                {visiblePreviewImages.map((image, index) => (
-                  <img
-                    key={`${job.id}-${index}`}
-                    src={lazyLoad.isVisible ? (getImageSrc(image) || undefined) : undefined}
-                    alt={`生成的图像 ${index + 1}`}
-                    className={`absolute h-full w-full object-cover transition-all duration-300 ${
-                      loadedImageIndices.has(index) ? 'opacity-100' : 'opacity-0'
-                    }`}
-                    style={{
-                      transform: `rotate(${(index - 1) * 5}deg) translate(${(index - 1) * 2}px, ${(index - 1) * 2}px)`,
-                      zIndex: 3 - index,
-                    }}
-                    onLoad={() => handleImageLoad(index)}
-                  />
-                ))}
-                {!lazyLoad.isLoaded && (
-                  <div className="absolute inset-0 z-10 animate-pulse bg-gradient-to-r from-muted via-muted/50 to-muted" />
-                )}
-                <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
-                  <Maximize className="w-5 h-5 text-white" />
-                </div>
+                <div className="grid h-full w-full grid-cols-2 gap-2">
+                  {visiblePreviewImages.map((image, index) => (
+                    <div key={`${job.id}-${index}`} className="relative min-h-0 overflow-hidden rounded-md bg-background/70">
+                      <img
+                        src={lazyLoad.isVisible ? (getImageSrc(image) || undefined) : undefined}
+                        alt={`生成的图像 ${index + 1}`}
+                        className={`h-full w-full object-contain transition-opacity duration-300 ${
+                          loadedImageIndices.has(index) ? 'opacity-100' : 'opacity-0'
+                        }`}
+                        onLoad={() => handleImageLoad(index)}
+                      />
+                    </div>
+                  ))}
+                  {!lazyLoad.isLoaded && (
+                    <div className="absolute inset-0 z-10 animate-pulse bg-gradient-to-r from-muted via-muted/50 to-muted" />
+                  )}
+                  <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
+                    <Maximize className="size-5 text-white" />
+                  </div>
                 </div>
               ) : (
                 <>
                 <img
                   src={lazyLoad.isVisible ? (getImageSrc(images[0]) || undefined) : undefined}
                   alt="生成的图像"
-                  className={`h-full w-full object-cover transition-opacity duration-300 ${lazyLoad.isLoaded ? 'opacity-100' : 'opacity-0'}`}
+                  className={`h-full w-full rounded-md object-contain transition-opacity duration-300 ${lazyLoad.isLoaded ? 'opacity-100' : 'opacity-0'}`}
                   onLoad={lazyLoad.handleImageLoad}
                 />
                 {!lazyLoad.isLoaded && (
                   <div className="absolute inset-0 animate-pulse bg-gradient-to-r from-muted via-muted/50 to-muted" />
                 )}
                 <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
-                  <Maximize className="w-5 h-5 text-white" />
+                  <Maximize className="size-5 text-white" />
                 </div>
                 </>
               )}
             </button>
           </div>
 
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 w-full px-3 pt-3">
             <div className="flex items-center gap-1.5">
-              <p className="truncate text-base text-foreground">&quot;{job.prompt}&quot;</p>
+              <p className="line-clamp-2 text-sm leading-5 text-foreground">&quot;{job.prompt}&quot;</p>
               <button
                 onClick={copyPrompt}
-                className="flex-shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+                className="flex-shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 title="复制提示词"
               >
                 {promptCopied ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
@@ -276,7 +273,7 @@ export const CompletedJobCard = memo(function CompletedJobCard({ job, onClear, o
             </p>
           </div>
 
-          <div className="flex flex-shrink-0 items-center gap-1">
+          <div className="studio-result-toolbar flex w-full flex-shrink-0 items-center justify-end gap-1 border-t border-border px-3 py-2">
             {hasReferenceImages && (
               <Button
                 variant="ghost"
@@ -379,7 +376,7 @@ export const CompletedJobCard = memo(function CompletedJobCard({ job, onClear, o
             </Button>
           </div>
         </div>
-      </div>
+      </article>
 
       {previewOpen && createPortal(
         <HistoryImagePreview

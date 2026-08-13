@@ -157,6 +157,7 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
   const [defaults, setDefaults] = useState<DefaultModels>(DEFAULT_DEFAULTS);
   const [selectedImageModelId, setSelectedImageModelId] = useState('');
   const [selectedTextModelId, setSelectedTextModelId] = useState('');
+  const [selectedModelKind, setSelectedModelKind] = useState<'image' | 'text'>('image');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [checkingModels, setCheckingModels] = useState(false);
@@ -188,6 +189,7 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
     setDefaults(normalizeDefaults(registry.defaults, registry.imageModels, registry.textModels));
     setSelectedImageModelId(registry.imageModels[0]?.id || '');
     setSelectedTextModelId(registry.textModels[0]?.id || '');
+    setSelectedModelKind(registry.imageModels.length > 0 ? 'image' : 'text');
     setError(null);
     setSuccess(null);
     setModelStatuses(null);
@@ -245,6 +247,7 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
     const draft = createImageModelDraft();
     setImageModels((prev) => [...prev, draft]);
     setSelectedImageModelId(draft.id);
+    setSelectedModelKind('image');
   };
 
   const handleUpdateImageModel = (id: string, patch: Partial<ImageModelConfig>) => {
@@ -285,6 +288,7 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
     const draft = createTextModelDraft();
     setTextModels((prev) => [...prev, draft]);
     setSelectedTextModelId(draft.id);
+    setSelectedModelKind('text');
   };
 
   const handleApplyTextTemplate = (id: string, protocol: TextProviderProtocol) => {
@@ -583,35 +587,69 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
             {error && <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">{error}</div>}
             {success && <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-700 dark:text-emerald-400">{success}</div>}
 
-            <div className="rounded-xl border p-4 space-y-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="font-medium">图片模型</p>
-                  <p className="text-xs text-muted-foreground">无默认示范记录。请至少完成一个图片模型。</p>
+            <div className="studio-model-editor grid min-h-[430px] overflow-hidden rounded-xl border lg:grid-cols-[236px_minmax(0,1fr)]">
+              <aside className="studio-model-catalog border-b bg-muted/20 p-3 lg:border-r lg:border-b-0">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium">模型目录</p>
+                    <p className="text-xs text-muted-foreground">选择一项进行编辑</p>
+                  </div>
                 </div>
-                <Button variant="outline" size="sm" className="gap-2" onClick={handleAddImageModel}>
-                  <Plus className="w-4 h-4" />
-                  新增图片模型
-                </Button>
-              </div>
-
-              <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)]">
-                <div className="space-y-2">
-                  {imageModels.map((model) => (
-                    <button
-                      key={model.id}
-                      type="button"
-                      onClick={() => setSelectedImageModelId(model.id)}
-                      className={`w-full rounded-lg border px-3 py-2 text-left text-sm ${selectedImageModelId === model.id ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'}`}
-                    >
-                      <div className="font-medium">{model.name || '未命名模型'}</div>
-                      <div className="text-xs text-muted-foreground">{isCompleteImageModel(model) ? '配置完成' : '待补全'}</div>
-                    </button>
-                  ))}
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-xs font-medium text-muted-foreground">图片模型</span>
+                      <Button variant="ghost" size="icon-sm" className="size-7" onClick={handleAddImageModel} title="新增图片模型">
+                        <Plus className="size-4" />
+                      </Button>
+                    </div>
+                    {imageModels.map((model) => (
+                      <button
+                        key={model.id}
+                        type="button"
+                        onClick={() => { setSelectedModelKind('image'); setSelectedImageModelId(model.id); }}
+                        className={cn('studio-model-catalog-item w-full rounded-lg border px-3 py-2 text-left text-sm', selectedModelKind === 'image' && selectedImageModelId === model.id ? 'border-primary bg-primary/8' : 'border-transparent hover:bg-muted/75')}
+                      >
+                        <span className="block truncate font-medium">{model.name || '未命名模型'}</span>
+                        <span className="mt-0.5 block text-xs text-muted-foreground">{isCompleteImageModel(model) ? '配置完成' : '待补全'}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-xs font-medium text-muted-foreground">文本模型</span>
+                      <Button variant="ghost" size="icon-sm" className="size-7" onClick={handleAddTextModel} title="新增文本模型">
+                        <Plus className="size-4" />
+                      </Button>
+                    </div>
+                    {textModels.map((model) => (
+                      <button
+                        key={model.id}
+                        type="button"
+                        onClick={() => { setSelectedModelKind('text'); setSelectedTextModelId(model.id); }}
+                        className={cn('studio-model-catalog-item w-full rounded-lg border px-3 py-2 text-left text-sm', selectedModelKind === 'text' && selectedTextModelId === model.id ? 'border-primary bg-primary/8' : 'border-transparent hover:bg-muted/75')}
+                      >
+                        <span className="block truncate font-medium">{model.name || '未命名模型'}</span>
+                        <span className="mt-0.5 block text-xs text-muted-foreground">{isCompleteTextModel(model) ? '配置完成' : '待补全'}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
+              </aside>
 
-                {selectedImageModel && (
-                  <div className="grid gap-3 md:grid-cols-2">
+              <div className="min-w-0 p-4 sm:p-5">
+                {selectedModelKind === 'image' && selectedImageModel && (
+                  <div className="space-y-5">
+                    <div className="flex items-start justify-between gap-3 border-b border-border/70 pb-4">
+                      <div>
+                        <p className="text-sm font-medium">图片模型</p>
+                        <p className="mt-1 text-xs text-muted-foreground">配置协议、模型标识和生成能力。</p>
+                      </div>
+                      <span className={cn('rounded-md px-2 py-1 text-xs', isCompleteImageModel(selectedImageModel) ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground')}>
+                        {isCompleteImageModel(selectedImageModel) ? '配置完成' : '待补全'}
+                      </span>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
                     <div className="space-y-2">
                       <label className="text-xs text-muted-foreground">内置模板</label>
                       <Select
@@ -708,40 +746,21 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
                         删除模型
                       </Button>
                     </div>
+                    </div>
                   </div>
                 )}
-              </div>
-            </div>
-
-            <div className="rounded-xl border p-4 space-y-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="font-medium">文本模型</p>
-                  <p className="text-xs text-muted-foreground">无默认示范记录。请至少完成一个文本模型。</p>
-                </div>
-                <Button variant="outline" size="sm" className="gap-2" onClick={handleAddTextModel}>
-                  <Plus className="w-4 h-4" />
-                  新增文本模型
-                </Button>
-              </div>
-
-              <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)]">
-                <div className="space-y-2">
-                  {textModels.map((model) => (
-                    <button
-                      key={model.id}
-                      type="button"
-                      onClick={() => setSelectedTextModelId(model.id)}
-                      className={`w-full rounded-lg border px-3 py-2 text-left text-sm ${selectedTextModelId === model.id ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'}`}
-                    >
-                      <div className="font-medium">{model.name || '未命名模型'}</div>
-                      <div className="text-xs text-muted-foreground">{isCompleteTextModel(model) ? '配置完成' : '待补全'}</div>
-                    </button>
-                  ))}
-                </div>
-
-                {selectedTextModel && (
-                  <div className="grid gap-3 md:grid-cols-2">
+                {selectedModelKind === 'text' && selectedTextModel && (
+                  <div className="space-y-5">
+                    <div className="flex items-start justify-between gap-3 border-b border-border/70 pb-4">
+                      <div>
+                        <p className="text-sm font-medium">文本模型</p>
+                        <p className="mt-1 text-xs text-muted-foreground">配置对话、提示词与描述工作流使用的模型。</p>
+                      </div>
+                      <span className={cn('rounded-md px-2 py-1 text-xs', isCompleteTextModel(selectedTextModel) ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground')}>
+                        {isCompleteTextModel(selectedTextModel) ? '配置完成' : '待补全'}
+                      </span>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
                     <div className="space-y-2">
                       <label className="text-xs text-muted-foreground">协议</label>
                       <Select
@@ -796,6 +815,13 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
                         删除模型
                       </Button>
                     </div>
+                    </div>
+                  </div>
+                )}
+                {((selectedModelKind === 'image' && !selectedImageModel) || (selectedModelKind === 'text' && !selectedTextModel)) && (
+                  <div className="flex min-h-72 flex-col items-center justify-center text-center">
+                    <p className="text-sm font-medium text-foreground">选择或新增一个模型</p>
+                    <p className="mt-1 text-xs text-muted-foreground">模型配置会在保存后应用到对应工作流。</p>
                   </div>
                 )}
               </div>

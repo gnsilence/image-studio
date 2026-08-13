@@ -2,7 +2,7 @@
 
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Loader2, X, RefreshCw } from 'lucide-react';
+import { AlertCircle, ImagePlus, Loader2, RefreshCw, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { Mode, StoredJob } from '@/lib/job-store';
 import { cn } from '@/lib/utils';
@@ -20,6 +20,40 @@ const historyFilterOptions: { value: GenerationHistoryFilter; label: string }[] 
 
 function isWaitingJob(job: StoredJob): boolean {
   return job.status === 'processing' || job.status === 'queued' || job.status === '排队中';
+}
+
+interface JobDayGroup {
+  key: string;
+  label: string;
+  jobs: StoredJob[];
+}
+
+function groupJobsByDay(jobs: StoredJob[]): JobDayGroup[] {
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  const getDayKey = (date: Date) => `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+  const todayKey = getDayKey(today);
+  const yesterdayKey = getDayKey(yesterday);
+  const groups: JobDayGroup[] = [];
+
+  jobs.forEach((job) => {
+    const date = new Date(job.created_at);
+    const validDate = !Number.isNaN(date.getTime());
+    const key = validDate ? getDayKey(date) : 'unknown';
+    const label = !validDate
+      ? '较早记录'
+      : key === todayKey
+        ? '今天'
+        : key === yesterdayKey
+          ? '昨天'
+          : new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' }).format(date);
+    const currentGroup = groups.at(-1);
+    if (!currentGroup || currentGroup.key !== key) groups.push({ key, label, jobs: [job] });
+    else currentGroup.jobs.push(job);
+  });
+
+  return groups;
 }
 
 function useNow(enabled: boolean) {
@@ -58,42 +92,48 @@ const WaitingJobCard = memo(function WaitingJobCard({
   const elapsedSeconds = Math.max(0, Math.floor((now - Date.parse(job.created_at)) / 1000));
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
-      <div className="flex items-center gap-3">
-        <div className="relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg bg-muted">
-          <div className="absolute inset-0 flex items-center justify-center">
-            <Loader2 className="w-5 h-5 animate-spin text-primary" />
+    <div className="studio-waiting-card overflow-hidden rounded-xl border border-border bg-card">
+      <div className="flex gap-3 p-4">
+        <div className="studio-waiting-art relative flex h-16 w-16 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border border-processing/20 bg-processing/10">
+          <div className="relative z-10 flex h-8 w-8 items-center justify-center rounded-md bg-card/75">
+            <Loader2 className="w-4 h-4 animate-spin text-processing" />
           </div>
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-base text-foreground">&quot;{job.prompt}&quot;</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">{statusText}</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            已用 <span className="font-mono text-foreground">{elapsedSeconds}</span> 秒 · {getModelDisplayName(job.model)}
+          <div className="flex items-center gap-2">
+            <span className="rounded-md bg-processing/10 px-1.5 py-0.5 text-[11px] font-medium text-processing">{statusText}</span>
+            <span className="text-xs text-muted-foreground">{getModelDisplayName(job.model)}</span>
+          </div>
+          <p className="mt-2 truncate text-sm text-foreground">&quot;{job.prompt}&quot;</p>
+          <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="size-1.5 animate-pulse rounded-full bg-processing" />
+            已用 <span className="font-mono text-foreground">{elapsedSeconds}</span> 秒
           </p>
         </div>
-        {job.serverTaskId && (
+        <div className="flex shrink-0 items-start gap-1">
+          {job.serverTaskId && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => onCheckStatus(job)}
+              disabled={isChecking || (cooldownEnd !== undefined && now < cooldownEnd)}
+              title="查看进度"
+            >
+              {isChecking
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <RefreshCw className="w-4 h-4" />}
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon-sm"
-            onClick={() => onCheckStatus(job)}
-            disabled={isChecking || (cooldownEnd !== undefined && now < cooldownEnd)}
-            title="查看进度"
+            onClick={() => onCancel(job.id)}
+            title="取消"
+            className="text-muted-foreground hover:text-destructive"
           >
-            {isChecking
-              ? <Loader2 className="w-4 h-4 animate-spin" />
-              : <RefreshCw className="w-4 h-4" />}
+            <X className="w-4 h-4" />
           </Button>
-        )}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => onCancel(job.id)}
-          title="取消"
-          className="text-muted-foreground hover:text-destructive"
-        >
-          <X className="w-4 h-4" />
-        </Button>
+        </div>
       </div>
     </div>
   );
@@ -121,23 +161,23 @@ function JobsHeader({
   const processing = jobsList.filter(job => job.status === 'processing').length;
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="studio-history-header flex flex-wrap items-center justify-between gap-3">
       <div className="space-y-1">
-        <h3 className="text-base font-medium text-foreground">{title}</h3>
+        <h3 className="text-sm font-semibold tracking-tight text-foreground">{title}</h3>
         <p className="text-xs text-muted-foreground">
           共 {jobsList.length} 条 · 完成 {completed} · 处理中 {processing} · 排队 {queued}
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         {filter && onFilterChange && (
-          <div className="flex rounded-lg border border-border bg-background p-0.5">
+          <div className="flex rounded-lg border border-border bg-muted/45 p-0.5">
             {historyFilterOptions.map(option => (
               <button
                 key={option.value}
                 type="button"
                 onClick={() => onFilterChange(option.value)}
                 className={cn(
-                  'h-6 rounded-md px-2 text-xs transition-colors',
+                    'h-7 rounded-md px-2.5 text-xs transition-colors',
                   filter === option.value
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -148,7 +188,7 @@ function JobsHeader({
             ))}
           </div>
         )}
-        <Button variant="outline" size="sm" onClick={onClearAll} disabled={jobsList.length === 0}>
+        <Button variant="ghost" size="sm" onClick={onClearAll} disabled={jobsList.length === 0}>
           清空记录
         </Button>
       </div>
@@ -186,27 +226,26 @@ function useColumnCount(
 }
 
 function VirtualJobList({
-  jobs,
+  groups,
   active,
   wideMode,
   renderJobCard,
 }: {
-  jobs: StoredJob[];
+  groups: JobDayGroup[];
   active: boolean;
   wideMode: boolean;
   renderJobCard: (job: StoredJob) => React.ReactNode;
 }) {
   const parentRef = useRef<HTMLDivElement>(null);
-  const shouldRender = active && jobs.length > 0;
+  const shouldRender = active && groups.length > 0;
   const columns = useColumnCount(parentRef, wideMode, shouldRender);
-  const gutter = 16;
+  const jobCount = useMemo(() => groups.reduce((total, group) => total + group.jobs.length, 0), [groups]);
 
   const virtualizer = useVirtualizer({
-    count: active ? jobs.length : 0,
+    count: active ? groups.length : 0,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 120,
+    estimateSize: () => 420,
     overscan: 5,
-    lanes: columns,
   });
 
   if (!shouldRender) return null;
@@ -214,11 +253,11 @@ function VirtualJobList({
   return (
     <div
       ref={parentRef}
-      className={cn('relative virtual-scroll-container', wideMode && 'min-h-0 flex-1')}
+      className={cn('studio-history-list relative virtual-scroll-container', wideMode && 'studio-history-list-wide min-h-0 flex-1')}
       style={{
-        height: wideMode ? undefined : (jobs.length > 3 ? '70vh' : 'auto'),
+        height: wideMode ? undefined : (jobCount > 3 ? '70vh' : 'auto'),
         maxHeight: wideMode ? undefined : '70vh',
-        minHeight: jobs.length > 0 ? '200px' : '0',
+        minHeight: jobCount > 0 ? '200px' : '0',
         overflow: 'auto',
         overflowX: 'hidden',
       }}
@@ -231,24 +270,31 @@ function VirtualJobList({
         }}
       >
         {virtualizer.getVirtualItems().map(virtualRow => {
-          const lane = columns > 1 ? virtualRow.lane : 0;
+          const group = groups[virtualRow.index];
           return (
             <div
-              key={jobs[virtualRow.index].id}
+              key={group.key}
               data-index={virtualRow.index}
               ref={virtualizer.measureElement}
-              className="absolute top-0"
+              className="absolute top-0 w-full"
               style={{
-                left: `${(100 / columns) * lane}%`,
-                width: `${100 / columns}%`,
-                paddingLeft: columns > 1 ? gutter / 2 : 0,
-                paddingRight: columns > 1 ? gutter / 2 : 0,
                 transform: `translateY(${virtualRow.start}px)`,
               }}
             >
-              <div className="mb-4">
-                {renderJobCard(jobs[virtualRow.index])}
-              </div>
+              <section className="studio-history-day-group pb-5">
+                <div className="studio-history-day-divider mb-3 flex items-center gap-3">
+                  <span className="text-xs font-medium text-foreground">{group.label}</span>
+                  <span className="text-[11px] text-muted-foreground">{group.jobs.length} 项</span>
+                  <span className="h-px flex-1 bg-border/70" />
+                </div>
+                <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+                  {group.jobs.map((job) => (
+                    <div key={job.id} className="studio-history-job">
+                      {renderJobCard(job)}
+                    </div>
+                  ))}
+                </div>
+              </section>
             </div>
           );
         })}
@@ -299,6 +345,7 @@ export function HistoryJobList({
   const hasActiveTimers = useMemo(() => active && jobs.some(job => isWaitingJob(job)), [active, jobs]);
   const now = useNow(hasActiveTimers);
   const clearScope: HistoryClearScope = historyFilter || (mode === 'image-to-image' ? 'image-to-image' : 'text-to-image');
+  const jobGroups = useMemo(() => groupJobsByDay(jobs), [jobs]);
 
   const renderJobCard = (job: StoredJob) => {
     const hasImage = job.status === 'completed' && (job.images || job.imageData) && loadedImages.has(job.id);
@@ -313,12 +360,17 @@ export function HistoryJobList({
       // 其他情况（默认 / 网络错误 / 未分类）都允许"查看进度"，让用户兜底
       const allowCheckStatus = !job.terminal && !!job.serverTaskId;
       return (
-        <div className="rounded-xl border border-destructive/20 bg-card p-4">
+        <div className="studio-failed-card rounded-xl border border-destructive/20 bg-card p-4">
           <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 space-y-1">
-              <p className="truncate text-base text-foreground">&quot;{job.prompt}&quot;</p>
-              <p className="max-h-20 overflow-y-auto text-sm text-destructive">{job.error || '任务失败'}</p>
-              <p className="text-xs text-muted-foreground">{getModelDisplayName(job.model)}</p>
+            <div className="flex min-w-0 gap-3">
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-destructive/10 text-destructive">
+                <AlertCircle className="size-4" />
+              </div>
+              <div className="min-w-0 space-y-1">
+                <p className="truncate text-sm text-foreground">&quot;{job.prompt}&quot;</p>
+                <p className="max-h-20 overflow-y-auto text-sm text-destructive">{job.error || '任务失败'}</p>
+                <p className="text-xs text-muted-foreground">{getModelDisplayName(job.model)}</p>
+              </div>
             </div>
             <div className="flex gap-1">
               {allowCheckStatus && (
@@ -354,16 +406,19 @@ export function HistoryJobList({
       />
       {active && jobs.length === 0 ? (
         <div className={cn(
-          'flex flex-col items-center justify-center text-center text-muted-foreground',
+          'studio-history-empty flex flex-col items-center justify-center text-center text-muted-foreground',
           wideMode ? 'flex-1 py-16' : 'py-6'
         )}>
-          <p className="text-sm">暂无记录</p>
-          <p className="mt-1 text-xs opacity-70">
+          <div className="mb-3 flex size-10 items-center justify-center rounded-lg border border-border bg-muted/55 text-primary">
+            <ImagePlus className="size-5" />
+          </div>
+          <p className="text-sm font-medium text-foreground">还没有作品</p>
+          <p className="mt-1 max-w-64 text-xs leading-5 opacity-80">
             {emptyDescription || (mode === 'text-to-image' ? '提交一段文字描述来生成图片' : '上传图片并输入描述来转换')}
           </p>
         </div>
       ) : (
-        <VirtualJobList jobs={jobs} active={active} wideMode={wideMode} renderJobCard={renderJobCard} />
+        <VirtualJobList groups={jobGroups} active={active} wideMode={wideMode} renderJobCard={renderJobCard} />
       )}
     </section>
   );

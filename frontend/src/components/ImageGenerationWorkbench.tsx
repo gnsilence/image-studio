@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowUp, CloudUpload, FileText, ImagePlus, Info, Loader2, Save, Sparkles, X, Zap } from 'lucide-react';
+import { ArrowUp, CloudUpload, FileText, ImagePlus, Info, Layers3, Loader2, Save, SlidersHorizontal, Sparkles, X, Zap } from 'lucide-react';
 import { AttachmentChips } from './AttachmentChips';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -620,11 +620,11 @@ export function ImageGenerationWorkbench({
   const canClear = prompt.trim().length > 0 || pendingFiles.length > 0;
 
   return (
-    <div ref={formRef} className="space-y-4">
-      <div className="bg-muted/50 border border-border rounded-xl shadow-md">
+    <div ref={formRef} className="studio-workbench space-y-3">
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
         {disabled ? (
-          <div className="flex min-h-40 flex-col items-center justify-center gap-4 px-4 py-8 text-center">
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <div className="flex min-h-56 flex-col items-center justify-center gap-4 px-4 py-8 text-center">
+            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <Info className="h-5 w-5" />
             </div>
             <div className="max-w-md">
@@ -635,118 +635,153 @@ export function ImageGenerationWorkbench({
           </div>
         ) : (
           <>
-            <div className="p-4 pb-2">
-              <div className="flex gap-3">
-                <div
-                  onDrop={refsSupported ? handleDrop : undefined}
-                  onDragOver={refsSupported ? handleDragOver : (e) => e.preventDefault()}
-                  onDragLeave={() => setIsDragOver(false)}
-                  className={cn(
-                    'relative flex-[3] overflow-hidden rounded-xl border-2 border-dashed px-6 py-8 text-center transition-all',
-                    !refsSupported
-                      ? 'cursor-not-allowed border-border/60 bg-muted/30 opacity-60'
-                      : isDragOver
-                        ? 'border-primary bg-primary/20'
-                        : 'cursor-pointer border-primary/30 bg-primary/5 hover:border-primary/50 hover:bg-primary/10',
-                  )}
-                >
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={handleFileSelect}
-                    disabled={loading || !refsSupported}
-                    className="absolute inset-0 h-full w-full cursor-pointer overflow-hidden opacity-0 disabled:cursor-not-allowed"
-                    style={{ fontSize: 0 }}
-                  />
-                  <CloudUpload className={cn('mx-auto mb-1 h-6 w-6', isDragOver && refsSupported ? 'text-primary' : 'text-muted-foreground')} />
-                  <p className="text-sm font-medium">
-                    {!refsSupported
-                      ? '当前模型不支持参考图'
-                      : loading
-                        ? '读取中...'
-                        : isDragOver
-                          ? '将图像拖放到这里'
-                          : '参考图（可选）'}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {refsSupported ? '点击选择 · 拖放 · Ctrl+V 粘贴' : '请切换到支持编辑的模型'}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {pendingFiles.length} / {maxImages} 张
-                  </p>
+            <div className="studio-workbench-head flex flex-col gap-3 border-b border-border px-3 py-3 sm:px-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                    <SlidersHorizontal className="size-3.5" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">创作设置</p>
+                    <p className="truncate text-xs text-muted-foreground">选择模型与生成规格</p>
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setAssetPickerOpen(true)}
-                  disabled={loading || !refsSupported || pendingFiles.length >= maxImages}
-                  title={refsSupported ? '从素材库导入参考图' : '当前模型不支持参考图'}
-                  className="flex flex-1 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-primary/30 bg-primary/5 px-3 py-4 text-center transition-all hover:border-primary/50 hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <ImagePlus className="h-6 w-6 text-muted-foreground" />
-                  <span className="text-sm font-medium">素材库</span>
-                  <span className="text-xs text-muted-foreground">{refsSupported ? '导入参考图' : '不支持参考图'}</span>
-                </button>
+                <span className={cn(
+                  'inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium',
+                  currentMode === 'image-to-image'
+                    ? 'border-primary/25 bg-primary/10 text-primary'
+                    : 'border-border bg-muted/50 text-muted-foreground',
+                )}>
+                  <Layers3 className="size-3" />
+                  {currentMode === 'image-to-image' ? '图生图' : '文生图'}
+                </span>
               </div>
-            </div>
-
-            {pendingFiles.length > 0 && (
-              <div className="px-4 pb-2">
-                <AttachmentChips
-                  files={pendingFiles}
-                  onRemove={handleRemovePending}
-                  sourceKind="upload"
-                  sourceLabel="生图参考图"
-                  prompt={prompt}
-                  showDownload={false}
-                  showCopy
-                  showUseAsReference={false}
-                />
-              </div>
-            )}
-
-            <Textarea
-              ref={textareaRef}
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={pendingFiles.length > 0 ? '描述如何调整参考图...' : '描述你想要生成的图像...'}
-              rows={3}
-              className="resize-none rounded-none border-0 bg-transparent px-3 pt-3 placeholder:text-placeholder focus-visible:border-0 focus-visible:ring-0 sm:px-4 sm:pt-4"
-            />
-
-            <div className="px-3 pt-2 pb-2 sm:px-4">
               <GenerationParamsBar
                 value={{ model, outputSize, customSize, aspectRatio, temperature, parallelCount, gptImageAdvancedParams }}
                 onChange={handleParamsChange}
+                className="studio-params-bar"
               />
             </div>
 
-            <div className="ml-auto flex w-full justify-end gap-2 px-3 pb-2 sm:w-auto sm:px-4">
-              <Button variant="ghost" size="icon" onClick={() => setQuickPromptOpen(true)} title="快速提示词">
-                <Zap className="w-4 h-4" />
-              </Button>
-              <Button variant="ghost" size="icon" onClick={() => setTextAssetPickerOpen(true)} title="导入提示词素材">
-                <FileText className="w-4 h-4" />
-              </Button>
-              <Button variant="ghost" size="icon" onClick={() => void handleSavePromptAsset()} disabled={!prompt.trim()} title="存为提示词素材">
-                <Save className="w-4 h-4" />
-              </Button>
-              <Button variant="ghost" size="icon" onClick={handleOptimize} disabled={!prompt.trim()} title="优化提示词">
-                <Sparkles className="w-4 h-4" />
-              </Button>
-              <Button variant="outline" size="icon" onClick={handleClearDraft} disabled={!canClear} title="清空提示词和图片">
-                <X className="w-5 h-5" />
-              </Button>
-              <Button onClick={handleSubmit} disabled={!canSubmit} size="icon" title={currentMode === 'image-to-image' ? '按图生图提交' : '按文生图提交'}>
-                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <ArrowUp className="w-5 h-5" />}
-              </Button>
+            <div className="p-3 sm:p-4">
+              <div className="studio-prompt-surface overflow-hidden rounded-lg border border-border bg-background">
+                <Textarea
+                  ref={textareaRef}
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={pendingFiles.length > 0 ? '描述如何调整参考图...' : '描述你想要生成的图像...'}
+                  rows={3}
+                  className="min-h-36 resize-none rounded-none border-0 bg-transparent px-3 py-3 text-sm leading-6 placeholder:text-placeholder focus-visible:border-0 focus-visible:ring-0 sm:px-4"
+                />
+                <div className="flex items-center justify-between gap-2 border-t border-border bg-muted/35 px-2 py-2 sm:px-3">
+                  <div className="flex items-center gap-0.5">
+                    <Button variant="ghost" size="icon-sm" onClick={() => setQuickPromptOpen(true)} title="快速提示词">
+                      <Zap className="w-4 h-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon-sm" onClick={() => setTextAssetPickerOpen(true)} title="导入提示词素材">
+                      <FileText className="w-4 h-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon-sm" onClick={() => void handleSavePromptAsset()} disabled={!prompt.trim()} title="存为提示词素材">
+                      <Save className="w-4 h-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon-sm" onClick={handleOptimize} disabled={!prompt.trim()} title="优化提示词">
+                      <Sparkles className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Button variant="ghost" size="icon-sm" onClick={handleClearDraft} disabled={!canClear} title="清空提示词和图片">
+                      <X className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      onClick={handleSubmit}
+                      disabled={!canSubmit}
+                      size="sm"
+                      className="min-w-24 justify-center"
+                      title={currentMode === 'image-to-image' ? '按图生图提交' : '按文生图提交'}
+                    >
+                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowUp className="w-4 h-4" />}
+                      <span>生成图像</span>
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                onDrop={refsSupported ? handleDrop : undefined}
+                onDragOver={refsSupported ? handleDragOver : (e) => e.preventDefault()}
+                onDragLeave={() => setIsDragOver(false)}
+                className={cn(
+                  'studio-reference-rail mt-3 flex min-h-18 flex-col gap-2 rounded-lg border px-3 py-2.5 transition-colors sm:flex-row sm:items-center',
+                  !refsSupported
+                    ? 'border-border/70 bg-muted/30 opacity-70'
+                    : isDragOver
+                      ? 'border-primary bg-primary/10'
+                      : 'border-border bg-muted/20',
+                )}
+              >
+                <div className="flex shrink-0 items-center gap-2 sm:w-28">
+                  <span className={cn('flex size-7 items-center justify-center rounded-md', refsSupported ? 'bg-muted text-muted-foreground' : 'bg-muted/60 text-muted-foreground')}>
+                    <ImagePlus className="size-3.5" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-foreground">参考图</p>
+                    <p className="text-[11px] text-muted-foreground">{refsSupported ? `${pendingFiles.length} / ${maxImages} 张` : '当前模型不支持'}</p>
+                  </div>
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  {pendingFiles.length > 0 ? (
+                    <AttachmentChips
+                      files={pendingFiles}
+                      onRemove={handleRemovePending}
+                      sourceKind="upload"
+                      sourceLabel="生图参考图"
+                      prompt={prompt}
+                      showDownload={false}
+                      showCopy
+                      showUseAsReference={false}
+                    />
+                  ) : (
+                    <p className="text-xs text-muted-foreground">添加参考图后可进行图像编辑</p>
+                  )}
+                </div>
+
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <div className="relative">
+                    <Button variant="outline" size="sm" disabled={loading || !refsSupported || pendingFiles.length >= maxImages} title={refsSupported ? '上传参考图' : '当前模型不支持参考图'}>
+                      <CloudUpload className="size-3.5" />
+                      <span>上传</span>
+                    </Button>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={handleFileSelect}
+                      disabled={loading || !refsSupported || pendingFiles.length >= maxImages}
+                      className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
+                      aria-label="上传参考图"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAssetPickerOpen(true)}
+                    disabled={loading || !refsSupported || pendingFiles.length >= maxImages}
+                    title={refsSupported ? '从素材库导入参考图' : '当前模型不支持参考图'}
+                  >
+                    <ImagePlus className="size-3.5" />
+                    <span>素材库</span>
+                  </Button>
+                </div>
+              </div>
             </div>
           </>
         )}
       </div>
 
-      {uploadError && <p className="text-sm text-destructive">{uploadError}</p>}
+      {uploadError && <p className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">{uploadError}</p>}
       <MissingApiKeyDialog
         open={missingApiKeyDialogOpen}
         onOpenChange={setMissingApiKeyDialogOpen}

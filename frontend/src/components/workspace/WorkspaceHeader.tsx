@@ -1,6 +1,6 @@
 'use client';
 
-import { Copy, Download, ImagePlus, Maximize2, Settings, Wand2, X, Shuffle, User, Wallpaper, RefreshCw } from 'lucide-react';
+import { Copy, Download, Gauge, ImagePlus, Maximize2, Settings, Wand2, X, Shuffle, User, Wallpaper, RefreshCw } from 'lucide-react';
 import { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo, useId, forwardRef, useImperativeHandle } from 'react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -50,6 +50,90 @@ interface WorkspaceHeaderProps {
   onOpenSettings: () => void;
   onLogoClick?: () => void;
   sidebarMode?: boolean;
+}
+
+export function QueueStatusSummary({
+  queueStatus,
+  compact = false,
+}: {
+  queueStatus: NovaQueueStatus | null;
+  compact?: boolean;
+}) {
+  if (!queueStatus) {
+    return (
+      <div className={cn('nova-queue-summary text-xs text-muted-foreground', compact && 'nova-queue-summary-compact')}>
+        服务状态暂不可用
+      </div>
+    );
+  }
+
+  const queueAtCapacity = typeof queueStatus.queuedCount === 'number'
+    && typeof queueStatus.maxQueueSize === 'number'
+    && queueStatus.queuedCount >= queueStatus.maxQueueSize;
+
+  return (
+    <div className={cn('nova-queue-summary space-y-3', compact && 'nova-queue-summary-compact')}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className={cn('size-2 rounded-full', queueStatus.acceptingNewTasks ? 'bg-success' : 'bg-destructive')} />
+          <span className="text-sm font-medium text-foreground">任务队列</span>
+        </div>
+        <span className={cn(
+          'rounded-md px-1.5 py-0.5 text-[11px] font-medium',
+          queueStatus.acceptingNewTasks ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive',
+        )}>
+          {queueStatus.acceptingNewTasks ? '接收中' : '已暂停'}
+        </span>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <div className="nova-queue-metric">
+          <span>并发</span>
+          <strong>{queueStatus.processingCount}</strong>
+        </div>
+        <div className={cn('nova-queue-metric', queueAtCapacity && 'nova-queue-metric-alert')}>
+          <span>排队</span>
+          <strong>{queueStatus.queuedCount}</strong>
+        </div>
+        <div className="nova-queue-metric">
+          <span>上限</span>
+          <strong>{queueStatus.maxQueueSize ?? '-'}</strong>
+        </div>
+      </div>
+      {queueStatus.serverMessage && (
+        <p className="rounded-md border border-destructive/20 bg-destructive/10 px-2 py-1.5 text-xs leading-5 text-destructive">
+          {queueStatus.serverMessage}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function QueueStatusControl({ queueStatus }: { queueStatus: NovaQueueStatus | null }) {
+  const queueAtCapacity = queueStatus
+    && typeof queueStatus.queuedCount === 'number'
+    && typeof queueStatus.maxQueueSize === 'number'
+    && queueStatus.queuedCount >= queueStatus.maxQueueSize;
+
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger
+        className={cn(
+          buttonVariants({ variant: 'outline', size: 'sm' }),
+          'nova-queue-trigger gap-1.5 px-2 sm:px-2.5',
+          queueAtCapacity && 'border-destructive/35 text-destructive hover:text-destructive',
+        )}
+        title="任务队列状态"
+        aria-label="任务队列状态"
+      >
+        <Gauge className="size-4" />
+        <span className="hidden sm:inline">队列</span>
+        {queueStatus && <span className="font-mono text-[11px]">{queueStatus.queuedCount}</span>}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" sideOffset={6} className="w-64 p-3">
+        <QueueStatusSummary queueStatus={queueStatus} />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 export const WorkspaceHeader = forwardRef<WorkspaceHeaderRef, WorkspaceHeaderProps>(function WorkspaceHeader(
@@ -179,43 +263,9 @@ export const WorkspaceHeader = forwardRef<WorkspaceHeaderRef, WorkspaceHeaderPro
           </div>
         </div>
 
-        {/* ── 按钮 + 状态区域（宽屏 sidebarMode 时隐藏） ── */}
         <div className={cn('flex min-w-0 flex-1 items-center justify-end gap-1.5 sm:flex-none sm:flex-col sm:items-end sm:gap-2', sidebarMode && 'xl:hidden')}>
-          <div className="order-1 flex min-w-0 flex-1 flex-wrap items-center justify-start gap-1 sm:order-2 sm:flex-none sm:justify-end sm:gap-2">
-            {queueStatus ? (
-              <>
-                <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] leading-5 text-muted-foreground sm:px-3 sm:py-1 sm:text-xs sm:leading-normal">
-                  并发 {queueStatus.processingCount}
-                </span>
-                {typeof queueStatus.queuedCount === 'number' && typeof queueStatus.maxQueueSize === 'number' && (
-                  <span className={cn(
-                    'shrink-0 rounded-full px-1.5 py-0.5 text-[10px] leading-5 sm:px-3 sm:py-1 sm:text-xs sm:leading-normal',
-                    queueStatus.queuedCount >= queueStatus.maxQueueSize
-                      ? 'bg-destructive/10 text-destructive'
-                      : 'bg-muted text-muted-foreground'
-                  )}>
-                    排队 {queueStatus.queuedCount}<span className="hidden sm:inline"> (最大{queueStatus.maxQueueSize})</span>
-                  </span>
-                )}
-                {typeof queueStatus.queuedCount === 'number' && typeof queueStatus.maxQueueSize !== 'number' && (
-                  <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] leading-5 text-muted-foreground sm:px-3 sm:py-1 sm:text-xs sm:leading-normal">
-                    排队 {queueStatus.queuedCount}
-                  </span>
-                )}
-                <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] leading-5 text-muted-foreground sm:px-3 sm:py-1 sm:text-xs sm:leading-normal">
-                  状态 {queueStatus.acceptingNewTasks ? '开启' : '关闭'}
-                </span>
-                {queueStatus.serverMessage && (
-                  <span className="max-w-24 shrink-0 truncate rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] leading-5 text-destructive sm:max-w-none sm:px-3 sm:py-1 sm:text-xs sm:leading-normal">
-                    {queueStatus.serverMessage}
-                  </span>
-                )}
-              </>
-            ) : (
-              <span className="shrink-0 text-[10px] text-muted-foreground sm:text-xs">排队状态未知</span>
-            )}
-          </div>
-          <div className="order-2 flex shrink-0 items-center justify-end gap-1.5 sm:order-1 sm:max-w-full sm:flex-wrap sm:gap-2">
+          <div className="flex shrink-0 items-center justify-end gap-1.5 sm:max-w-full sm:flex-wrap sm:gap-2">
+            <QueueStatusControl queueStatus={queueStatus} />
             <DropdownMenu modal={false}>
               <DropdownMenuTrigger
                 className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-0 px-2 sm:gap-2 sm:px-2.5")}

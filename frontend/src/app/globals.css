@@ -4,25 +4,25 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Light theme (default) - Slate palette with Sky blue */
+/* Professional studio palette: neutral surfaces with a single cyan-blue accent. */
 :root {
-  --background: #ffffff;
-  --foreground: #0f172a;
-  --card: #f8fafc;
-  --card-foreground: #0f172a;
-  --popover: #ffffff;
-  --popover-foreground: #0f172a;
-  --border: #e2e8f0;
-  --input: #e2e8f0;
+  --background: #f4f6f8;
+  --foreground: #17212b;
+  --card: #fbfcfd;
+  --card-foreground: #17212b;
+  --popover: #fbfcfd;
+  --popover-foreground: #17212b;
+  --border: #dce2e8;
+  --input: #dce2e8;
   --primary: #0284C7;
   --primary-foreground: #ffffff;
-  --secondary: #f1f5f9;
-  --secondary-foreground: #0f172a;
-  --accent: #0EA5E9;
+  --secondary: #e9edf1;
+  --secondary-foreground: #17212b;
+  --accent: #0b92c8;
   --accent-foreground: #ffffff;
-  --muted: #f1f5f9;
-  --muted-foreground: #64748b;
-  --placeholder: #94a3b8;
+  --muted: #e9edf1;
+  --muted-foreground: #66727e;
+  --placeholder: #8a96a3;
   --destructive: #ef4444;
   --ring: #0284C7;
   --chart-1: #0284C7;
@@ -30,13 +30,13 @@
   --chart-3: #0ea5e9;
   --chart-4: #0284C7;
   --chart-5: #38BDF8;
-  --sidebar: #f8fafc;
-  --sidebar-foreground: #0f172a;
+  --sidebar: #eef1f4;
+  --sidebar-foreground: #17212b;
   --sidebar-primary: #0284C7;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #f1f5f9;
   --sidebar-accent-foreground: #0f172a;
-  --sidebar-border: #e2e8f0;
+  --sidebar-border: #dce2e8;
   --sidebar-ring: #0284C7;
   --radius: 0.625rem;
   --success: #22c55e;
@@ -49,25 +49,25 @@
   --processing-foreground: #ffffff;
 }
 
-/* Dark theme - Slate palette with Sky blue */
+/* Dark studio surfaces */
 [data-theme="dark"] {
-  --background: #020617;
-  --foreground: #f1f5f9;
-  --card: #0f172a;
-  --card-foreground: #f1f5f9;
-  --popover: #0f172a;
-  --popover-foreground: #f1f5f9;
-  --border: #334155;
-  --input: #334155;
+  --background: #11161b;
+  --foreground: #edf2f5;
+  --card: #181f26;
+  --card-foreground: #edf2f5;
+  --popover: #1b232b;
+  --popover-foreground: #edf2f5;
+  --border: #303b45;
+  --input: #303b45;
   --primary: #38BDF8;
-  --primary-foreground: #0f172a;
-  --secondary: #1e293b;
-  --secondary-foreground: #f1f5f9;
-  --accent: #0EA5E9;
+  --primary-foreground: #0d1b24;
+  --secondary: #222c35;
+  --secondary-foreground: #edf2f5;
+  --accent: #23a9da;
   --accent-foreground: #ffffff;
-  --muted: #1e293b;
-  --muted-foreground: #94a3b8;
-  --placeholder: #64748b;
+  --muted: #222c35;
+  --muted-foreground: #9aa8b4;
+  --placeholder: #71808c;
   --destructive: #ef4444;
   --ring: #38BDF8;
   --chart-1: #38BDF8;
@@ -75,13 +75,13 @@
   --chart-3: #0284C7;
   --chart-4: #38BDF8;
   --chart-5: #0EA5E9;
-  --sidebar: #0f172a;
-  --sidebar-foreground: #f1f5f9;
+  --sidebar: #151c22;
+  --sidebar-foreground: #edf2f5;
   --sidebar-primary: #38BDF8;
   --sidebar-primary-foreground: #0f172a;
   --sidebar-accent: #1e293b;
   --sidebar-accent-foreground: #f1f5f9;
-  --sidebar-border: #334155;
+  --sidebar-border: #303b45;
   --sidebar-ring: #38BDF8;
   --success: #22c55e;
   --success-foreground: #020617;
@@ -96,23 +96,23 @@
 /* System preference - dark */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --background: #020617;
-    --foreground: #f1f5f9;
-    --card: #0f172a;
-    --card-foreground: #f1f5f9;
-    --popover: #0f172a;
-    --popover-foreground: #f1f5f9;
-    --border: #334155;
-    --input: #334155;
+    --background: #11161b;
+    --foreground: #edf2f5;
+    --card: #181f26;
+    --card-foreground: #edf2f5;
+    --popover: #1b232b;
+    --popover-foreground: #edf2f5;
+    --border: #303b45;
+    --input: #303b45;
     --primary: #38BDF8;
-    --primary-foreground: #0f172a;
-    --secondary: #1e293b;
-    --secondary-foreground: #f1f5f9;
-    --accent: #0EA5E9;
+    --primary-foreground: #0d1b24;
+    --secondary: #222c35;
+    --secondary-foreground: #edf2f5;
+    --accent: #23a9da;
     --accent-foreground: #ffffff;
-    --muted: #1e293b;
-    --muted-foreground: #94a3b8;
-    --placeholder: #64748b;
+    --muted: #222c35;
+    --muted-foreground: #9aa8b4;
+    --placeholder: #71808c;
     --destructive: #ef4444;
     --ring: #38BDF8;
     --chart-1: #38BDF8;
@@ -120,13 +120,13 @@
     --chart-3: #0284C7;
     --chart-4: #38BDF8;
     --chart-5: #0EA5E9;
-    --sidebar: #0f172a;
-    --sidebar-foreground: #f1f5f9;
+    --sidebar: #151c22;
+    --sidebar-foreground: #edf2f5;
     --sidebar-primary: #38BDF8;
     --sidebar-primary-foreground: #0f172a;
     --sidebar-accent: #1e293b;
     --sidebar-accent-foreground: #f1f5f9;
-    --sidebar-border: #334155;
+    --sidebar-border: #303b45;
     --sidebar-ring: #38BDF8;
     --success: #22c55e;
     --success-foreground: #020617;
@@ -203,9 +203,161 @@ html[data-wide-mode] {
   overflow: hidden;
 }
 
-body {
+  body {
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
   transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Image generation workbench */
+.studio-workbench {
+  --studio-surface: color-mix(in srgb, var(--card) 88%, var(--background));
+  --studio-subtle: color-mix(in srgb, var(--muted) 58%, transparent);
+}
+
+.studio-workbench-head {
+  background: color-mix(in srgb, var(--muted) 22%, transparent);
+}
+
+.studio-params-bar {
+  gap: 0.375rem;
+}
+
+.studio-params-bar [data-slot="button"] {
+  border-color: color-mix(in srgb, var(--border) 86%, transparent);
+  background: color-mix(in srgb, var(--background) 52%, transparent);
+}
+
+.studio-params-bar [data-slot="button"]:hover {
+  border-color: color-mix(in srgb, var(--primary) 32%, var(--border));
+  background: color-mix(in srgb, var(--primary) 8%, var(--background));
+}
+
+.studio-prompt-surface:focus-within {
+  border-color: color-mix(in srgb, var(--primary) 48%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.studio-reference-rail {
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.studio-reference-rail .group > button {
+  border-radius: 0.5rem;
+}
+
+.studio-result-card {
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.studio-result-card:hover {
+  border-color: color-mix(in srgb, var(--primary) 32%, var(--border));
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--foreground) 7%, transparent);
+  transform: translateY(-1px);
+}
+
+.studio-result-toolbar {
+  background: color-mix(in srgb, var(--muted) 20%, transparent);
+}
+
+.studio-result-toolbar [data-slot="button"] {
+  color: var(--muted-foreground);
+}
+
+.studio-result-toolbar [data-slot="button"]:hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--primary) 10%, var(--muted));
+}
+
+.studio-history-day-divider {
+  min-height: 20px;
+}
+
+.studio-history-job,
+.studio-waiting-card,
+.studio-failed-card {
+  animation: studio-history-enter 180ms ease-out both;
+}
+
+.studio-history-empty {
+  min-height: 220px;
+  border: 1px dashed color-mix(in srgb, var(--border) 85%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--muted) 18%, transparent);
+}
+
+.studio-waiting-art::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 20%, color-mix(in srgb, var(--processing) 15%, transparent) 50%, transparent 80%);
+  content: '';
+  animation: studio-loading-sweep 1.8s ease-in-out infinite;
+}
+
+.nova-queue-summary {
+  min-width: 220px;
+}
+
+.nova-queue-summary-compact {
+  min-width: 0;
+}
+
+.nova-queue-metric {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: 6px;
+  padding: 7px 8px;
+  background: color-mix(in srgb, var(--muted) 35%, transparent);
+}
+
+.nova-queue-metric span {
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+
+.nova-queue-metric strong {
+  color: var(--foreground);
+  font-family: var(--font-mono), monospace;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.nova-queue-metric-alert strong {
+  color: var(--destructive);
+}
+
+.studio-model-catalog-item {
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+@keyframes studio-history-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes studio-loading-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+@media (max-width: 639px) {
+  .studio-reference-rail {
+    align-items: stretch;
+  }
+
+  .studio-reference-rail > :last-child {
+    justify-content: flex-end;
+  }
+}
+
+/* Normal mode keeps a deliberate reading width, so a single result does not fill a laptop screen. */
+@media (min-width: 640px) {
+  .studio-history-list:not(.studio-history-list-wide) .studio-history-day-group {
+    width: min(100%, 760px);
+    margin-inline: auto;
+  }
 }
 
 /* Electron desktop polish: scoped to the runtime shell so Web/Docker keeps its layout. */
@@ -409,6 +561,13 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .nova-desktop-shell {
+    animation: none;
+  }
+
+  .studio-history-job,
+  .studio-waiting-card,
+  .studio-failed-card,
+  .studio-waiting-art::after {
     animation: none;
   }
 }

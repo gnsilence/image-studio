@@ -254,7 +254,7 @@ export function HistoryImagePreview({
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex select-none items-center justify-center bg-black/80"
+      className="studio-image-preview fixed inset-0 z-[9999] flex select-none items-center justify-center bg-black/90 backdrop-blur-sm"
       style={{
         position: 'fixed',
         top: 0,
@@ -268,7 +268,8 @@ export function HistoryImagePreview({
     >
       <button
         onClick={onClose}
-        className="absolute top-4 right-4 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-black/40 text-white/70 transition-colors hover:bg-black/60 hover:text-white"
+        className="absolute right-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-lg border border-white/15 bg-black/45 text-white/70 backdrop-blur-md transition-colors hover:bg-black/70 hover:text-white"
+        title="关闭"
       >
         <X className="w-5 h-5" />
       </button>
@@ -278,14 +279,16 @@ export function HistoryImagePreview({
           <button
             onClick={prevImage}
             disabled={currentIndex === 0}
-            className="absolute left-4 top-1/2 z-10 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-white/70 transition-colors hover:bg-black/60 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+          className="absolute left-4 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-lg border border-white/15 bg-black/45 text-white/70 backdrop-blur-md transition-colors hover:bg-black/70 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+          title="上一张"
           >
             <ChevronLeft className="w-6 h-6" />
           </button>
           <button
             onClick={nextImage}
             disabled={currentIndex === images.length - 1}
-            className="absolute right-4 top-1/2 z-10 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-white/70 transition-colors hover:bg-black/60 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+          className="absolute right-4 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-lg border border-white/15 bg-black/45 text-white/70 backdrop-blur-md transition-colors hover:bg-black/70 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+          title="下一张"
           >
             <ChevronRight className="w-6 h-6" />
           </button>
@@ -293,12 +296,12 @@ export function HistoryImagePreview({
       )}
 
       {isMultiple && (
-        <div className="absolute top-4 left-1/2 z-10 -translate-x-1/2 rounded-full bg-black/50 px-4 py-1.5 backdrop-blur-sm">
+        <div className="absolute left-1/2 top-4 z-10 -translate-x-1/2 rounded-lg border border-white/15 bg-black/50 px-3 py-1.5 backdrop-blur-md">
           <span className="text-sm tabular-nums text-white/80">{currentIndex + 1} / {images.length}</span>
         </div>
       )}
 
-      <div className="absolute bottom-6 left-1/2 z-10 flex max-w-[calc(100vw-1rem)] -translate-x-1/2 items-center gap-1 overflow-x-auto rounded-full bg-black/50 px-2 py-1.5 backdrop-blur-sm">
+      <div className="absolute bottom-6 left-1/2 z-10 flex max-w-[calc(100vw-1rem)] -translate-x-1/2 items-center gap-1 overflow-x-auto rounded-lg border border-white/15 bg-black/55 px-2 py-1.5 shadow-2xl backdrop-blur-md">
         <button onClick={zoomOut} className="flex h-8 w-8 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white" title="缩小">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3M8 11h6" /></svg>
         </button>

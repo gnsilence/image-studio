@@ -16,7 +16,7 @@ import { useQueueStatus } from '@/hooks/useQueueStatus';
 import { useWideMode } from '@/hooks/useWideMode';
 import { useServerTaskPolling } from '@/hooks/useServerTaskPolling';
 import { useWorkspaceJobs } from '@/hooks/useWorkspaceJobs';
-import { WorkspaceHeader, type WorkspaceHeaderRef } from '@/components/workspace/WorkspaceHeader';
+import { QueueStatusSummary, WorkspaceHeader, type WorkspaceHeaderRef } from '@/components/workspace/WorkspaceHeader';
 import { WorkspaceModeTabs } from '@/components/workspace/WorkspaceModeTabs';
 import { HistoryJobList, type GenerationHistoryFilter, type HistoryClearScope } from '@/components/workspace/results/HistoryJobList';
 import { PromptGalleryAccessDialog, usePromptGalleryAccess } from '@/components/workspace/PromptGalleryAccess';
@@ -319,33 +319,8 @@ export function WorkspaceShell() {
                     </Button>
                   </div>
 
-                  <div className="nova-desktop-status flex flex-col gap-1">
-                    <div className="h-px bg-border" />
-                    {queueStatus ? (
-                      <div className="flex flex-col gap-1">
-                        <span className="rounded-full bg-muted px-3 py-1 text-center text-xs text-muted-foreground">
-                          并发 {queueStatus.processingCount}
-                        </span>
-                        <span className={cn(
-                          'rounded-full px-3 py-1 text-center text-xs',
-                          typeof queueStatus.queuedCount === 'number' && typeof queueStatus.maxQueueSize === 'number' && queueStatus.queuedCount >= queueStatus.maxQueueSize
-                            ? 'bg-destructive/10 text-destructive'
-                            : 'bg-muted text-muted-foreground'
-                        )}>
-                          排队 {queueStatus.queuedCount}{typeof queueStatus.maxQueueSize === 'number' ? ` (最大${queueStatus.maxQueueSize})` : ''}
-                        </span>
-                        <span className="rounded-full bg-muted px-3 py-1 text-center text-xs text-muted-foreground">
-                          状态 {queueStatus.acceptingNewTasks ? '开启' : '关闭'}
-                        </span>
-                        {queueStatus.serverMessage && (
-                          <span className="rounded-xl bg-destructive/10 px-3 py-1 text-center text-xs text-destructive">
-                            {queueStatus.serverMessage}
-                          </span>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="text-center text-xs text-muted-foreground">排队状态未知</span>
-                    )}
+                  <div className="nova-desktop-status">
+                    <QueueStatusSummary queueStatus={queueStatus} compact />
                   </div>
                 </div>)}
             </div>
