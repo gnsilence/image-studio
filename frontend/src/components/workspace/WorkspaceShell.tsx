@@ -389,7 +389,6 @@ export function WorkspaceShell() {
                       workspace.retryJob(job);
                       setActiveTab('image-generation');
                     }}
-                    onRetryDownload={workspace.retryDownload}
                     onClear={jobId => void workspace.removeJob(jobId)}
                     onClearAll={scope => setGenerationClearScope(scope)}
                     onCancel={jobId => workspace.setCancelJobId(jobId)}

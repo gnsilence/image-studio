@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ackNovaTask, createNovaTask, resolveImageTaskProvider, type NovaTaskResponse } from '@/lib/ccode-task-client';
-import { downloadAndStoreImages } from '@/lib/image-downloader';
+import { createNovaTask, resolveImageTaskProvider, type NovaTaskResponse } from '@/lib/ccode-task-client';
 import type { StoredJob } from '@/lib/job-store';
 import { BUILTIN_IMAGE_PRESETS, DEFAULT_DEFAULTS } from '@/lib/nova-models';
 import {
@@ -12,23 +11,12 @@ vi.mock('@/lib/ccode-task-client', async importOriginal => {
   const actual = await importOriginal<typeof import('@/lib/ccode-task-client')>();
   return {
     ...actual,
-    ackNovaTask: vi.fn(),
     createNovaTask: vi.fn(),
     resolveImageTaskProvider: vi.fn(),
   };
 });
 
-vi.mock('@/lib/image-downloader', async importOriginal => {
-  const actual = await importOriginal<typeof import('@/lib/image-downloader')>();
-  return {
-    ...actual,
-    downloadAndStoreImages: vi.fn(),
-  };
-});
-
-const mockedAckNovaTask = vi.mocked(ackNovaTask);
 const mockedCreateNovaTask = vi.mocked(createNovaTask);
-const mockedDownloadAndStoreImages = vi.mocked(downloadAndStoreImages);
 const mockedResolveImageTaskProvider = vi.mocked(resolveImageTaskProvider);
 
 function makeJob(overrides: Partial<StoredJob> = {}): StoredJob {
@@ -84,11 +72,8 @@ beforeEach(() => {
     textModels: [],
     defaults: DEFAULT_DEFAULTS,
   }));
-  mockedAckNovaTask.mockReset();
-  mockedAckNovaTask.mockResolvedValue(undefined);
   mockedCreateNovaTask.mockReset();
   mockedCreateNovaTask.mockResolvedValue('task-advanced-1');
-  mockedDownloadAndStoreImages.mockReset();
   mockedResolveImageTaskProvider.mockReset();
   mockedResolveImageTaskProvider.mockReturnValue({
     apiKey: 'test-api-key',
@@ -128,43 +113,17 @@ describe('submitTextToImage', () => {
 });
 
 describe('finalizeCompletedServerTask', () => {
-  it('全部 URL 图片缓存成功后替换为 blob URL 并 ack 服务端任务', async () => {
-    mockedDownloadAndStoreImages.mockImplementation(async (_jobId, _imageRefs, options) => {
-      options?.onProgress?.({ index: 0, status: 'downloading', loadedBytes: 5, totalBytes: 10, percent: 50 });
-      options?.onProgress?.({ index: 0, status: 'cached', loadedBytes: 10, totalBytes: 10, percent: 100 });
-      return {
-        successCount: 1,
-        failCount: 0,
-        blobUrls: ['blob:cached-0'],
-        items: [{ index: 0, status: 'cached', loadedBytes: 10, totalBytes: 10, percent: 100 }],
-      };
-    });
+  it('保留后端返回的 URL 图片结果，不再触发前端下载缓存', async () => {
     const job = makeJob();
     const { actions, getJob } = createActions(job);
 
     await finalizeCompletedServerTask(job, makeCompletedTask(['URL:/api/nova/images/task-1/0']), actions);
 
-    expect(actions.completeJob).toHaveBeenCalledTimes(2);
-    expect(getJob().images).toEqual(['blob:cached-0']);
-    expect(getJob().serverTaskAcked).toBe(true);
-    expect(getJob().imageDownloadProgress).toBeUndefined();
-    expect(mockedAckNovaTask).toHaveBeenCalledWith('task-1');
+    expect(actions.completeJob).toHaveBeenCalledTimes(1);
+    expect(getJob().images).toEqual(['URL:/api/nova/images/task-1/0']);
   });
 
-  it('部分 URL 图片缓存失败时保留 URL 引用和失败进度且不 ack', async () => {
-    mockedDownloadAndStoreImages.mockImplementation(async (_jobId, _imageRefs, options) => {
-      options?.onProgress?.({ index: 0, status: 'cached', loadedBytes: 10, totalBytes: 10, percent: 100 });
-      options?.onProgress?.({ index: 1, status: 'failed', loadedBytes: 2, totalBytes: 10, percent: 20, error: 'stream failed' });
-      return {
-        successCount: 1,
-        failCount: 1,
-        blobUrls: ['blob:cached-0', ''],
-        items: [
-          { index: 0, status: 'cached', loadedBytes: 10, totalBytes: 10, percent: 100 },
-          { index: 1, status: 'failed', loadedBytes: 2, totalBytes: 10, percent: 20, error: 'stream failed' },
-        ],
-      };
-    });
+  it('多张 URL 图片也直接保留原始引用', async () => {
     const job = makeJob();
     const { actions, getJob } = createActions(job);
 
@@ -174,12 +133,9 @@ describe('finalizeCompletedServerTask', () => {
     ]), actions);
 
     expect(getJob().images).toEqual([
-      'blob:cached-0',
+      'URL:/api/nova/images/task-1/0',
       'URL:/api/nova/images/task-1/1',
     ]);
-    expect(getJob().serverTaskAcked).toBe(false);
-    expect(getJob().warning).toContain('1 张图片本地缓存失败');
-    expect(getJob().imageDownloadProgress?.failed).toBe(1);
-    expect(mockedAckNovaTask).not.toHaveBeenCalled();
+    expect(getJob().warning).toBeUndefined();
   });
 });

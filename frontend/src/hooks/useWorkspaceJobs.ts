@@ -13,7 +13,6 @@ import type { ModelId } from '@/lib/gemini-config';
 import { getCompatibleRetryData, type RetryData } from '@/lib/model-capabilities';
 import { classifyFailureFromMessage } from '@/lib/task-failure';
 import { deleteStoredBlobs, revokeBlobUrls } from '@/lib/image-downloader';
-import { retryDownloadCachedImages } from '@/lib/workspace-task-service';
 
 function isWaitingJob(job: StoredJob): boolean {
   return job.status === 'processing' || job.status === 'queued' || job.status === '排队中';
@@ -191,24 +190,6 @@ export function useWorkspaceJobs() {
     setRetryData(getCompatibleRetryData(job));
   }, []);
 
-  /**
-   * "重新下载"按钮回调：尝试把 URL: 引用的图片缓存到本地 IndexedDB。
-   * 成功 → 清空 warning 并 ack 服务端任务；失败 → 保持现状，UI 仍显示 warning。
-   * 不抛错；调用方（按钮）通过本地 retrying 状态显示 spinner，无需感知错误细节。
-   */
-  const retryDownload = useCallback(async (job: StoredJob) => {
-    try {
-      await retryDownloadCachedImages(job, {
-        addJob,
-        replaceJob,
-        completeJob,
-        failJob,
-      });
-    } catch {
-      // retryDownload failure is non-critical
-    }
-  }, [addJob, replaceJob, completeJob, failJob]);
-
   return {
     hasApiKey,
     jobs,
@@ -223,7 +204,6 @@ export function useWorkspaceJobs() {
     setClearAllDialogOpen,
     setCancelJobId,
     retryJob,
-    retryDownload,
     hasJob,
     getJob,
     addJob,

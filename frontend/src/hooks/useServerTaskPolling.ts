@@ -64,11 +64,9 @@ export function useServerTaskPolling(
         const currentJob = actions.getJob?.(jobId) ?? job;
 
         if (task.status === 'completed') {
-          // 幂等：重连重订阅或 HTTP 兜底可能重复投递 completed；已完成且已 ack 则跳过，
-          // 避免重复下载图片与重复 ack。
-          if (currentJob.status === 'completed' && currentJob.serverTaskAcked) return;
-          // finalizeCompletedServerTask 会在内部完成图片入库 + ack；
-          // .catch 兜底下载阶段可能抛出的未处理 rejection。
+          // 幂等：重连重订阅或 HTTP 兜底可能重复投递 completed；已完成则跳过。
+          if (currentJob.status === 'completed') return;
+          // finalizeCompletedServerTask 会完成图片入库；.catch 兜底落库阶段可能抛出的未处理 rejection。
           void finalizeCompletedServerTask(currentJob, task, actions).catch(() => { /* 已落库 */ });
           return;
         }

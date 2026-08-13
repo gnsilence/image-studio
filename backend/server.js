@@ -71,7 +71,7 @@ function getRuntimeEnv() {
   const now = Date.now();
   if (!_runtimeEnvCache.values || now >= _runtimeEnvCache.expiresAt) {
     _runtimeEnvCache = {
-      values: { ...process.env, ...parseEnvFile() },
+      values: { ...parseEnvFile(), ...process.env },
       expiresAt: now + 1000,
     };
   }
@@ -100,6 +100,14 @@ function normalizeProtocolBaseUrl(protocol, url) {
     return normalized.endsWith('/v1beta') ? normalized.slice(0, -7) : normalized;
   }
   return normalized.endsWith('/v1') ? normalized.slice(0, -3) : normalized;
+}
+
+function getUrlHost(value) {
+  try {
+    return new URL(value).host;
+  } catch {
+    return 'unknown';
+  }
 }
 
 function resolveNovaApiBaseUrl() {
@@ -421,8 +429,7 @@ function saveImageToDisk(taskId, itemIndex, subIndex, imageBuffer, mimeType) {
 
 async function downloadUrlToDisk(taskId, itemIndex, subIndex, imageUrl, trace) {
   const startedAt = Date.now();
-  let sourceHost = 'unknown';
-  try { sourceHost = new URL(imageUrl).host; } catch { /* keep URL out of logs */ }
+  const sourceHost = getUrlHost(imageUrl);
   logTaskStage(trace, 'result_download_started', { subIndex, sourceHost });
   const response = await fetchWithTimeout(imageUrl, {});
   logTaskStage(trace, 'result_download_headers_received', {
@@ -1475,7 +1482,7 @@ async function generateSingleImage(apiKey, request, taskId, index) {
           logTaskStage(trace, 'result_download_failed_remote_fallback', {
             subIndex: subIdx,
             elapsedMs: Date.now() - trace.startedAt,
-            sourceHost: (() => { try { return new URL(remoteUrl).host; } catch { return 'unknown'; } })(),
+            sourceHost: getUrlHost(remoteUrl),
             errorName: error?.name || '',
             errorMessage: String(error?.message || error).slice(0, 300),
             causeCode: error?.cause?.code || '',

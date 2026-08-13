@@ -292,7 +292,12 @@ export async function checkModelsAvailability(
   }
 }
 
-export function resolveImageTaskProvider(modelId: string): { apiKey: string; baseUrl: string; protocol: ProviderProtocol; modelId: string } {
+export function resolveImageTaskProvider(modelId: string): {
+  apiKey: string;
+  baseUrl: string;
+  protocol: ProviderProtocol;
+  modelId: string;
+} {
   const registry = loadRegistry();
   const model = getImageModelById(registry, modelId);
   if (!model) throw new Error(`未找到图片模型配置: ${modelId}`);

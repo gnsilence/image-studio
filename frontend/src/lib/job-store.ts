@@ -1,5 +1,5 @@
 import type { GptImageBackground, GptImageQuality, GptImageStyle } from '@/lib/model-capabilities';
-import { makeStoredBlobRef, type ImageDownloadProgressItem } from '@/lib/image-downloader';
+import { makeStoredBlobRef } from '@/lib/image-downloader';
 import { openImageDb, IMG_STORE } from '@/lib/image-db';
 import { getDesktopBridge } from '@/lib/desktop-bridge';
 import { blobToBytes, blobToDataUrl, dataUrlToBlob, storedFileToBlob } from '@/lib/desktop-binary';
@@ -15,13 +15,6 @@ export interface RefImageData {
   dataUrl: string;
   mimeType: string;
   badge?: string;
-}
-
-export interface ImageDownloadProgress {
-  total: number;
-  completed: number;
-  failed: number;
-  items: ImageDownloadProgressItem[];
 }
 
 export interface StoredJob {
@@ -48,11 +41,9 @@ export interface StoredJob {
   parallelCount?: number;
   images?: string[];
   serverTaskId?: string;
-  serverTaskAcked?: boolean;
   refImages?: RefImageData[];
   originalPrompt?: string;
   blobUrls?: string[];
-  imageDownloadProgress?: ImageDownloadProgress;
 }
 
 const JOBS_KEY = 'nova-jobs';
@@ -166,7 +157,6 @@ export function saveJobs(jobs: StoredJob[]) {
     delete job.images;
     delete job.refImages;
     delete job.blobUrls;
-    delete job.imageDownloadProgress;
     return job;
   });
   try {

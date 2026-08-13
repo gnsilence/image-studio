@@ -15,7 +15,7 @@
     "test": "cd frontend && npm run test",
     "test:ui": "cd frontend && npm run test:ui",
     "test:run": "cd frontend && npm run test:run",
-    "test:desktop": "node --test backend/server.test.js desktop/storage/storage.test.js desktop/storage/backup-service.test.js desktop/s3-service.test.js desktop/updater.test.js",
+    "test:desktop": "node --test backend/server.test.js desktop/storage/storage.test.js desktop/storage/backup-service.test.js desktop/s3-service.test.js desktop/updater.test.js desktop/main.test.js",
     "desktop:dev": "cross-env NOVA_DESKTOP_BUILD=1 npm run build && electron .",
     "desktop:build": "node scripts/desktop-build.js --dir",
     "desktop:dist": "node scripts/desktop-build.js --dist",

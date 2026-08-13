@@ -4,6 +4,8 @@ const {
   app,
   BrowserWindow,
   dialog,
+  Menu,
+  Tray,
   safeStorage,
   session,
   shell,
@@ -39,6 +41,7 @@ let storage = null;
 let backend = null;
 let updater = null;
 let s3Service = null;
+let tray = null;
 let disposeIpc = null;
 let quitting = false;
 let shutdownComplete = false;
@@ -57,6 +60,82 @@ function isAllowedExternalUrl(rawUrl) {
   } catch {
     return false;
   }
+}
+
+function getDesktopAssetPath(fileName) {
+  const candidates = [
+    path.join(app.getAppPath(), 'frontend', 'out', fileName),
+    path.join(app.getAppPath(), 'frontend', 'public', fileName),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return candidates[0];
+}
+
+function showMainWindow() {
+  if (!mainWindow) return;
+  mainWindow.setSkipTaskbar(false);
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
+  }
+  if (!mainWindow.isVisible()) {
+    mainWindow.show();
+  }
+  mainWindow.focus();
+}
+
+function hideMainWindowToTray() {
+  if (!mainWindow) return;
+  mainWindow.setSkipTaskbar(true);
+  mainWindow.hide();
+}
+
+async function requestAppQuit() {
+  if (quitting || closeApproved) return;
+
+  try {
+    if (backend) {
+      const pending = await backend.hasPendingTasks();
+      if (pending) {
+        const options = {
+          type: 'warning',
+          title: '仍有任务运行',
+          message: '退出会中断正在排队或生成的任务。',
+          buttons: ['继续使用', '退出'],
+          defaultId: 0,
+          cancelId: 0,
+          noLink: true,
+        };
+        const answer = mainWindow
+          ? await dialog.showMessageBox(mainWindow, options)
+          : await dialog.showMessageBox(options);
+        if (answer.response !== 1) return;
+      }
+    }
+  } catch {
+    // If the pending-task check fails, still allow a manual quit request to proceed.
+  }
+
+  closeApproved = true;
+  app.quit();
+}
+
+function createTray() {
+  if (tray) return tray;
+  const trayIcon = process.platform === 'win32'
+    ? getDesktopAssetPath('app.ico')
+    : getDesktopAssetPath('icon-192.png');
+  tray = new Tray(trayIcon);
+  tray.setToolTip(APP_NAME);
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: '显示窗口', click: () => showMainWindow() },
+    { type: 'separator' },
+    { label: '退出', click: () => { void requestAppQuit(); } },
+  ]));
+  tray.on('click', () => showMainWindow());
+  tray.on('double-click', () => showMainWindow());
+  return tray;
 }
 
 function attachDesktopToken(address, token) {
@@ -120,7 +199,7 @@ async function createMainWindow() {
     },
   };
   if (process.platform === 'win32') {
-    windowOptions.icon = path.join(app.getAppPath(), 'frontend', 'out', 'app.ico');
+    windowOptions.icon = getDesktopAssetPath('app.ico');
   }
   const window = new BrowserWindow(windowOptions);
   mainWindow = window;
@@ -137,25 +216,11 @@ async function createMainWindow() {
       if (isAllowedExternalUrl(url)) void shell.openExternal(url);
     }
   });
-  window.once('ready-to-show', () => window.show());
-  window.on('close', async event => {
+  window.once('ready-to-show', () => showMainWindow());
+  window.on('close', event => {
     if (quitting || closeApproved) return;
     event.preventDefault();
-    const pending = await backend.hasPendingTasks();
-    if (pending) {
-      const answer = await dialog.showMessageBox(window, {
-        type: 'warning',
-        title: '仍有任务运行',
-        message: '退出会中断正在排队或生成的任务。',
-        buttons: ['继续使用', '退出'],
-        defaultId: 0,
-        cancelId: 0,
-        noLink: true,
-      });
-      if (answer.response !== 1) return;
-    }
-    closeApproved = true;
-    app.quit();
+    hideMainWindowToTray();
   });
   window.on('closed', () => { mainWindow = null; });
 
@@ -236,11 +301,16 @@ async function initialize() {
   updater.on('status', status => mainWindow?.webContents.send('desktop:updater:status-changed', status));
   updater.start();
   await createMainWindow();
+  createTray();
   logStartup('initialize:done');
 }
 
 async function shutdown() {
   updater?.stop();
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
   disposeIpc?.();
   disposeIpc = null;
   await backend?.stop();
@@ -251,10 +321,11 @@ async function shutdown() {
 }
 
 app.on('second-instance', () => {
-  if (!mainWindow) return;
-  if (mainWindow.isMinimized()) mainWindow.restore();
-  mainWindow.show();
-  mainWindow.focus();
+  showMainWindow();
+});
+
+app.on('activate', () => {
+  showMainWindow();
 });
 
 app.on('before-quit', event => {
@@ -271,7 +342,6 @@ app.on('before-quit', event => {
 
 app.on('window-all-closed', () => {
   logStartup('app:window-all-closed');
-  app.quit();
 });
 
 app.whenReady()

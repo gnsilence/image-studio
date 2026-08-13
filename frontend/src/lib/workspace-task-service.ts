@@ -1,6 +1,5 @@
 import {
   createNovaTask,
-  ackNovaTask,
   resolveImageTaskProvider,
   type NovaTaskResponse,
   type ImageReference,
@@ -15,7 +14,6 @@ import {
   type ParallelCount,
 } from '@/lib/model-capabilities';
 import { generateUUID } from '@/lib/uuid';
-import { downloadAndStoreImages, type DownloadResult, type ImageDownloadProgressItem } from '@/lib/image-downloader';
 
 export interface TextToImageSubmitInput {
   prompts: string[];
@@ -51,44 +49,6 @@ export interface SubmitActions {
   failJob: (jobId: string, error: string, options?: { terminal?: boolean }) => Promise<void>;
   /** 可选：返回最新 job 快照，供异步流程避免使用过期闭包。 */
   getJob?: (jobId: string) => StoredJob | undefined;
-}
-
-function buildImageDownloadProgress(items: ImageDownloadProgressItem[]): StoredJob['imageDownloadProgress'] {
-  if (items.length === 0) return undefined;
-  return {
-    total: items.length,
-    completed: items.filter(item => item.status === 'cached').length,
-    failed: items.filter(item => item.status === 'failed').length,
-    items,
-  };
-}
-
-function createInitialImageDownloadProgress(images: string[]): StoredJob['imageDownloadProgress'] {
-  return buildImageDownloadProgress(images.map((image, index) => ({
-    index,
-    status: image.startsWith('URL:') ? 'pending' : 'cached',
-    loadedBytes: 0,
-  })));
-}
-
-function applyImageDownloadProgress(
-  actions: SubmitActions,
-  jobId: string,
-  images: string[],
-  item: ImageDownloadProgressItem,
-): void {
-  actions.replaceJob(jobId, current => {
-    const currentItems = current.imageDownloadProgress?.items?.length === images.length
-      ? current.imageDownloadProgress.items
-      : createInitialImageDownloadProgress(images)?.items || [];
-    const items = currentItems.map(existing => (
-      existing.index === item.index ? { ...existing, ...item } : existing
-    ));
-    return {
-      ...current,
-      imageDownloadProgress: buildImageDownloadProgress(items),
-    };
-  });
 }
 
 function buildImageReferences(files: ImageToImageSubmitInput['files']): ImageReference[] {
@@ -147,7 +107,6 @@ export function buildCompletedJobFromTask(job: StoredJob, task: NovaTaskResponse
       images,
       imageData: images[0],
       warning: task.warning,
-      serverTaskAcked: true,
     };
   }
 
@@ -166,65 +125,15 @@ export async function finalizeCompletedServerTask(
   const images = task.result?.images || [];
 
   if (task.status === 'completed' && images.length > 0) {
-    const hasUrlImages = images.some(img => img.startsWith('URL:'));
-
-    if (!hasUrlImages) {
-      const finalJob: StoredJob = {
-        ...job,
-        status: 'completed',
-        images,
-        imageData: images[0],
-        warning: task.warning,
-        serverTaskAcked: true,
-        imageDownloadProgress: undefined,
-      };
-      await actions.completeJob(job.id, finalJob);
-
-      if (job.serverTaskId) {
-        await ackNovaTask(job.serverTaskId);
-      }
-      return;
-    }
-
-    await actions.completeJob(job.id, {
+    const finalJob: StoredJob = {
       ...job,
       status: 'completed',
       images,
       imageData: images[0],
       warning: task.warning,
-      serverTaskAcked: false,
       blobUrls: undefined,
-      imageDownloadProgress: createInitialImageDownloadProgress(images),
-    });
-
-    const result: DownloadResult = await downloadAndStoreImages(job.id, images, {
-      onProgress: item => applyImageDownloadProgress(actions, job.id, images, item),
-    });
-    const finalImages = images.map((img, index) => (
-      img.startsWith('URL:') && result.blobUrls[index] ? result.blobUrls[index] : img
-    ));
-    const blobUrls = result.blobUrls.filter(url => url && url.startsWith('blob:'));
-    const remainingUrlCount = finalImages.filter(img => img.startsWith('URL:')).length;
-    const allCached = remainingUrlCount === 0;
-    const finalJob: StoredJob = {
-      ...job,
-      status: 'completed',
-      images: finalImages,
-      imageData: finalImages[0],
-      warning: allCached
-        ? task.warning
-        : result.successCount === 0
-          ? '本地缓存创建失败，已通过远程 URL 渲染。可点击「重新下载」重试缓存，或尽快保存图片（约 12 小时后服务端清理）。'
-          : `${result.failCount} 张图片本地缓存失败（已通过远程 URL 渲染），已完成 ${result.successCount} 张。可点击「重新下载」重试缓存。`,
-      serverTaskAcked: allCached,
-      blobUrls: blobUrls.length > 0 ? blobUrls : undefined,
-      imageDownloadProgress: allCached ? undefined : buildImageDownloadProgress(result.items),
     };
     await actions.completeJob(job.id, finalJob);
-
-    if (allCached && job.serverTaskId) {
-      await ackNovaTask(job.serverTaskId);
-    }
     return;
   }
 
@@ -234,81 +143,6 @@ export async function finalizeCompletedServerTask(
     error: task.error || (task.status === 'expired' ? '该任务已超出取回时间' : '后端任务失败'),
   };
   await actions.failJob(job.id, finalJob.error || '任务失败');
-}
-
-export interface RetryDownloadResult {
-  successCount: number;
-  failCount: number;
-  /** 仍以 URL: 开头、未能缓存到本地的图片张数（部分或全部）。 */
-  remainingUrlCount: number;
-}
-
-/**
- * 重新下载并缓存仍以 URL: 开头的图片到 IndexedDB。
- * 用于"重新下载"按钮：当首次自动缓存因弱网、浏览器或 IndexedDB 环境原因失败时，
- * 用户可手动触发再次缓存，并复用同一套流式进度反馈。
- *
- * 行为：
- * - 仅对 job.images 中以 URL: 开头的项执行下载；blob:/data:/IDB: 项保持不变。
- * - 全部成功：清空 warning，调用 ackNovaTask 让服务端按 2 分钟规则清理。
- * - 部分/全部失败：保留 URL: 前缀，更新 warning 数量，不调用 ack（服务端继续保留）。
- * - 不抛异常；调用方根据返回值显示 toast。
- */
-export async function retryDownloadCachedImages(
-  job: StoredJob,
-  actions: SubmitActions,
-): Promise<RetryDownloadResult> {
-  const sourceImages = job.images || (job.imageData ? [job.imageData] : []);
-  const urlIndices = sourceImages
-    .map((img, index) => (img.startsWith('URL:') ? index : -1))
-    .filter(index => index >= 0);
-
-  if (urlIndices.length === 0) {
-    return { successCount: 0, failCount: 0, remainingUrlCount: 0 };
-  }
-
-  actions.replaceJob(job.id, current => ({
-    ...current,
-    imageDownloadProgress: createInitialImageDownloadProgress(sourceImages),
-  }));
-
-  const result = await downloadAndStoreImages(job.id, sourceImages, {
-    onProgress: item => applyImageDownloadProgress(actions, job.id, sourceImages, item),
-  });
-  const mergedImages = sourceImages.map((image, index) => (
-    image.startsWith('URL:') && result.blobUrls[index] ? result.blobUrls[index] : image
-  ));
-  const newBlobUrls = result.blobUrls.filter(url => url && url.startsWith('blob:'));
-
-  const remainingUrlCount = mergedImages.filter(img => img.startsWith('URL:')).length;
-  const allCached = remainingUrlCount === 0;
-  const existingBlobUrls = job.blobUrls || [];
-  const combinedBlobUrls = [...existingBlobUrls, ...newBlobUrls];
-
-  const updatedJob: StoredJob = {
-    ...job,
-    status: 'completed',
-    images: mergedImages,
-    imageData: mergedImages[0],
-    warning: allCached
-      ? undefined
-      : `${remainingUrlCount} 张图片本地缓存仍未成功（已通过远程 URL 渲染），可继续点击「重新下载」重试。`,
-    serverTaskAcked: allCached ? true : false,
-    blobUrls: combinedBlobUrls.length > 0 ? combinedBlobUrls : undefined,
-    imageDownloadProgress: allCached ? undefined : buildImageDownloadProgress(result.items),
-  };
-
-  await actions.completeJob(job.id, updatedJob);
-
-  if (allCached && job.serverTaskId && !job.serverTaskAcked) {
-    await ackNovaTask(job.serverTaskId);
-  }
-
-  return {
-    successCount: result.successCount,
-    failCount: result.failCount,
-    remainingUrlCount,
-  };
 }
 
 export async function submitTextToImage(

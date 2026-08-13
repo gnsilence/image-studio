@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, Check, Copy, Download, ImagePlus, Maximize, RefreshCw, RotateCcw, Thermometer, X } from 'lucide-react';
+import { AlertCircle, Check, Copy, Download, ImagePlus, Images, Maximize, RotateCcw, Thermometer, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -22,63 +22,18 @@ interface CompletedJobCardProps {
   job: StoredJob;
   onClear: () => void;
   onRetry: (job: StoredJob) => void;
-  onRetryDownload?: (job: StoredJob) => void | Promise<void>;
 }
 
-interface DownloadProgressSummary {
-  active: boolean;
-  failed: number;
-  message: string;
-  percent: number;
-}
-
-function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return '0 KB';
-  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
-
-function getDownloadProgressSummary(progress: StoredJob['imageDownloadProgress']): DownloadProgressSummary | null {
-  if (!progress || progress.total <= 0) return null;
-
-  const active = progress.items.some(item => item.status === 'pending' || item.status === 'downloading');
-  const failed = progress.failed;
-  if (!active && failed === 0) return null;
-
-  const loadedBytes = progress.items.reduce((sum, item) => sum + (item.loadedBytes || 0), 0);
-  const knownTotalBytes = progress.items.reduce((sum, item) => sum + (item.totalBytes || 0), 0);
-  const bytePercent = knownTotalBytes > 0
-    ? Math.min(100, Math.round((loadedBytes / knownTotalBytes) * 100))
-    : undefined;
-  const completionPercent = Math.min(
-    100,
-    Math.round(((progress.completed + progress.failed) / progress.total) * 100)
-  );
-  const percent = bytePercent ?? completionPercent;
-  const message = active
-    ? knownTotalBytes > 0
-      ? `正在取回 ${formatBytes(loadedBytes)} / ${formatBytes(knownTotalBytes)}，${percent}%`
-      : `正在取回 ${formatBytes(loadedBytes)}`
-    : `取回失败 ${failed} 张，已缓存 ${progress.completed} 张`;
-
-  return {
-    active,
-    failed,
-    message,
-    percent,
-  };
-}
-
-export const CompletedJobCard = memo(function CompletedJobCard({ job, onClear, onRetry, onRetryDownload }: CompletedJobCardProps) {
+export const CompletedJobCard = memo(function CompletedJobCard({ job, onClear, onRetry }: CompletedJobCardProps) {
   const [imgCopied, setImgCopied] = useState(false);
   const [promptCopied, setPromptCopied] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewImages, setPreviewImages] = useState<string[]>([]);
+  const [referencePreviewOpen, setReferencePreviewOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [assetMenuOpen, setAssetMenuOpen] = useState(false);
   const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
   const [copyMenuOpen, setCopyMenuOpen] = useState(false);
-  const [retryingDownload, setRetryingDownload] = useState(false);
 
   const sourceImages = useMemo(() => job.images || (job.imageData ? [job.imageData] : []), [job.imageData, job.images]);
   const [images, setImages] = useState(sourceImages);
@@ -92,27 +47,26 @@ export const CompletedJobCard = memo(function CompletedJobCard({ job, onClear, o
     sourceRef: `${job.id}:${index}`,
     prompt: job.prompt,
   })), [job.id, job.mode, job.prompt, sourceImages]);
-
-  /** 是否存在仍以远程 URL 形式呈现的图片（即首次本地缓存失败、需要"重新下载"补齐）。 */
-  const needsRedownload = useMemo(
-    () => sourceImages.some(img => img.startsWith('URL:') || img.startsWith('MULTI_URL:')),
-    [sourceImages]
+  const referenceImages = useMemo(
+    () => (job.refImages || []).map(refImage => refImage.dataUrl).filter((dataUrl): dataUrl is string => !!dataUrl),
+    [job.refImages]
   );
-  const downloadProgressSummary = useMemo(
-    () => getDownloadProgressSummary(job.imageDownloadProgress),
-    [job.imageDownloadProgress]
-  );
-  const isDownloadingImages = !!downloadProgressSummary?.active;
-
-  const handleRetryDownload = useCallback(async () => {
-    if (!onRetryDownload || retryingDownload || isDownloadingImages) return;
-    setRetryingDownload(true);
-    try {
-      await onRetryDownload(job);
-    } finally {
-      setRetryingDownload(false);
-    }
-  }, [isDownloadingImages, job, onRetryDownload, retryingDownload]);
+  const referencePayloads = useMemo<ImageActionPayload[]>(() => (
+    (job.refImages || [])
+      .filter(refImage => !!refImage.dataUrl)
+      .map((refImage, index) => ({
+        id: `${job.id}-ref-${index}`,
+        name: refImage.name || `reference-${index + 1}`,
+        src: refImage.dataUrl,
+        dataUrl: refImage.dataUrl,
+        mimeType: refImage.mimeType,
+        sourceKind: 'image-to-image',
+        sourceLabel: '图生图参考图',
+        sourceRef: `${job.id}:ref:${index}`,
+        prompt: job.prompt,
+      }))
+  ), [job.id, job.prompt, job.refImages]);
+  const hasReferenceImages = job.mode === 'image-to-image' && referenceImages.length > 0;
 
   const revokeResolvedBlobUrls = useCallback(() => {
     if (resolvedBlobUrlsRef.current.length > 0) {
@@ -312,24 +266,6 @@ export const CompletedJobCard = memo(function CompletedJobCard({ job, onClear, o
               </p>
             )}
 
-            {downloadProgressSummary && (
-              <div
-                className="mt-2 flex max-w-56 items-center gap-2"
-                title={downloadProgressSummary.message}
-                aria-label={downloadProgressSummary.message}
-              >
-                <div className="h-1.5 min-w-20 flex-1 overflow-hidden rounded-full bg-secondary">
-                  <div
-                    className={`h-full transition-all duration-300 ease-out ${downloadProgressSummary.failed > 0 && !downloadProgressSummary.active ? 'bg-warning' : 'bg-primary'}`}
-                    style={{ width: `${Math.max(4, downloadProgressSummary.percent)}%` }}
-                  />
-                </div>
-                <span className="w-10 flex-shrink-0 text-right text-xs tabular-nums text-muted-foreground">
-                  {downloadProgressSummary.percent}%
-                </span>
-              </div>
-            )}
-
             <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
               {getModelDisplayName(job.model)}
               <span>·</span>
@@ -341,16 +277,14 @@ export const CompletedJobCard = memo(function CompletedJobCard({ job, onClear, o
           </div>
 
           <div className="flex flex-shrink-0 items-center gap-1">
-            {needsRedownload && onRetryDownload && (
+            {hasReferenceImages && (
               <Button
                 variant="ghost"
                 size="icon-sm"
-                onClick={() => void handleRetryDownload()}
-                disabled={retryingDownload || isDownloadingImages}
-                title={isDownloadingImages ? '正在取回图片' : '重新下载到本地缓存'}
-                className="text-warning hover:text-warning/80"
+                onClick={() => setReferencePreviewOpen(true)}
+                title={`查看参考图 (${referenceImages.length})`}
               >
-                <RefreshCw className={`w-4 h-4 ${retryingDownload || isDownloadingImages ? 'animate-spin' : ''}`} />
+                <Images className="w-4 h-4" />
               </Button>
             )}
 
@@ -453,6 +387,16 @@ export const CompletedJobCard = memo(function CompletedJobCard({ job, onClear, o
           alt={job.prompt}
           onClose={() => setPreviewOpen(false)}
           actionPayloads={actionPayloads}
+        />,
+        document.body
+      )}
+
+      {referencePreviewOpen && hasReferenceImages && createPortal(
+        <HistoryImagePreview
+          images={referenceImages}
+          alt="图生图参考图"
+          onClose={() => setReferencePreviewOpen(false)}
+          actionPayloads={referencePayloads}
         />,
         document.body
       )}

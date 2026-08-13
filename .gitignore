@@ -35,6 +35,7 @@ backend/ccode-images/
 .codebuddy/
 .trae/
 .codex/
+.codex-tmp/
 .codex-desktop*/
 .agents/
 
