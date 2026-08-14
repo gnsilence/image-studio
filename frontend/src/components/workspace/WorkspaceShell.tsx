@@ -9,7 +9,9 @@ import { GifGenerationWorkspace } from '@/components/GifGenerationWorkspace';
 import { AgentChatWorkspace } from '@/components/agent/AgentChatWorkspace';
 import { AssetsWorkspace } from '@/components/assets/AssetsWorkspace';
 import { CanvasWorkspace } from '@/components/canvas/CanvasWorkspace';
-import { PromptGallery } from '@/components/PromptGallery';
+import type { CanvasTaskImportRequest } from '@/components/canvas/canvas-job-import';
+import { PromptGallery, type PromptGalleryRestorePosition } from '@/components/PromptGallery';
+import type { PromptWithKey } from '@/lib/prompt-gallery-data';
 import { SettingsModal } from '@/components/SettingsModal';
 import { MissingApiKeyDialog } from '@/components/MissingApiKeyDialog';
 import { useQueueStatus } from '@/hooks/useQueueStatus';
@@ -18,7 +20,7 @@ import { useServerTaskPolling } from '@/hooks/useServerTaskPolling';
 import { useWorkspaceJobs } from '@/hooks/useWorkspaceJobs';
 import { QueueStatusSummary, WorkspaceHeader, type WorkspaceHeaderRef } from '@/components/workspace/WorkspaceHeader';
 import { WorkspaceModeTabs } from '@/components/workspace/WorkspaceModeTabs';
-import { HistoryJobList, type GenerationHistoryFilter, type HistoryClearScope } from '@/components/workspace/results/HistoryJobList';
+import { ActiveJobList, HistoryJobList, isWaitingJob, type GenerationHistoryFilter, type HistoryClearScope } from '@/components/workspace/results/HistoryJobList';
 import { PromptGalleryAccessDialog, usePromptGalleryAccess } from '@/components/workspace/PromptGalleryAccess';
 import { usePromptGalleryConfig } from '@/hooks/usePromptGalleryConfig';
 import { ConfirmDialog } from '@/components/workspace/dialogs/ConfirmDialog';
@@ -49,6 +51,7 @@ import { isDesktopRuntime } from '@/lib/desktop-bridge';
 export function WorkspaceShell() {
   const queueStatus = useQueueStatus();
   const { wideMode, mounted, toggleWideMode } = useWideMode();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const desktopRuntime = mounted && isDesktopRuntime();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [missingApiKeyDialogOpen, setMissingApiKeyDialogOpen] = useState(false);
@@ -57,6 +60,10 @@ export function WorkspaceShell() {
   const [generationHistoryFilter, setGenerationHistoryFilter] = useState<GenerationHistoryFilter>('all');
   const [generationClearScope, setGenerationClearScope] = useState<HistoryClearScope | null>(null);
   const [referenceDraft, setReferenceDraft] = useState<{ id: number; refImages: RefImageData[]; prompt?: string } | null>(null);
+  const [canvasTaskImport, setCanvasTaskImport] = useState<CanvasTaskImportRequest | null>(null);
+  const [canvasPromptGalleryImport, setCanvasPromptGalleryImport] = useState<PromptWithKey | null>(null);
+  const [canvasReturnToPromptGallery, setCanvasReturnToPromptGallery] = useState(false);
+  const [promptGalleryRestorePosition, setPromptGalleryRestorePosition] = useState<PromptGalleryRestorePosition | null>(null);
   const workspace = useWorkspaceJobs();
   const galleryConfig = usePromptGalleryConfig();
   const promptGallery = usePromptGalleryAccess(galleryConfig.mode, galleryConfig.passwordEnabled, setError, () => setActiveTab('prompt-gallery'));
@@ -66,6 +73,8 @@ export function WorkspaceShell() {
   const toastIdRef = useRef(0);
   const headerRef = useRef<WorkspaceHeaderRef>(null);
   const referenceDraftIdRef = useRef(0);
+  const promptGalleryScrollPositionRef = useRef<Omit<PromptGalleryRestorePosition, 'key'>>({ windowY: 0, workspaceY: 0 });
+  const promptGalleryRestoreKeyRef = useRef(0);
 
   const showToast = useCallback((message: string, type: ToastData['type']) => {
     const id = `toast-${++toastIdRef.current}`;
@@ -87,6 +96,27 @@ export function WorkspaceShell() {
     workspace.setRetryData(null);
     setReferenceDraft(null);
   }, [workspace]);
+
+  const handleTaskImportToCanvas = useCallback((request: CanvasTaskImportRequest) => {
+    setCanvasTaskImport(request);
+    setActiveTab('canvas');
+  }, []);
+
+  const handlePromptGalleryImportToCanvas = useCallback((prompt: PromptWithKey, position: Omit<PromptGalleryRestorePosition, 'key'>) => {
+    promptGalleryScrollPositionRef.current = position;
+    setCanvasPromptGalleryImport(prompt);
+    setCanvasReturnToPromptGallery(true);
+    setActiveTab('canvas');
+  }, []);
+
+  const handleReturnToPromptGallery = useCallback(() => {
+    setActiveTab('prompt-gallery');
+    setCanvasReturnToPromptGallery(false);
+    setPromptGalleryRestorePosition({
+      key: ++promptGalleryRestoreKeyRef.current,
+      ...promptGalleryScrollPositionRef.current,
+    });
+  }, []);
 
   // Checking debounce state
   const [checkingJobIds, setCheckingJobIds] = useState<Set<string>>(new Set());
@@ -178,6 +208,14 @@ export function WorkspaceShell() {
       : generationJobs.filter(job => job.mode === generationHistoryFilter),
     [generationHistoryFilter, generationJobs]
   );
+  const generationActiveJobs = useMemo(
+    () => filteredGenerationJobs.filter(isWaitingJob),
+    [filteredGenerationJobs]
+  );
+  const generationHistoryJobs = useMemo(
+    () => wideMode ? filteredGenerationJobs.filter(job => !isWaitingJob(job)) : filteredGenerationJobs,
+    [filteredGenerationJobs, wideMode]
+  );
   const generationEmptyDescription = generationHistoryFilter === 'text-to-image'
     ? '提交一段文字描述来生成图片'
     : generationHistoryFilter === 'image-to-image'
@@ -210,10 +248,10 @@ export function WorkspaceShell() {
   return (
     <div
       className={cn(
-        'mx-auto flex min-h-screen w-full flex-col gap-4 overflow-x-hidden px-3 py-3 transition-[max-width] duration-200 sm:gap-5 sm:px-6 sm:py-5 lg:px-8',
+        'flex min-h-screen w-full flex-col gap-0 overflow-x-hidden px-0 py-0 transition-[max-width] duration-200',
         desktopRuntime && 'nova-desktop-shell',
         wideMode
-          ? 'max-w-none xl:h-dvh xl:min-h-0 xl:gap-3 xl:py-3 xl:overflow-hidden'
+          ? 'max-w-none xl:h-dvh xl:min-h-0 xl:overflow-hidden'
           : desktopRuntime ? 'max-w-none' : 'max-w-5xl',
         !wideMode && activeTab === 'agent' && 'h-dvh min-h-0 overflow-hidden'
       )}
@@ -249,7 +287,7 @@ export function WorkspaceShell() {
             orientation={wideMode ? 'vertical' : 'horizontal'}
             className={cn(
               wideMode
-                ? 'gap-4 xl:flex-row xl:flex-1 xl:min-h-0'
+                ? cn('gap-4 xl:flex-row xl:flex-1 xl:min-h-0', sidebarCollapsed && 'xl:gap-0')
                 : activeTab === 'agent'
                   ? 'gap-2 flex flex-col flex-1 min-h-0'
                   : 'gap-2'
@@ -258,6 +296,7 @@ export function WorkspaceShell() {
             <div className={cn(
               'flex flex-col',
               wideMode && 'self-stretch sticky top-4 h-full xl:shrink-0',
+              wideMode && sidebarCollapsed && 'hidden',
               desktopRuntime && (wideMode ? 'nova-desktop-sidebar' : 'nova-desktop-topnav'),
             )}>
               {wideMode && (
@@ -309,6 +348,16 @@ export function WorkspaceShell() {
 
                   <div className="nova-desktop-sidebar-tools flex flex-col gap-1 [&_button]:w-full [&_button]:justify-start [&_button]:rounded-xl [&_button_svg]:size-4 [&_button_svg]:shrink-0">
                     <ThemeToggle />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full justify-start gap-2 rounded-xl px-3 text-xs"
+                      onClick={() => setSidebarCollapsed(true)}
+                      title="隐藏侧栏"
+                    >
+                      <PanelLeftClose className="size-4 shrink-0" />
+                      隐藏侧栏
+                    </Button>
                     <Button variant="outline" size="sm" className="w-full justify-start gap-2 rounded-xl px-3 text-xs" onClick={toggleWideMode}>
                       {wideMode ? <PanelLeftClose className="size-4 shrink-0" /> : <PanelLeftOpen className="size-4 shrink-0" />}
                       {wideMode ? '退出宽屏' : '宽屏'}
@@ -325,28 +374,65 @@ export function WorkspaceShell() {
                 </div>)}
             </div>
 
-            <div className={cn(
+            <div data-workspace-content-scroll className={cn(
               desktopRuntime && 'nova-desktop-workspace',
-              wideMode && 'xl:flex xl:flex-1 xl:min-h-0 xl:min-w-0',
+              wideMode && 'xl:relative xl:flex xl:flex-1 xl:min-h-0 xl:min-w-0',
+              wideMode && sidebarCollapsed && 'xl:pt-10',
               wideMode && (activeTab === 'image-generation' || activeTab === 'agent'
                 ? 'xl:overflow-hidden'
                 : 'xl:overflow-y-auto xl:overflow-x-hidden'),
               !wideMode && activeTab === 'agent' && 'flex flex-1 flex-col min-h-0'
             )}>
+              {wideMode && sidebarCollapsed && (
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  className="absolute left-1 top-1 z-20"
+                  onClick={() => setSidebarCollapsed(false)}
+                  title="显示侧栏"
+                  aria-label="显示侧栏"
+                >
+                  <PanelLeftOpen className="size-4" />
+                </Button>
+              )}
               <TabsContent value="image-generation" keepMounted className={cn(wideMode ? 'space-y-6 xl:flex xl:min-h-0 xl:space-y-0' : 'space-y-3')}>
                 <div className={cn(wideMode ? 'grid items-start gap-5 xl:h-full xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(460px,0.95fr)_minmax(0,1.35fr)] xl:items-stretch' : 'space-y-3')}>
-                  <div className={cn(wideMode && 'xl:h-full xl:min-h-0 xl:overflow-y-auto xl:pr-1')}>
-                    <ImageGenerationWorkbench
-                      wideMode={wideMode}
-                      onSubmitText={data => void submitTextToImage(data, submitActions, handleSubmitError)}
-                      onSubmitImage={data => void submitImageToImage(data, submitActions, handleSubmitError)}
-                      disabled={!workspace.hasApiKey}
-                      onConfigureApiKey={() => setSettingsOpen(true)}
-                      onDraftConsumed={handleImageDraftConsumed}
-                      initialData={generationInitialData}
-                      referenceDraft={referenceDraft}
-                    />
-                  </div>
+                  {wideMode ? (
+                    <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4 xl:h-full xl:overflow-hidden">
+                      <ActiveJobList
+                        jobs={generationActiveJobs}
+                        checkingJobIds={checkingJobIds}
+                        cooldowns={cooldowns}
+                        onCancel={jobId => workspace.setCancelJobId(jobId)}
+                        onCheckStatus={handleCheckStatus}
+                      />
+                      <div className="min-h-0 overflow-y-auto pr-1">
+                        <ImageGenerationWorkbench
+                          wideMode={wideMode}
+                          onSubmitText={data => void submitTextToImage(data, submitActions, handleSubmitError)}
+                          onSubmitImage={data => void submitImageToImage(data, submitActions, handleSubmitError)}
+                          disabled={!workspace.hasApiKey}
+                          onConfigureApiKey={() => setSettingsOpen(true)}
+                          onDraftConsumed={handleImageDraftConsumed}
+                          initialData={generationInitialData}
+                          referenceDraft={referenceDraft}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <ImageGenerationWorkbench
+                        wideMode={wideMode}
+                        onSubmitText={data => void submitTextToImage(data, submitActions, handleSubmitError)}
+                        onSubmitImage={data => void submitImageToImage(data, submitActions, handleSubmitError)}
+                        disabled={!workspace.hasApiKey}
+                        onConfigureApiKey={() => setSettingsOpen(true)}
+                        onDraftConsumed={handleImageDraftConsumed}
+                        initialData={generationInitialData}
+                        referenceDraft={referenceDraft}
+                      />
+                    </div>
+                  )}
                   <HistoryJobList
                     wideMode={wideMode}
                     active={activeTab === 'image-generation'}
@@ -354,9 +440,9 @@ export function WorkspaceShell() {
                     mode="text-to-image"
                     historyFilter={generationHistoryFilter}
                     onHistoryFilterChange={setGenerationHistoryFilter}
-                    hasAnyJobs={generationJobs.length > 0}
+                    hasAnyJobs={generationHistoryJobs.length > 0}
                     emptyDescription={generationEmptyDescription}
-                    jobs={filteredGenerationJobs}
+                    jobs={generationHistoryJobs}
                     loadedImages={workspace.loadedImages}
                     checkingJobIds={checkingJobIds}
                     cooldowns={cooldowns}
@@ -368,6 +454,7 @@ export function WorkspaceShell() {
                     onClearAll={scope => setGenerationClearScope(scope)}
                     onCancel={jobId => workspace.setCancelJobId(jobId)}
                     onCheckStatus={handleCheckStatus}
+                    onImportToCanvas={handleTaskImportToCanvas}
                   />
                 </div>
               </TabsContent>
@@ -391,6 +478,12 @@ export function WorkspaceShell() {
                   onEnableWideMode={() => { if (!wideMode) toggleWideMode(); }}
                   showToast={showToast}
                   showPromptGallery={promptGallery.showPromptGallery}
+                  taskImport={canvasTaskImport}
+                  onTaskImportHandled={() => setCanvasTaskImport(null)}
+                  promptGalleryImport={canvasPromptGalleryImport}
+                  onPromptGalleryImportHandled={() => setCanvasPromptGalleryImport(null)}
+                  returnToPromptGallery={canvasReturnToPromptGallery}
+                  onReturnToPromptGallery={handleReturnToPromptGallery}
                 />
               </TabsContent>
 
@@ -419,7 +512,12 @@ export function WorkspaceShell() {
               {promptGallery.showPromptGallery && (
                 <TabsContent value="prompt-gallery" keepMounted>
                   <div className={cn('bg-transparent p-0 shadow-none sm:rounded-2xl sm:bg-card sm:p-4 sm:shadow-sm sm:border sm:border-border', wideMode && 'sm:p-5')}>
-                    <PromptGallery wideMode={wideMode} />
+                    <PromptGallery
+                      wideMode={wideMode}
+                      onImportToCanvas={handlePromptGalleryImportToCanvas}
+                      restorePosition={promptGalleryRestorePosition}
+                      onRestorePositionHandled={(key) => setPromptGalleryRestorePosition((current) => current?.key === key ? null : current)}
+                    />
                   </div>
                 </TabsContent>
               )}

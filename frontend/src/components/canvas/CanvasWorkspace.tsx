@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Download, FolderOpen, Frame, Layers, PanelLeftOpen, Plus, Trash2, Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import type { PromptWithKey } from "@/lib/prompt-gallery-data";
 import { CanvasEditor } from "./CanvasEditor";
+import { buildTaskImportProject, type CanvasTaskImportRequest } from "./canvas-job-import";
 import { CanvasThumbnail } from "./components/canvas-thumbnail";
 import { useCanvasStore } from "./stores/use-canvas-store";
 import { exportCanvasProjects, importCanvasProjectsFromZip } from "./utils/canvas-export";
@@ -19,6 +21,12 @@ type CanvasWorkspaceProps = {
   onEnableWideMode: () => void;
   showToast: (message: string, type: "success" | "error" | "info") => void;
   showPromptGallery?: boolean;
+  taskImport?: CanvasTaskImportRequest | null;
+  onTaskImportHandled?: () => void;
+  promptGalleryImport?: PromptWithKey | null;
+  onPromptGalleryImportHandled?: () => void;
+  returnToPromptGallery?: boolean;
+  onReturnToPromptGallery?: () => void;
 };
 
 type SortMode = "updated" | "created" | "name";
@@ -29,13 +37,16 @@ const SORT_OPTIONS: { value: SortMode; label: string }[] = [
   { value: "name", label: "名称" },
 ];
 
-export function CanvasWorkspace({ wideMode, onConfigureApiKey, onEnableWideMode, showToast, showPromptGallery }: CanvasWorkspaceProps) {
+export function CanvasWorkspace({ wideMode, onConfigureApiKey, onEnableWideMode, showToast, showPromptGallery, taskImport, onTaskImportHandled, promptGalleryImport, onPromptGalleryImportHandled, returnToPromptGallery, onReturnToPromptGallery }: CanvasWorkspaceProps) {
   const hydrated = useCanvasStore((state) => state.hydrated);
   const projects = useCanvasStore((state) => state.projects);
   const createProject = useCanvasStore((state) => state.createProject);
   const renameProject = useCanvasStore((state) => state.renameProject);
   const deleteProjects = useCanvasStore((state) => state.deleteProjects);
   const importProject = useCanvasStore((state) => state.importProject);
+  const updateProject = useCanvasStore((state) => state.updateProject);
+  const handledTaskImportRef = useRef<CanvasTaskImportRequest | null>(null);
+  const handledPromptGalleryImportRef = useRef<PromptWithKey | null>(null);
 
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -43,12 +54,68 @@ export function CanvasWorkspace({ wideMode, onConfigureApiKey, onEnableWideMode,
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>("updated");
   const [mounted, setMounted] = useState(false);
+  const [taskImportTargetOpen, setTaskImportTargetOpen] = useState(false);
+  const [taskImportTargetId, setTaskImportTargetId] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const id = requestAnimationFrame(() => setMounted(true));
     return () => cancelAnimationFrame(id);
   }, []);
+
+  const importTaskIntoCanvas = useCallback(async (request: CanvasTaskImportRequest, targetProjectId?: string | null) => {
+    try {
+      const imported = await buildTaskImportProject(request);
+      if (targetProjectId) {
+        const target = useCanvasStore.getState().projects.find((project) => project.id === targetProjectId);
+        if (!target) throw new Error("目标画布不存在");
+        const offsetX = Math.max(0, ...target.nodes.map((node) => node.position.x + node.width)) + 80;
+        const nodes = (imported.nodes || []).map((node) => ({ ...node, position: { x: node.position.x + offsetX, y: node.position.y } }));
+        updateProject(targetProjectId, {
+          nodes: [...target.nodes, ...nodes],
+          connections: [...target.connections, ...(imported.connections || [])],
+        });
+        setActiveProjectId(targetProjectId);
+        showToast("任务已追加到现有画布", "success");
+      } else {
+        const projectId = importProject(imported);
+        setActiveProjectId(projectId);
+        showToast("任务已导入到新画布", "success");
+      }
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "任务导入失败", "error");
+    } finally {
+      setTaskImportTargetOpen(false);
+      onTaskImportHandled?.();
+    }
+  }, [importProject, onTaskImportHandled, showToast, updateProject]);
+
+  useEffect(() => {
+    if (!taskImport || !wideMode || !hydrated || handledTaskImportRef.current === taskImport) return;
+    handledTaskImportRef.current = taskImport;
+    setTaskImportTargetId(null);
+    if (projects.length > 0) {
+      setTaskImportTargetOpen(true);
+      return;
+    }
+    void importTaskIntoCanvas(taskImport);
+  }, [hydrated, importTaskIntoCanvas, projects.length, taskImport, wideMode]);
+
+  useEffect(() => {
+    if (!promptGalleryImport || !wideMode || !hydrated || handledPromptGalleryImportRef.current === promptGalleryImport) return;
+    handledPromptGalleryImportRef.current = promptGalleryImport;
+    const projectId = createProject(`提示词：${promptGalleryImport.title || "未命名"}`);
+    setActiveProjectId(projectId);
+  }, [createProject, hydrated, promptGalleryImport, wideMode]);
+
+  useEffect(() => {
+    if (!promptGalleryImport) handledPromptGalleryImportRef.current = null;
+  }, [promptGalleryImport]);
+
+  const handleReturnToPromptGallery = useCallback(() => {
+    setActiveProjectId(null);
+    onReturnToPromptGallery?.();
+  }, [onReturnToPromptGallery]);
 
   const sortedProjects = useMemo(() => {
     const list = [...projects];
@@ -78,10 +145,25 @@ export function CanvasWorkspace({ wideMode, onConfigureApiKey, onEnableWideMode,
   if (activeProjectId) {
     return (
       <div className="relative h-full min-h-[70vh] w-full overflow-hidden rounded-2xl border border-border bg-card">
-        <CanvasEditor projectId={activeProjectId} onBack={() => setActiveProjectId(null)} onRequireApiKey={onConfigureApiKey} showToast={showToast} showPromptGallery={showPromptGallery} />
+        <CanvasEditor
+          projectId={activeProjectId}
+          onBack={() => setActiveProjectId(null)}
+          onRequireApiKey={onConfigureApiKey}
+          showToast={showToast}
+          showPromptGallery={showPromptGallery}
+          promptGalleryImport={promptGalleryImport}
+          onPromptGalleryImportHandled={onPromptGalleryImportHandled}
+          returnToPromptGallery={returnToPromptGallery}
+          onReturnToPromptGallery={handleReturnToPromptGallery}
+        />
       </div>
     );
   }
+
+  const closeTaskImportTarget = () => {
+    setTaskImportTargetOpen(false);
+    onTaskImportHandled?.();
+  };
 
   const handleImport = async (file: File) => {
     try {
@@ -189,6 +271,53 @@ export function CanvasWorkspace({ wideMode, onConfigureApiKey, onEnableWideMode,
               }}
             >
               删除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={taskImportTargetOpen} onOpenChange={(open) => { if (!open) closeTaskImportTarget(); }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>选择画布</DialogTitle>
+            <DialogDescription>任务内容会作为一组新节点追加，不会覆盖现有画布节点。</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <button
+              type="button"
+              aria-pressed={taskImportTargetId === null}
+              onClick={() => setTaskImportTargetId(null)}
+              className={cn("flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors", taskImportTargetId === null ? "border-primary bg-primary/5" : "border-border hover:border-primary/50")}
+            >
+              <Plus className="size-4 text-primary" />
+              <span>
+                <span className="block text-sm font-medium">新建画布</span>
+                <span className="block text-xs text-muted-foreground">将任务内容单独整理成一个画布项目</span>
+              </span>
+            </button>
+            <div className="max-h-56 space-y-2 overflow-y-auto">
+              {sortedProjects.map((project) => (
+                <button
+                  key={`task-import-target-${project.id}`}
+                  type="button"
+                  aria-pressed={taskImportTargetId === project.id}
+                  onClick={() => setTaskImportTargetId(project.id)}
+                  className={cn("flex w-full items-center justify-between gap-3 rounded-lg border p-3 text-left transition-colors", taskImportTargetId === project.id ? "border-primary bg-primary/5" : "border-border hover:border-primary/50")}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium">{project.title}</span>
+                    <span className="block text-xs text-muted-foreground">{project.nodes.length} 个节点</span>
+                  </span>
+                  <FolderOpen className="size-4 shrink-0 text-muted-foreground" />
+                </button>
+              ))}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeTaskImportTarget}>取消</Button>
+            <Button onClick={() => { if (taskImport) void importTaskIntoCanvas(taskImport, taskImportTargetId); }}>
+              <FolderOpen className="size-4" />
+              导入并打开
             </Button>
           </DialogFooter>
         </DialogContent>

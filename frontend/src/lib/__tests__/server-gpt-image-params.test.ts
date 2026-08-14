@@ -11,9 +11,7 @@ const serverSource = fs.readFileSync(
 
 describe('backend GPT Image advanced params forwarding', () => {
   it('does not contain legacy GPT Image SKU gating or token suffix logic', () => {
-    expect(serverSource).not.toContain('gpt-image-2-fast');
-    expect(serverSource).not.toContain('gpt-image-2-plus');
-    expect(serverSource).not.toContain('gpt-image-2-pro');
+    expect(serverSource).not.toMatch(/['"]gpt-image-2-(?:fast|plus|pro)['"]/);
     expect(serverSource).not.toContain('TOKEN_SUFFIX');
     expect(serverSource).not.toContain('supportsGptImageAdvancedParams(');
   });

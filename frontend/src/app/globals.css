@@ -365,7 +365,7 @@ html[data-wide-mode] {
   .nova-desktop-shell {
     min-height: 100dvh;
     gap: 0 !important;
-    padding: 12px !important;
+    padding: 0 !important;
     background: color-mix(in srgb, var(--background) 96%, var(--foreground) 4%);
     animation: nova-desktop-enter 220ms ease-out both;
   }

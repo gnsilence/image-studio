@@ -150,7 +150,60 @@ const CUSTOM_IMAGE_SIZE_LIMITS = {
 const IS_DEV = process.env.NODE_ENV !== 'production';
 const STATIC_DIR = process.env.NOVA_STATIC_DIR || path.join(__dirname, '..', 'frontend', 'out');
 const IMAGE_DIR = process.env.NOVA_IMAGE_DIR || path.join(__dirname, 'nova-images');
+const PROMPT_GALLERY_CACHE_PATH = process.env.NOVA_PROMPT_GALLERY_CACHE || path.join(__dirname, 'data', 'prompt-gallery-cache.json');
+const PROMPT_GALLERY_SOURCE_TIMEOUT_MS = 60 * 1000;
+const PROMPT_GALLERY_SOURCE_MAX_BYTES = 12 * 1024 * 1024;
 const DESKTOP_SESSION_TOKEN = process.env.NOVA_DESKTOP_SESSION_TOKEN || '';
+const PROMPT_GALLERY_SOURCES = [
+  {
+    name: 'nanobanana',
+    urls: ['https://proxy.ccode.vip/https/raw.githubusercontent.com/unknowlei/nanobanana-website/refs/heads/main/public/data.json'],
+  },
+  {
+    name: 'itgoyo-gpt-image-2-prompts',
+    urls: ['https://proxy.ccode.vip/https/raw.githubusercontent.com/itgoyo/awesome-gpt-image2-prompt/main/README_CN.md'],
+  },
+  {
+    name: 'awesome-gpt-image',
+    urls: ['https://proxy.ccode.vip/https/raw.githubusercontent.com/ZeroLu/awesome-gpt-image/main/README.zh-CN.md'],
+  },
+  {
+    name: 'awesome-gpt4o-image-prompts',
+    urls: ['https://proxy.ccode.vip/https/raw.githubusercontent.com/ImgEdify/Awesome-GPT4o-Image-Prompts/main/README.zh-CN.md'],
+  },
+  {
+    name: 'youmind-gpt-image-2',
+    urls: ['https://proxy.ccode.vip/https/raw.githubusercontent.com/YouMind-OpenLab/awesome-gpt-image-2/main/README_zh.md'],
+  },
+  {
+    name: 'youmind-nano-banana-pro',
+    urls: ['https://proxy.ccode.vip/https/raw.githubusercontent.com/YouMind-OpenLab/awesome-nano-banana-pro-prompts/main/README_zh.md'],
+  },
+  {
+    name: 'davidwu-gpt-image2-prompts',
+    urls: ['https://proxy.ccode.vip/https/raw.githubusercontent.com/davidwuw0811-boop/awesome-gpt-image2-prompts/main/prompts.json'],
+  },
+  {
+    name: 'freestylefly-gpt-image-2',
+    urls: [
+      'https://proxy.ccode.vip/https/raw.githubusercontent.com/freestylefly/awesome-gpt-image-2/main/docs/gallery-part-1.md',
+      'https://proxy.ccode.vip/https/raw.githubusercontent.com/freestylefly/awesome-gpt-image-2/main/docs/gallery-part-2.md',
+    ],
+  },
+  {
+    name: 'tigerowo-gpt-image-2',
+    urls: [
+      'https://proxy.ccode.vip/https/raw.githubusercontent.com/tigerowo/awesome-gpt-image-2-prompts/main/README.md',
+      'https://proxy.ccode.vip/https/raw.githubusercontent.com/tigerowo/awesome-gpt-image-2-prompts/main/cases/ecommerce.md',
+      'https://proxy.ccode.vip/https/raw.githubusercontent.com/tigerowo/awesome-gpt-image-2-prompts/main/cases/ad-creative.md',
+      'https://proxy.ccode.vip/https/raw.githubusercontent.com/tigerowo/awesome-gpt-image-2-prompts/main/cases/portrait.md',
+      'https://proxy.ccode.vip/https/raw.githubusercontent.com/tigerowo/awesome-gpt-image-2-prompts/main/cases/poster.md',
+      'https://proxy.ccode.vip/https/raw.githubusercontent.com/tigerowo/awesome-gpt-image-2-prompts/main/cases/character.md',
+      'https://proxy.ccode.vip/https/raw.githubusercontent.com/tigerowo/awesome-gpt-image-2-prompts/main/cases/ui.md',
+      'https://proxy.ccode.vip/https/raw.githubusercontent.com/tigerowo/awesome-gpt-image-2-prompts/main/cases/comparison.md',
+    ],
+  },
+];
 const taskRefImages = new Map();
 
 const app = IS_DEV ? next({ dev: IS_DEV, hostname: HOSTNAME, port: PORT, dir: path.join(__dirname, '..', 'frontend') }) : null;
@@ -185,6 +238,7 @@ let activeHttpServer = null;
 let activeWebSocketServer = null;
 let runtimeInitialized = false;
 let stoppingPromise = null;
+let promptGalleryRefreshPromise = null;
 
 function hasValidDesktopSessionToken(req) {
   if (!DESKTOP_SESSION_TOKEN) return true;
@@ -1271,6 +1325,69 @@ async function fetchWithTimeout(url, init, timeoutMs = REQUEST_TIMEOUT_MS) {
   }
 }
 
+function readPromptGalleryCache() {
+  try {
+    if (!fs.existsSync(PROMPT_GALLERY_CACHE_PATH)) return null;
+    const cache = JSON.parse(fs.readFileSync(PROMPT_GALLERY_CACHE_PATH, 'utf8'));
+    if (!cache || typeof cache.fetchedAt !== 'string' || !cache.sources || typeof cache.sources !== 'object') return null;
+    return cache;
+  } catch (error) {
+    console.warn('[prompt-gallery] 读取缓存失败:', error?.message || error);
+    return null;
+  }
+}
+
+function writePromptGalleryCache(cache) {
+  fs.mkdirSync(path.dirname(PROMPT_GALLERY_CACHE_PATH), { recursive: true });
+  fs.writeFileSync(PROMPT_GALLERY_CACHE_PATH, JSON.stringify(cache), 'utf8');
+}
+
+async function fetchPromptGallerySource(source) {
+  const contents = await Promise.all(source.urls.map(async url => {
+    const response = await fetchWithTimeout(url, { headers: { Accept: 'application/json, text/plain, text/markdown;q=0.9' } }, PROMPT_GALLERY_SOURCE_TIMEOUT_MS);
+    if (!response.ok) throw new Error(`${source.name} 返回 ${response.status}`);
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length > PROMPT_GALLERY_SOURCE_MAX_BYTES) {
+      throw new Error(`${source.name} 单个文件超过缓存大小限制`);
+    }
+    return buffer.toString('utf8');
+  }));
+  if (contents.some(content => !content.trim())) throw new Error(`${source.name} 返回空内容`);
+  return contents;
+}
+
+async function refreshPromptGalleryCache() {
+  if (promptGalleryRefreshPromise) return promptGalleryRefreshPromise;
+  promptGalleryRefreshPromise = (async () => {
+    const existing = readPromptGalleryCache() || { version: 1, fetchedAt: '', sources: {} };
+    const sources = { ...existing.sources };
+    const results = await Promise.all(PROMPT_GALLERY_SOURCES.map(async source => {
+      try {
+        const contents = await fetchPromptGallerySource(source);
+        sources[source.name] = { contents, fetchedAt: new Date().toISOString() };
+        return { name: source.name, refreshed: true };
+      } catch (error) {
+        return { name: source.name, refreshed: false, cached: Boolean(sources[source.name]), error: String(error?.message || error) };
+      }
+    }));
+    const refreshedAt = new Date().toISOString();
+    const hasFreshSource = results.some(result => result.refreshed);
+    const cache = {
+      version: 1,
+      fetchedAt: hasFreshSource ? refreshedAt : existing.fetchedAt,
+      sources,
+    };
+    if (Object.keys(sources).length > 0) writePromptGalleryCache(cache);
+    return { cache: Object.keys(sources).length > 0 ? cache : null, results };
+  })();
+
+  try {
+    return await promptGalleryRefreshPromise;
+  } finally {
+    promptGalleryRefreshPromise = null;
+  }
+}
+
 function resolveBingImageUrl(image) {
   const rawUrl = String(image?.url || '').trim();
   if (!rawUrl) return null;
@@ -1879,6 +1996,26 @@ async function handleApi(req, res, pathname) {
       const password = String(body?.password || '');
       const ok = hashPromptGalleryPassword(password) === hashPromptGalleryPassword(expected);
       sendJson(res, 200, { ok });
+      return true;
+    }
+
+    if (req.method === 'GET' && apiPathname === '/api/nova/prompt-gallery/cache') {
+      const cache = readPromptGalleryCache();
+      if (!cache) {
+        sendJson(res, 404, { error: '提示词缓存尚未创建' });
+        return true;
+      }
+      sendJson(res, 200, cache);
+      return true;
+    }
+
+    if (req.method === 'POST' && apiPathname === '/api/nova/prompt-gallery/cache/refresh') {
+      const { cache, results } = await refreshPromptGalleryCache();
+      if (!cache) {
+        sendJson(res, 502, { error: '所有提示词源均不可用', results });
+        return true;
+      }
+      sendJson(res, 200, { fetchedAt: cache.fetchedAt, results });
       return true;
     }
 

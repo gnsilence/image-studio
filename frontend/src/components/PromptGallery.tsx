@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
-import { Search, Loader2, AlertCircle, ExternalLink, ChevronUp } from 'lucide-react';
+import { Search, Loader2, AlertCircle, ExternalLink, ChevronUp, RefreshCw } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -12,16 +12,34 @@ import {
   DEFAULT_CATEGORIES,
   PROMPT_DATA_SOURCES,
   fetchAllPromptSources,
+  refreshPromptGalleryCache,
   getPromptSourceLabel,
   type PromptWithKey,
 } from '@/lib/prompt-gallery-data';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { seededShuffle } from '@/lib/seeded-shuffle';
+import { Button } from '@/components/ui/button';
 
 const PROMPT_GALLERY_STEP = 20;
 const PROMPT_GALLERY_WIDE_STEP = 30;
 
-const PromptGallery = memo(function PromptGallery({ wideMode = false }: { wideMode?: boolean }) {
+export type PromptGalleryRestorePosition = {
+  key: number;
+  windowY: number;
+  workspaceY: number;
+};
+
+const PromptGallery = memo(function PromptGallery({
+  wideMode = false,
+  onImportToCanvas,
+  restorePosition,
+  onRestorePositionHandled,
+}: {
+  wideMode?: boolean;
+  onImportToCanvas?: (prompt: PromptWithKey, position: Omit<PromptGalleryRestorePosition, 'key'>) => void;
+  restorePosition?: PromptGalleryRestorePosition | null;
+  onRestorePositionHandled?: (key: number) => void;
+}) {
   const pageStep = wideMode ? PROMPT_GALLERY_WIDE_STEP : PROMPT_GALLERY_STEP;
   const [allPrompts, setAllPrompts] = useState<PromptWithKey[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,7 +53,11 @@ const PromptGallery = memo(function PromptGallery({ wideMode = false }: { wideMo
   const [imageCache, setImageCache] = useState<Set<string>>(new Set());
   const [displayCount, setDisplayCount] = useState(pageStep);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [cacheFetchedAt, setCacheFetchedAt] = useState<string | undefined>();
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  const galleryRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetch('/api/nova/blacklist')
@@ -53,12 +75,29 @@ const PromptGallery = memo(function PromptGallery({ wideMode = false }: { wideMo
       .then((result) => {
         setCategories(result.categories);
         setAllPrompts(result.prompts);
+        setCacheFetchedAt(result.cacheFetchedAt);
         setLoading(false);
       })
       .catch((err) => {
         setError(err instanceof Error ? err.message : '提示词广场加载失败');
         setLoading(false);
       });
+  }, []);
+
+  const handleRefreshCache = useCallback(async () => {
+    setRefreshing(true);
+    setRefreshError(null);
+    try {
+      await refreshPromptGalleryCache();
+      const result = await fetchAllPromptSources();
+      setCategories(result.categories);
+      setAllPrompts(result.prompts);
+      setCacheFetchedAt(result.cacheFetchedAt);
+    } catch (err) {
+      setRefreshError(err instanceof Error ? err.message : '提示词源刷新失败，请稍后重试');
+    } finally {
+      setRefreshing(false);
+    }
   }, []);
 
   const handleShowDetail = useCallback((prompt: PromptWithKey) => {
@@ -147,6 +186,24 @@ const PromptGallery = memo(function PromptGallery({ wideMode = false }: { wideMo
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  useEffect(() => {
+    if (!restorePosition || loading) return;
+
+    let nestedFrame: number | null = null;
+    const frame = requestAnimationFrame(() => {
+      nestedFrame = requestAnimationFrame(() => {
+        window.scrollTo({ top: restorePosition.windowY, behavior: 'auto' });
+        galleryRef.current?.closest<HTMLElement>('[data-workspace-content-scroll]')?.scrollTo({ top: restorePosition.workspaceY, behavior: 'auto' });
+        onRestorePositionHandled?.(restorePosition.key);
+      });
+    });
+
+    return () => {
+      cancelAnimationFrame(frame);
+      if (nestedFrame !== null) cancelAnimationFrame(nestedFrame);
+    };
+  }, [loading, onRestorePositionHandled, restorePosition]);
+
   const displayedPrompts = useMemo(() => filteredPrompts.slice(0, displayCount), [displayCount, filteredPrompts]);
   const hasMore = displayCount < filteredPrompts.length;
 
@@ -169,7 +226,7 @@ const PromptGallery = memo(function PromptGallery({ wideMode = false }: { wideMo
 
   return (
     <>
-      <div className="space-y-6">
+      <div ref={galleryRef} className="space-y-6">
         <div className="space-y-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -205,7 +262,28 @@ const PromptGallery = memo(function PromptGallery({ wideMode = false }: { wideMo
               <ExternalLink className="w-3 h-3" />
             </PopoverTrigger>
             <PopoverContent align="end" className="w-72 p-2">
-              <p className="px-2 pb-1.5 text-xs font-medium text-muted-foreground">提示词来源（{PROMPT_DATA_SOURCES.length}）</p>
+              <div className="flex items-center justify-between gap-2 px-2 pb-1.5">
+                <p className="text-xs font-medium text-muted-foreground">提示词来源（{PROMPT_DATA_SOURCES.length}）</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  className="h-7 gap-1 px-2"
+                  onClick={handleRefreshCache}
+                  disabled={refreshing}
+                >
+                  <RefreshCw className={`h-3 w-3 ${refreshing ? 'animate-spin' : ''}`} />
+                  {refreshing ? '拉取中' : '拉取并缓存'}
+                </Button>
+              </div>
+              <p className="px-2 pb-1.5 text-[11px] text-muted-foreground">
+                {cacheFetchedAt
+                  ? `缓存时间：${new Date(cacheFetchedAt).toLocaleString('zh-CN')}`
+                  : '尚未缓存，请手动拉取'}
+              </p>
+              {refreshError && (
+                <p className="px-2 pb-1.5 text-xs text-destructive">{refreshError}</p>
+              )}
               <div className="space-y-0.5">
                 {PROMPT_DATA_SOURCES.map((source) => (
                   <a
@@ -233,6 +311,10 @@ const PromptGallery = memo(function PromptGallery({ wideMode = false }: { wideMo
               onShowImages={(initialIndex) => handleShowImages(prompt, initialIndex)}
               imageCache={imageCache}
               onImageLoad={handleImageLoad}
+              onImportToCanvas={onImportToCanvas ? () => onImportToCanvas(prompt, {
+                windowY: window.scrollY,
+                workspaceY: galleryRef.current?.closest<HTMLElement>('[data-workspace-content-scroll]')?.scrollTop ?? 0,
+              }) : undefined}
             />
           ))}
         </div>
@@ -245,7 +327,25 @@ const PromptGallery = memo(function PromptGallery({ wideMode = false }: { wideMo
 
         {filteredPrompts.length === 0 && (
           <div className="py-12 text-center text-muted-foreground">
-            没有找到匹配的提示词
+            {cacheFetchedAt ? (
+              '没有找到匹配的提示词'
+            ) : (
+              <div className="flex flex-col items-center gap-3">
+                <p>暂无缓存提示词</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={handleRefreshCache}
+                  disabled={refreshing}
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+                  {refreshing ? '拉取中' : '拉取并缓存'}
+                </Button>
+                {refreshError && <p className="text-xs text-destructive">{refreshError}</p>}
+              </div>
+            )}
           </div>
         )}
       </div>

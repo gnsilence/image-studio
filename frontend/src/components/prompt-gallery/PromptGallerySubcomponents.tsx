@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, memo } from 'react';
-import { Loader2, ExternalLink, Copy, Check, ChevronLeft, ChevronRight, Maximize2, X, Tag, Download, ImagePlus, Wand2, Save } from 'lucide-react';
+import { Loader2, ExternalLink, Copy, Check, ChevronLeft, ChevronRight, Maximize2, X, Tag, Download, ImagePlus, Wand2, Save, Workflow } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ImageHoverActions } from '@/components/workspace/results/ImageHoverActions';
@@ -32,13 +32,15 @@ export const PromptCard = memo(function PromptCard({
   onShowDetail,
   onShowImages,
   imageCache,
-  onImageLoad
+  onImageLoad,
+  onImportToCanvas,
 }: { 
   prompt: PromptGalleryItem & { uniqueKey: string };
   onShowDetail: () => void;
   onShowImages: (initialIndex?: number) => void;
   imageCache: Set<string>;
   onImageLoad: (url: string) => void;
+  onImportToCanvas?: () => void;
 }) {
   const [imageIndex, setImageIndex] = useState(0);
   const [copied, setCopied] = useState(false);
@@ -132,6 +134,20 @@ export const PromptCard = memo(function PromptCard({
             showDownload
             showAddToAssets
             showUseAsReference
+            extraActions={onImportToCanvas ? (
+              <button
+                type="button"
+                title="导入到无限画布"
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20 text-white shadow-sm backdrop-blur-sm transition-colors hover:bg-white/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onImportToCanvas();
+                }}
+              >
+                <Workflow className="h-3.5 w-3.5" />
+              </button>
+            ) : undefined}
           />
 
           {/* Image navigation */}

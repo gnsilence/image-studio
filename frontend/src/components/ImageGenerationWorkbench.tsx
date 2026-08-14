@@ -743,7 +743,7 @@ export function ImageGenerationWorkbench({
                       showUseAsReference={false}
                     />
                   ) : (
-                    <p className="text-xs text-muted-foreground">添加参考图后可进行图像编辑</p>
+                    <p className="text-xs text-muted-foreground">添加参考图或直接粘贴图片后即可进行图像编辑</p>
                   )}
                 </div>
 

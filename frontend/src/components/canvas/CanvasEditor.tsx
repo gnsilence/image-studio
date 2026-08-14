@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Loader2 } from "lucide-react";
 import { nanoid } from "nanoid";
 
 import { Button } from "@/components/ui/button";
@@ -59,12 +59,23 @@ type DialogState = { type: "crop" | "split" | "upscale" | "angle"; nodeId: strin
 
 type HistorySnapshot = { nodes: CanvasNodeData[]; connections: CanvasConnection[] };
 
+function migrateCanvasNodeTitles(nodes: CanvasNodeData[]) {
+  return nodes.map((node) => {
+    if (!/^nova-image-/i.test(node.title)) return node;
+    return { ...node, title: node.title.replace(/^nova-image-/i, "aioss-image-") };
+  });
+}
+
 type CanvasEditorProps = {
   projectId: string;
   onBack: () => void;
   onRequireApiKey: () => void;
   showToast: (message: string, type: "success" | "error" | "info") => void;
   showPromptGallery?: boolean;
+  promptGalleryImport?: PromptWithKey | null;
+  onPromptGalleryImportHandled?: () => void;
+  returnToPromptGallery?: boolean;
+  onReturnToPromptGallery?: () => void;
 };
 
 const MAX_HISTORY = 50;
@@ -206,8 +217,14 @@ async function importPromptGalleryImage(url: string, promptContent: string) {
 
 async function optimizeImportedPromptContent(prompt: PromptWithKey, referenceImageCount: number): Promise<{ content: string; optimized: boolean }> {
   const original = prompt.content.trim();
-  const textModel = requireDefaultConfiguredTextModel("promptOptimize");
   if (!original) return { content: original, optimized: false };
+
+  let textModel;
+  try {
+    textModel = requireDefaultConfiguredTextModel("promptOptimize");
+  } catch {
+    return { content: original, optimized: false };
+  }
 
   let output = "";
   let failed = false;
@@ -232,7 +249,7 @@ async function optimizeImportedPromptContent(prompt: PromptWithKey, referenceIma
   return failed || !content ? { content: original, optimized: false } : { content, optimized: true };
 }
 
-export function CanvasEditor({ projectId, onBack, onRequireApiKey, showToast, showPromptGallery = true }: CanvasEditorProps) {
+export function CanvasEditor({ projectId, onBack, onRequireApiKey, showToast, showPromptGallery = true, promptGalleryImport, onPromptGalleryImportHandled, returnToPromptGallery = false, onReturnToPromptGallery }: CanvasEditorProps) {
   const theme = canvasTheme;
   const openProject = useCanvasStore((state) => state.openProject);
   const updateProject = useCanvasStore((state) => state.updateProject);
@@ -243,7 +260,7 @@ export function CanvasEditor({ projectId, onBack, onRequireApiKey, showToast, sh
 
   const project = useMemo(() => openProject(projectId), [openProject, projectId]);
 
-  const [nodes, setNodes] = useState<CanvasNodeData[]>(() => project?.nodes ?? []);
+  const [nodes, setNodes] = useState<CanvasNodeData[]>(() => migrateCanvasNodeTitles(project?.nodes ?? []));
   const [connections, setConnections] = useState<CanvasConnection[]>(() => project?.connections ?? []);
   const [viewport, setViewport] = useState<ViewportTransform>(() => project?.viewport ?? { x: 0, y: 0, k: 1 });
   const [backgroundMode, setBackgroundMode] = useState(project?.backgroundMode ?? "lines");
@@ -295,6 +312,7 @@ export function CanvasEditor({ projectId, onBack, onRequireApiKey, showToast, sh
   const gestureActive = useRef(false);
   const clipboard = useRef<{ nodes: CanvasNodeData[]; connections: CanvasConnection[] }>({ nodes: [], connections: [] });
   const activeGenerationsRef = useRef<Map<string, AbortController>>(new Map());
+  const handledPromptGalleryImportRef = useRef<PromptWithKey | null>(null);
   const retryCooldownRef = useRef<Map<string, number>>(new Map());
   const textGenerationControllersRef = useRef<Map<string, AbortController>>(new Map());
   const [undoStack, setUndoStack] = useState<HistorySnapshot[]>([]);
@@ -730,14 +748,21 @@ export function CanvasEditor({ projectId, onBack, onRequireApiKey, showToast, sh
               : "已从提示词广场导入模板",
           "success",
         );
-      } catch {
-        showToast("从提示词广场导入失败", "error");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "未知错误";
+        showToast(`从提示词广场导入失败：${message}`, "error");
       } finally {
         setPromptGalleryImporting(false);
       }
     },
     [createImageNode, defaultConfig, promptGalleryImporting, pushHistory, showToast, viewportCenterWorld],
   );
+
+  useEffect(() => {
+    if (!promptGalleryImport || handledPromptGalleryImportRef.current === promptGalleryImport) return;
+    handledPromptGalleryImportRef.current = promptGalleryImport;
+    void importPromptGalleryTemplate(promptGalleryImport).finally(() => onPromptGalleryImportHandled?.());
+  }, [importPromptGalleryTemplate, onPromptGalleryImportHandled, promptGalleryImport]);
 
   const applyCanvasTemplate = useCallback(
     (template: CanvasTemplate) => {
@@ -1972,6 +1997,12 @@ export function CanvasEditor({ projectId, onBack, onRequireApiKey, showToast, sh
           <ArrowLeft className="size-4" />
           画布列表
         </Button>
+        {returnToPromptGallery && onReturnToPromptGallery && (
+          <Button variant="outline" size="sm" onClick={onReturnToPromptGallery}>
+            <ArrowLeft className="size-4" />
+            返回提示词广场
+          </Button>
+        )}
         {titleDraft !== null ? (
           <form
             onSubmit={(event) => {
@@ -2002,6 +2033,18 @@ export function CanvasEditor({ projectId, onBack, onRequireApiKey, showToast, sh
           </button>
         )}
       </div>
+
+      {promptGalleryImporting && (
+        <div
+          data-canvas-no-zoom
+          role="status"
+          aria-live="polite"
+          className="pointer-events-none absolute top-14 left-4 z-50 flex h-8 items-center gap-2 rounded-md border border-border bg-card/95 px-3 text-xs text-muted-foreground shadow-sm"
+        >
+          <Loader2 className="size-3.5 animate-spin text-primary" />
+          正在导入提示词模板...
+        </div>
+      )}
 
       <CanvasToolbar
         selectedCount={selectedIds.length + (selectedConnectionId ? 1 : 0)}

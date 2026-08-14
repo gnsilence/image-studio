@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createNovaTask, resolveImageTaskProvider, type NovaTaskResponse } from '@/lib/ccode-task-client';
+import { downloadAndStoreImages } from '@/lib/image-downloader';
 import type { StoredJob } from '@/lib/job-store';
 import { BUILTIN_IMAGE_PRESETS, DEFAULT_DEFAULTS } from '@/lib/nova-models';
 import {
@@ -15,9 +16,14 @@ vi.mock('@/lib/ccode-task-client', async importOriginal => {
     resolveImageTaskProvider: vi.fn(),
   };
 });
+vi.mock('@/lib/image-downloader', () => ({
+  downloadAndStoreImages: vi.fn(),
+  makeStoredBlobRef: (jobId: string, imageIndex: number) => `IDB:${jobId}-${imageIndex}`,
+}));
 
 const mockedCreateNovaTask = vi.mocked(createNovaTask);
 const mockedResolveImageTaskProvider = vi.mocked(resolveImageTaskProvider);
+const mockedDownloadAndStoreImages = vi.mocked(downloadAndStoreImages);
 
 function makeJob(overrides: Partial<StoredJob> = {}): StoredJob {
   return {
@@ -81,6 +87,13 @@ beforeEach(() => {
     protocol: 'openai',
     modelId: 'gpt-image-2',
   });
+  mockedDownloadAndStoreImages.mockReset();
+  mockedDownloadAndStoreImages.mockResolvedValue({
+    successCount: 1,
+    failCount: 0,
+    blobUrls: ['blob:cached-0'],
+    items: [{ index: 0, status: 'cached', loadedBytes: 1 }],
+  });
 });
 
 describe('submitTextToImage', () => {
@@ -113,19 +126,29 @@ describe('submitTextToImage', () => {
 });
 
 describe('finalizeCompletedServerTask', () => {
-  it('保留后端返回的 URL 图片结果，不再触发前端下载缓存', async () => {
+  it('将后端 URL 图片保存为本地历史记录', async () => {
     const job = makeJob();
     const { actions, getJob } = createActions(job);
 
     await finalizeCompletedServerTask(job, makeCompletedTask(['URL:/api/nova/images/task-1/0']), actions);
 
+    expect(mockedDownloadAndStoreImages).toHaveBeenCalledWith(job.id, ['URL:/api/nova/images/task-1/0']);
     expect(actions.completeJob).toHaveBeenCalledTimes(1);
-    expect(getJob().images).toEqual(['URL:/api/nova/images/task-1/0']);
+    expect(getJob().images).toEqual(['IDB:job-1-0']);
   });
 
-  it('多张 URL 图片也直接保留原始引用', async () => {
+  it('本地保存失败时保留原始引用并写入告警', async () => {
     const job = makeJob();
     const { actions, getJob } = createActions(job);
+    mockedDownloadAndStoreImages.mockResolvedValue({
+      successCount: 1,
+      failCount: 1,
+      blobUrls: ['blob:cached-0', ''],
+      items: [
+        { index: 0, status: 'cached', loadedBytes: 1 },
+        { index: 1, status: 'failed', loadedBytes: 0, error: 'HTTP 502' },
+      ],
+    });
 
     await finalizeCompletedServerTask(job, makeCompletedTask([
       'URL:/api/nova/images/task-1/0',
@@ -133,9 +156,9 @@ describe('finalizeCompletedServerTask', () => {
     ]), actions);
 
     expect(getJob().images).toEqual([
-      'URL:/api/nova/images/task-1/0',
+      'IDB:job-1-0',
       'URL:/api/nova/images/task-1/1',
     ]);
-    expect(getJob().warning).toBeUndefined();
+    expect(getJob().warning).toContain('1 张图片未能保存至本地');
   });
 });

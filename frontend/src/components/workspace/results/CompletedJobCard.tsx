@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, Check, Copy, Download, ImagePlus, Images, Maximize, RotateCcw, Thermometer, X } from 'lucide-react';
+import { AlertCircle, Check, Copy, Download, ImagePlus, Images, Loader2, Maximize, RotateCcw, Thermometer, Workflow, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -11,6 +11,8 @@ import { resolveStoredImageRef, revokeBlobUrls } from '@/lib/image-downloader';
 import { getModelDisplayName, getOutputSizeLabel } from '@/lib/model-capabilities';
 import { HistoryImagePreview } from '@/components/workspace/results/HistoryImagePreview';
 import { ConfirmDialog } from '@/components/workspace/dialogs/ConfirmDialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import type { CanvasTaskImportRequest } from '@/components/canvas/canvas-job-import';
 import {
   copyImagePayload,
   dispatchImageActionToast,
@@ -22,9 +24,10 @@ interface CompletedJobCardProps {
   job: StoredJob;
   onClear: () => void;
   onRetry: (job: StoredJob) => void;
+  onImportToCanvas: (request: CanvasTaskImportRequest) => void;
 }
 
-export const CompletedJobCard = memo(function CompletedJobCard({ job, onClear, onRetry }: CompletedJobCardProps) {
+export const CompletedJobCard = memo(function CompletedJobCard({ job, onClear, onRetry, onImportToCanvas }: CompletedJobCardProps) {
   const [imgCopied, setImgCopied] = useState(false);
   const [promptCopied, setPromptCopied] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -34,6 +37,11 @@ export const CompletedJobCard = memo(function CompletedJobCard({ job, onClear, o
   const [assetMenuOpen, setAssetMenuOpen] = useState(false);
   const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
   const [copyMenuOpen, setCopyMenuOpen] = useState(false);
+  const [canvasImportOpen, setCanvasImportOpen] = useState(false);
+  const [canvasImportLoading, setCanvasImportLoading] = useState(false);
+  const [canvasImportPreviews, setCanvasImportPreviews] = useState<(string | undefined)[]>([]);
+  const [selectedCanvasImageIndexes, setSelectedCanvasImageIndexes] = useState<number[]>([]);
+  const [includeCanvasReferences, setIncludeCanvasReferences] = useState(true);
 
   const sourceImages = useMemo(() => job.images || (job.imageData ? [job.imageData] : []), [job.imageData, job.images]);
   const [images, setImages] = useState(sourceImages);
@@ -119,9 +127,16 @@ export const CompletedJobCard = memo(function CompletedJobCard({ job, onClear, o
   });
   // 单独跟踪每个可见缩略图的加载状态，避免单图失败导致全部不显示
   const [loadedImageIndices, setLoadedImageIndices] = useState<Set<number>>(new Set());
+  const [failedImageIndices, setFailedImageIndices] = useState<Set<number>>(new Set());
   const handleImageLoad = useCallback((index: number) => {
     setLoadedImageIndices(prev => new Set(prev).add(index));
     // 第一张图加载完成时同步更新lazyLoad状态
+    if (index === 0) {
+      lazyLoad.handleImageLoad();
+    }
+  }, [lazyLoad]);
+  const handleImageError = useCallback((index: number) => {
+    setFailedImageIndices(prev => new Set(prev).add(index));
     if (index === 0) {
       lazyLoad.handleImageLoad();
     }
@@ -175,6 +190,26 @@ export const CompletedJobCard = memo(function CompletedJobCard({ job, onClear, o
     setTimeout(() => setPromptCopied(false), 2000);
   };
 
+  const openCanvasImport = async () => {
+    setCanvasImportOpen(true);
+    setCanvasImportLoading(true);
+    setSelectedCanvasImageIndexes(sourceImages.map((_, index) => index));
+    setIncludeCanvasReferences(true);
+    const previews = await Promise.all(sourceImages.map((_, index) => resolveImageAt(index)));
+    setCanvasImportPreviews(previews);
+    setCanvasImportLoading(false);
+  };
+
+  const confirmCanvasImport = () => {
+    if (!selectedCanvasImageIndexes.length) return;
+    onImportToCanvas({
+      job,
+      imageIndexes: selectedCanvasImageIndexes,
+      includeReferenceImages: includeCanvasReferences,
+    });
+    setCanvasImportOpen(false);
+  };
+
   const openPreview = async () => {
     const resolved = await resolveImagesAt(sourceImages.map((_, index) => index));
     setPreviewImages(resolved.map(getImageSrc).filter(Boolean));
@@ -215,7 +250,14 @@ export const CompletedJobCard = memo(function CompletedJobCard({ job, onClear, o
                           loadedImageIndices.has(index) ? 'opacity-100' : 'opacity-0'
                         }`}
                         onLoad={() => handleImageLoad(index)}
+                        onError={() => handleImageError(index)}
                       />
+                      {failedImageIndices.has(index) && (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-xs text-muted-foreground">
+                          <AlertCircle className="size-4" />
+                          <span>图片已失效</span>
+                        </div>
+                      )}
                     </div>
                   ))}
                   {!lazyLoad.isLoaded && (
@@ -232,7 +274,14 @@ export const CompletedJobCard = memo(function CompletedJobCard({ job, onClear, o
                   alt="生成的图像"
                   className={`h-full w-full rounded-md object-contain transition-opacity duration-300 ${lazyLoad.isLoaded ? 'opacity-100' : 'opacity-0'}`}
                   onLoad={lazyLoad.handleImageLoad}
+                  onError={() => handleImageError(0)}
                 />
+                {failedImageIndices.has(0) && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-xs text-muted-foreground">
+                    <AlertCircle className="size-4" />
+                    <span>图片已失效</span>
+                  </div>
+                )}
                 {!lazyLoad.isLoaded && (
                   <div className="absolute inset-0 animate-pulse bg-gradient-to-r from-muted via-muted/50 to-muted" />
                 )}
@@ -274,6 +323,14 @@ export const CompletedJobCard = memo(function CompletedJobCard({ job, onClear, o
           </div>
 
           <div className="studio-result-toolbar flex w-full flex-shrink-0 items-center justify-end gap-1 border-t border-border px-3 py-2">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => void openCanvasImport()}
+              title="导入到无限画布"
+            >
+              <Workflow className="w-4 h-4" />
+            </Button>
             {hasReferenceImages && (
               <Button
                 variant="ghost"
@@ -397,6 +454,67 @@ export const CompletedJobCard = memo(function CompletedJobCard({ job, onClear, o
         />,
         document.body
       )}
+
+      <Dialog open={canvasImportOpen} onOpenChange={setCanvasImportOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>导入到无限画布</DialogTitle>
+            <DialogDescription>选择要带入画布的任务结果图，原始提示词会作为文本节点保留。</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              {sourceImages.map((_, index) => {
+                const selected = selectedCanvasImageIndexes.includes(index);
+                const preview = canvasImportPreviews[index];
+                return (
+                  <button
+                    key={`${job.id}-canvas-import-${index}`}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => setSelectedCanvasImageIndexes(current => selected ? current.filter(item => item !== index) : [...current, index])}
+                    className={`relative aspect-square overflow-hidden rounded-lg border bg-muted/40 text-left transition-colors ${selected ? 'border-primary ring-2 ring-primary/20' : 'border-border hover:border-primary/50'}`}
+                  >
+                    {preview ? <img src={getImageSrc(preview)} alt={`任务结果 ${index + 1}`} className="h-full w-full object-contain" /> : (
+                      <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+                        {canvasImportLoading ? <Loader2 className="size-4 animate-spin" /> : '图片不可用'}
+                      </div>
+                    )}
+                    <span className="absolute left-2 top-2 rounded-md bg-black/60 px-1.5 py-0.5 text-xs text-white">结果 {index + 1}</span>
+                    {selected && <Check className="absolute right-2 top-2 size-4 rounded-full bg-primary p-0.5 text-primary-foreground" />}
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              aria-pressed={includeCanvasReferences}
+              onClick={() => setIncludeCanvasReferences(current => !current)}
+              className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left transition-colors ${includeCanvasReferences ? 'border-primary/50 bg-primary/5' : 'border-border hover:border-primary/40'}`}
+            >
+              <span className="flex items-center gap-2">
+                <Images className="size-4 text-muted-foreground" />
+                <span>
+                  <span className="block text-sm font-medium">同时导入参考图</span>
+                  <span className="block text-xs text-muted-foreground">{referenceImages.length ? `${referenceImages.length} 张参考图将作为独立节点保存` : '该任务没有可用的参考图'}</span>
+                </span>
+              </span>
+              <span className={`flex size-5 items-center justify-center rounded-md border ${includeCanvasReferences ? 'border-primary bg-primary text-primary-foreground' : 'border-border'}`}>
+                {includeCanvasReferences && <Check className="size-3.5" />}
+              </span>
+            </button>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCanvasImportOpen(false)}>取消</Button>
+            <Button onClick={confirmCanvasImport} disabled={canvasImportLoading || selectedCanvasImageIndexes.length === 0}>
+              <Workflow className="size-4" />
+              导入并打开画布
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {deleteDialogOpen && createPortal(
         <ConfirmDialog

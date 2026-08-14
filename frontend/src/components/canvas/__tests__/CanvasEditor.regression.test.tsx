@@ -129,6 +129,23 @@ describe("CanvasEditor regressions", () => {
     });
   });
 
+  it("shows a return action when opened from the prompt gallery", () => {
+    const onReturnToPromptGallery = vi.fn();
+    render(
+      <CanvasEditor
+        projectId={baseProject.id}
+        onBack={() => undefined}
+        onRequireApiKey={() => undefined}
+        showToast={() => undefined}
+        returnToPromptGallery
+        onReturnToPromptGallery={onReturnToPromptGallery}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "返回提示词广场" }));
+    expect(onReturnToPromptGallery).toHaveBeenCalledOnce();
+  });
+
   it("deletes the selected connection from the toolbar", async () => {
     const { container } = renderEditor();
     const connection = container.querySelector<SVGPathElement>('[data-connection-id="connection-1"]');

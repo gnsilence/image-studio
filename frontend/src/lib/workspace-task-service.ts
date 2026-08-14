@@ -13,6 +13,7 @@ import {
   type GptImageStyle,
   type ParallelCount,
 } from '@/lib/model-capabilities';
+import { downloadAndStoreImages, makeStoredBlobRef } from '@/lib/image-downloader';
 import { generateUUID } from '@/lib/uuid';
 
 export interface TextToImageSubmitInput {
@@ -125,13 +126,25 @@ export async function finalizeCompletedServerTask(
   const images = task.result?.images || [];
 
   if (task.status === 'completed' && images.length > 0) {
+    const downloadResult = await downloadAndStoreImages(job.id, images);
+    const uncachedCount = images.filter((image, index) => (
+      image.startsWith('URL:') && downloadResult.items[index]?.status !== 'cached'
+    )).length;
+    const persistedImages = images.map((image, index) => (
+      image.startsWith('URL:') && downloadResult.items[index]?.status === 'cached'
+        ? makeStoredBlobRef(job.id, index)
+        : image
+    ));
+    const warning = [
+      task.warning,
+      uncachedCount > 0 ? `${uncachedCount} 张图片未能保存至本地，原始地址失效后将无法查看` : undefined,
+    ].filter((message): message is string => !!message).join('；') || undefined;
     const finalJob: StoredJob = {
       ...job,
       status: 'completed',
-      images,
-      imageData: images[0],
-      warning: task.warning,
-      blobUrls: undefined,
+      images: persistedImages,
+      imageData: persistedImages[0],
+      warning,
     };
     await actions.completeJob(job.id, finalJob);
     return;
