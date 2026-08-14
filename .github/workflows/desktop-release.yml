@@ -104,6 +104,10 @@ jobs:
           esac
 
           if gh release view "$TAG" >/dev/null 2>&1; then
+            version="${TAG#v}"
+            while IFS= read -r asset; do
+              [[ -z "$asset" ]] || gh release delete-asset "$TAG" "$asset" --yes
+            done < <(gh release view "$TAG" --json assets --jq '.assets[].name' | grep '^AIOSS-Image-' | grep -Fv "AIOSS-Image-${version}-" || true)
             gh release upload "$TAG" "${assets[@]}" --clobber
           else
             gh release create "$TAG" "${assets[@]}" "${release_args[@]}"
