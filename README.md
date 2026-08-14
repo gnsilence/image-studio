@@ -4,7 +4,7 @@
 
 **自托管的 AI 图像生成工作台 · 自定义模型 · 多模式 · PWA · 实时任务**
 
-[![Version](https://img.shields.io/badge/version-v3.1.2-blue.svg)](https://github.com)
+[![Version](https://img.shields.io/badge/version-v1.0.2-blue.svg)](https://github.com/gnsilence/image-studio/releases)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-green.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black.svg)](https://nextjs.org)
@@ -16,15 +16,18 @@
 
 ## 📖 简介
 
-AIOSS Image 是一个面向个人/团队的 AI 图像生成工作台。前端使用 Next.js 16 + React 19 静态导出（PWA），后端是轻量 Node.js 服务（`server.js` + SQLite + WebSocket），统一调度任务并代理图像生成 API。
+AIOSS Image 是一个面向个人/团队的 AI 图像生成工作台。前端使用 Next.js 16 + React 19 静态导出（PWA），后端是轻量 Node.js 服务（`server.js` + SQLite + WebSocket），统一调度任务并代理图像生成 API。项目同时提供浏览器/PWA 模式和内置本地服务的 Windows/macOS Electron 客户端。
 
 **开源版特性：**
 - 支持分别配置图片模型与文本模型；图片模型可独立设置 Base URL，文本模型固定使用 `https://www.aioss.cc`
 - 用户自定义模型列表和 API 端点，后端按协议路由并透传已配置参数
 - Web 版配置存储在浏览器 localStorage；Electron 客户端使用本地 SQLite 和系统加密
 - 文字模型支持 Google（generateContent）和 OpenAI（Response 协议）
+- 桌面客户端内置后端服务、任务队列、托盘运行和自动更新能力，不需要单独安装 Node.js 或 Docker
 
-> 当前版本：**v1.0.0**
+> 当前版本：**v1.0.2**
+
+项目地址：[github.com/gnsilence/image-studio](https://github.com/gnsilence/image-studio)
 
 ## 💎 赞助商
 
@@ -78,6 +81,21 @@ AIOSS Image 是一个面向个人/团队的 AI 图像生成工作台。前端使
 | 🔍 反推提示词 | `ReversePromptForm` | 上传图片流式反推提示词（支持所有已配置的文字模型） |
 | 🎬 动图生成 | `GifGenerationWorkspace` | 多帧生图 + 网格拼合，浏览器端编码 GIF（`gifenc`） |
 
+### 生图工作台与历史任务
+
+- 支持文生图、图生图、模型参数配置、多张参考图和模型支持的 1K/2K/4K 输出尺寸。
+- 参考图支持本地上传、素材库选择和直接从系统剪贴板粘贴图片。
+- 宽屏工作区采用“左上进行中任务、左下输入工作台、右侧历史任务”的布局；普通窗口和窄屏自动切换为输入在前、结果在后的单列布局。
+- 左侧导航可折叠，收起后内容区可使用完整窗口宽度；保留浅色/深色主题和响应式布局。
+- 历史任务持久保存完成和失败记录，支持按提示词或模型搜索、文生图/图生图筛选、按日期快速定位和查看每天任务数。
+- 结果支持预览、下载、复用、失败重试，以及将结果图、提示词和参考图导入无限画布。
+
+### 无限画布
+
+- 使用节点和连线编排提示词、参考图、生成配置与结果，生成任务复用主任务队列。
+- 从提示词广场或历史任务导入时可选择新建画布或追加到已有画布；历史任务的参考图会作为独立节点保存。
+- 从提示词广场进入画布后支持返回，并恢复之前的浏览位置；画布项目支持本地持久化、导出和导入。
+
 ### 提示词广场
 
 `PROMPT_GALLERY_MODE` 三种工作方式：
@@ -86,7 +104,7 @@ AIOSS Image 是一个面向个人/团队的 AI 图像生成工作台。前端使
 - `2` 私密：需要密码验证（密码来自后端环境变量 `PROMPT_GALLERY_PASSWORD`）
 - `3` 关闭：完全不显示
 
-提示词内容由后端 `backend/prompts.json` 维护，支持敏感词过滤（`backend/blacklist.json`）。
+提示词广场支持内置提示词与外部开源来源；外部内容仅在用户点击“提示词来源 > 拉取并缓存”时由后端拉取，缓存写入 `backend/data/prompt-gallery-cache.json`。可通过 `NOVA_PROMPT_GALLERY_CACHE` 修改缓存路径，Docker 默认会持久化 `./data`。支持敏感词过滤（`backend/blacklist.json`）。
 
 ### 模型系统
 
@@ -98,12 +116,20 @@ AIOSS Image 采用**用户自定义模型**架构：
 - **文字模型**：支持自定义扩展，兼容 Gemini 和 OpenAI Response
 - **默认模型**：可为文本生图、图生图、反推提示词、Agent 等任务分别设置默认模型
 
+### 我的素材与 S3 存储
+
+- 浏览器/PWA 使用本地浏览器存储；Electron 客户端使用本地 SQLite、文件系统和加密凭据。
+- Electron 客户端可在“设置 → S3 存储”配置兼容 S3 的对象存储，包括 AWS S3、MinIO、Cloudflare R2 等。
+- S3 配置支持 Endpoint、Region、Bucket、根目录前缀和 Path Style；凭据支持 Access Key、Secret Key 和可选 Session Token。
+- 素材库可浏览文件夹、创建文件夹、上传本地素材、预览/下载远程图片，并将 S3 图片直接作为生图或 Agent 参考图。
+- S3 凭据仅由桌面主进程保存并加密；浏览器/PWA 不能直接使用 S3 功能。S3 对象不会自动复制到本地素材库，读取时按需缓存。
+
 ### 任务系统
 
 - 提交后入队，服务端并发处理（默认上限 50，可通过 `NOVA_TASK_CONCURRENCY` 调整）
 - 浏览器通过 **WebSocket** 实时接收任务/队列状态，断线自动重连，失败 5 次后回退 **HTTP 轮询**（30 秒间隔）
 - 任务结果本地落盘（`backend/nova-images/`），HTTP 路由 `/api/nova/images/:taskId/:index` 直接提供
-- 任务 TTL 12 小时（可通过 `NOVA_TASK_TTL_HOURS` 调整），过期自动清理（5 分钟一次）
+- 任务 TTL 默认 12 小时（可通过 `NOVA_TASK_TTL_HOURS` 调整），服务端会按 TTL 清理；桌面客户端的历史记录和素材由本地存储管理
 - 服务重启时把残留"处理中"任务标记为失败并删除产物，避免幽灵任务
 
 ### 体验与工程化
@@ -116,6 +142,7 @@ AIOSS Image 采用**用户自定义模型**架构：
 - 一键备份 / 恢复（`JSZip` 打包 localStorage + IndexedDB，支持跳过不兼容旧配置并恢复其余数据）
 - 历史图片懒加载（`@tanstack/react-virtual`）
 - 随机图、Toast 通知、确认对话框
+- Electron 客户端关闭窗口默认隐藏到系统托盘，托盘菜单可以重新显示或退出程序
 
 ---
 
@@ -282,8 +309,8 @@ npm run go
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/tianjiangqiji/nova-image-studio.git
-cd nova-image-studio
+git clone https://github.com/gnsilence/image-studio.git
+cd image-studio
 
 # 2. 安装依赖（自动安装根、frontend、backend）
 npm install
@@ -310,6 +337,7 @@ npm start              # 直接跑后端 server.js
 npm run lint           # 前端 ESLint
 npm test               # 前端 Vitest watch
 npm run test:run       # 前端 Vitest 单次
+npm run test:desktop   # Electron、本地存储、S3、更新器和桌面后端测试
 npm run go             # 打包：build + 汇总到根 out.zip
 ```
 
@@ -323,7 +351,26 @@ npm run go             # 打包：build + 汇总到根 out.zip
 - Windows x64：NSIS 按用户安装，不需要管理员权限
 - macOS：Intel x64 和 Apple Silicon arm64，生成 DMG 与自动更新 ZIP
 - 客户端随应用启动本地任务服务，不依赖单独安装 Node.js 或 Docker
-- 首版不支持切换到远程 AIOSS Image 服务
+- 当前客户端运行本地后端，暂不支持切换到远程 AIOSS Image 服务
+
+### 启动客户端开发模式
+
+开发模式会先构建静态前端，再由 Electron 启动本地后端和窗口：
+
+```powershell
+# 在仓库根目录执行
+npm install
+npm run desktop:dev
+```
+
+如需单独运行前端或后端，使用 `npm run dev:frontend`、`npm run dev:backend`；这两个命令不是 Electron 客户端启动方式。桌面端启动失败时，可查看 `%LOCALAPPDATA%\Nova Image Studio\desktop-startup.log`，或用 `NOVA_DESKTOP_DEBUG=1` 保留更详细的启动日志。
+
+Windows 下需要更详细日志时：
+
+```powershell
+$env:NOVA_DESKTOP_DEBUG = "1"
+npm run desktop:dev
+```
 
 ### 开发与构建
 
@@ -331,24 +378,33 @@ npm run go             # 打包：build + 汇总到根 out.zip
 
 ```powershell
 npm install
-npm --prefix frontend install
-npm --prefix backend install
+npm ci --prefix frontend
+npm ci --prefix backend
 ```
 
 ```powershell
 # Windows x64（必须在 Windows 上执行）
 npm run desktop:build:win
 
+# 启动未打包客户端
+& ".\release\win-unpacked\AIOSS Image.exe"
+
 # 生成 Windows NSIS 安装包
 $env:NOVA_UPDATE_URL = "https://updates.example.com/nova-image-studio"
 npm run desktop:dist:win
 ```
+
+`desktop:build:*` 只生成未打包目录，适合本机测试；`desktop:dist:*` 生成可分发安装包。构建产物输出到根目录 `release/`。
 
 Windows 构建默认会重建 Electron 原生模块，需要安装 Visual Studio 的“使用 C++ 的桌面开发”、MSVC 与 Windows SDK。只有已经准备好与当前 Electron ABI 完全匹配的原生二进制时，才可设置 `NOVA_SKIP_NATIVE_REBUILD=1` 跳过重建。
 
 在 macOS 构建机上执行：
 
 ```bash
+# 仅生成 macOS 未打包客户端
+npm run desktop:build:mac:x64
+npm run desktop:build:mac:arm64
+
 # Intel Mac
 NOVA_UPDATE_URL="https://updates.example.com/nova-image-studio" npm run desktop:dist:mac:x64
 
@@ -357,6 +413,17 @@ NOVA_UPDATE_URL="https://updates.example.com/nova-image-studio" npm run desktop:
 ```
 
 `desktop:dist:*` 要求 `NOVA_UPDATE_URL` 为 HTTPS 地址。Windows 发布 `Setup.exe`、`.blockmap` 和 `latest.yml`；macOS 发布 `.dmg`、`.zip` 和 `latest-mac.yml`。更新目录需要支持 HTTP Range，并避免长期缓存更新元数据文件。
+
+### GitHub Actions 发布正式版
+
+仓库已配置 `.github/workflows/desktop-release.yml`。推送 `v*` 标签后，GitHub Actions 会分别在 Windows 和 macOS 构建客户端，并自动创建或更新 GitHub Release：
+
+```bash
+git tag v1.0.3
+git push origin v1.0.3
+```
+
+工作流使用仓库变量 `NOVA_UPDATE_URL` 作为自动更新地址；未配置时默认使用当前仓库的最新 Release 下载地址。若使用自定义更新服务器，请确保它提供对应平台的更新元数据和安装包，并支持 HTTP Range 请求。
 
 ### 本地数据
 
@@ -385,6 +452,26 @@ API Key 使用 Electron `safeStorage`（Windows DPAPI）加密后写入 `app.sql
 </details>
 
 <details>
+<summary><strong>☁️ Electron S3 素材存储</strong></summary>
+
+S3 是桌面客户端的可选素材源，不会改变 Web/PWA 的浏览器存储方式。首次打开客户端后进入“设置 → S3 存储”，填写：
+
+| 配置项 | 说明 |
+| --- | --- |
+| Endpoint | AWS S3 可留空；MinIO、R2 等兼容服务填写 HTTPS 地址 |
+| Region | AWS 区域；Cloudflare R2 通常填写 `auto` |
+| Bucket | 存储桶名称 |
+| 根目录前缀 | 可选，用于将素材限制在指定目录，例如 `assets/images` |
+| Path Style | 部分 MinIO 或兼容服务需要开启 |
+| Access Key / Secret Key | S3 访问凭据；支持可选的 Session Token |
+
+保存后可以在“我的素材”切换到 S3 存储，浏览文件夹、创建文件夹、上传本地素材、预览和下载图片，也可以在图生图或 Agent 的参考图选择器中直接使用 S3 图片。
+
+凭据由 Electron 主进程使用系统安全存储加密后保存，不会写入普通设置 JSON 或备份 ZIP。S3 仅支持 Electron 客户端；浏览器/PWA 中会提示该功能仅在桌面端可用。S3 图片按需读取并使用本地临时缓存，不会自动复制进本地素材库。
+
+</details>
+
+<details>
 <summary><strong>🔨 Docker 镜像构建</strong></summary>
 
 ### 构建镜像
@@ -396,10 +483,18 @@ docker build -t nova-image-studio:latest .
 ### 推送到仓库
 
 ```bash
-docker tag nova-image-studio:latest tianjiangqiji/nova-image-studio:latest
+docker tag nova-image-studio:latest ghcr.io/gnsilence/image-studio:latest
 
-docker push tianjiangqiji/nova-image-studio:latest
+docker push ghcr.io/gnsilence/image-studio:latest
 ```
+
+推送 GitHub Container Registry 前，需要先登录：
+
+```bash
+echo "$CR_PAT" | docker login ghcr.io -u gnsilence --password-stdin
+```
+
+也可以只使用本地构建的镜像运行，不需要推送到镜像仓库。
 
 </details>
 
@@ -419,14 +514,15 @@ docker push tianjiangqiji/nova-image-studio:latest
 | `NOVA_IMAGE_PARTIAL_IMAGES` | 否 | `1` | OpenAI 图片流式请求的 `partial_images` 数量，范围 0-3 |
 | `NOVA_MAX_QUEUE_SIZE` | 否 | `200` | 全局最大待处理任务数 |
 | `NOVA_RATE_LIMIT_WINDOW_MS` | 否 | `60000` | 创建任务速率限制窗口，单位毫秒 |
-| `NOVA_RATE_LIMIT_MAX_REQUESTS_PER_IP` | 否 | `20` | 单 IP 在一个窗口内最多创建多少个任务 |
-| `NOVA_RATE_LIMIT_MAX_REQUESTS_PER_API_KEY` | 否 | `20` | 单 API Key 在一个窗口内最多创建多少个任务 |
+| `NOVA_RATE_LIMIT_MAX_REQUESTS_PER_IP` | 否 | `10` | 单 IP 在一个窗口内最多创建多少个任务 |
+| `NOVA_RATE_LIMIT_MAX_REQUESTS_PER_API_KEY` | 否 | `10` | 单 API Key 在一个窗口内最多创建多少个任务 |
 | `NOVA_MAX_PENDING_TASKS_PER_IP` | 否 | `20` | 单 IP 最多同时拥有多少个待处理任务 |
-| `NOVA_MAX_PENDING_TASKS_PER_API_KEY` | 否 | `10` | 单 API Key 最多同时拥有多少个待处理任务 |
-| `NOVA_RATE_LIMIT_RETRY_AFTER_SECONDS` | 否 | `30` | 队列满/限流时响应头 `Retry-After` 秒数 |
+| `NOVA_MAX_PENDING_TASKS_PER_API_KEY` | 否 | `20` | 单 API Key 最多同时拥有多少个待处理任务 |
+| `NOVA_RATE_LIMIT_RETRY_AFTER_SECONDS` | 否 | `60` | 队列满/限流时响应头 `Retry-After` 秒数 |
 | `NOVA_IMAGE_DIR` | 否 | `backend/nova-images/` | 任务产物落盘目录 |
-| `PROMPT_GALLERY_MODE` | 否 | `2` | `1` 常驻 / `2` 私密密码（点七下标题） / `3` 关闭 |
-| `PROMPT_GALLERY_PASSWORD` | 否 | 空 | 提示词广场私密模式密码；为空时私密模式可直接开启 |
+| `NOVA_PROMPT_GALLERY_CACHE` | 否 | `./data/prompt-gallery-cache.json` | 提示词广场手动拉取后的缓存文件路径 |
+| `PROMPT_GALLERY_MODE` | 否 | `1` | `1` 常驻 / `2` 私密密码 / `3` 关闭 |
+| `PROMPT_GALLERY_PASSWORD` | 否 | 空 | 提示词广场私密模式密码 |
 
 > `.env` 修改后大部分运行时配置**实时生效**（任务并发、限流、队列容量、接单开关、广场模式），无需重启；`PORT`、`HOSTNAME`、`NODE_ENV` 这类启动级配置仍需重启。
 
@@ -516,11 +612,11 @@ NOVA_ACCEPT_NEW_TASKS=false
 ---
 ## Star History
 
-<a href="https://www.star-history.com/?repos=tianjiangqiji%2Fnova-image-studio&type=date&legend=top-left">
+<a href="https://www.star-history.com/?repos=gnsilence%2Fimage-studio&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=tianjiangqiji/nova-image-studio&type=date&theme=dark&legend=top-left&sealed_token=clnQ7NRTys9PWagU6Le0AOcbLj0kNHUcrCk0dTvejD53SO6ybvgm9oM-vA_2nqtuAEZ8jAYMNbt_4MDg47CQ44bSyP0KLltIWPudfIDvMx_eJVk32XxnDw" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=tianjiangqiji/nova-image-studio&type=date&legend=top-left&sealed_token=clnQ7NRTys9PWagU6Le0AOcbLj0kNHUcrCk0dTvejD53SO6ybvgm9oM-vA_2nqtuAEZ8jAYMNbt_4MDg47CQ44bSyP0KLltIWPudfIDvMx_eJVk32XxnDw" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=tianjiangqiji/nova-image-studio&type=date&legend=top-left&sealed_token=clnQ7NRTys9PWagU6Le0AOcbLj0kNHUcrCk0dTvejD53SO6ybvgm9oM-vA_2nqtuAEZ8jAYMNbt_4MDg47CQ44bSyP0KLltIWPudfIDvMx_eJVk32XxnDw" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=gnsilence/image-studio&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=gnsilence/image-studio&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=gnsilence/image-studio&type=date&legend=top-left" />
  </picture>
 </a>
 
