@@ -1,6 +1,6 @@
 {
   "name": "nova-image-backend",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "description": "AIOSS Image 后端 - 任务队列和 API 服务器",
   "scripts": {

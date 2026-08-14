@@ -4,7 +4,7 @@
 
 **自托管的 AI 图像生成工作台 · 自定义模型 · 多模式 · PWA · 实时任务**
 
-[![Version](https://img.shields.io/badge/version-v1.0.3-blue.svg)](https://github.com/gnsilence/image-studio/releases)
+[![Version](https://img.shields.io/badge/version-v1.0.4-blue.svg)](https://github.com/gnsilence/image-studio/releases)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-green.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black.svg)](https://nextjs.org)
@@ -25,7 +25,7 @@ AIOSS Image 是一个面向个人/团队的 AI 图像生成工作台。前端使
 - 文字模型支持 Google（generateContent）和 OpenAI（Response 协议）
 - 桌面客户端内置后端服务、任务队列、托盘运行和自动更新能力，不需要单独安装 Node.js 或 Docker
 
-> 当前版本：**v1.0.3**
+> 当前版本：**v1.0.4**
 
 项目地址：[github.com/gnsilence/image-studio](https://github.com/gnsilence/image-studio)
 

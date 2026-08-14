@@ -1,6 +1,6 @@
 {
   "name": "nova-image",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "description": "AIOSS Image - AI 图像生成工作台",
   "main": "desktop/main.js",
