@@ -173,7 +173,7 @@ export function ImageGenerationWorkbench({
   useEffect(() => {
     if (!textareaRef.current) return;
     textareaRef.current.style.height = 'auto';
-    textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + 'px';
+    textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 240) + 'px';
   }, [prompt]);
 
   useEffect(() => {
@@ -621,7 +621,7 @@ export function ImageGenerationWorkbench({
 
   return (
     <div ref={formRef} className="studio-workbench space-y-3">
-      <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="nova-studio-panel overflow-hidden rounded-xl border border-border bg-card">
         {disabled ? (
           <div className="flex min-h-56 flex-col items-center justify-center gap-4 px-4 py-8 text-center">
             <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -672,7 +672,7 @@ export function ImageGenerationWorkbench({
                   onKeyDown={handleKeyDown}
                   placeholder={pendingFiles.length > 0 ? '描述如何调整参考图...' : '描述你想要生成的图像...'}
                   rows={3}
-                  className="min-h-36 resize-none rounded-none border-0 bg-transparent px-3 py-3 text-sm leading-6 placeholder:text-placeholder focus-visible:border-0 focus-visible:ring-0 sm:px-4"
+                  className="min-h-44 resize-none rounded-none border-0 bg-transparent px-3 py-3 text-sm leading-6 placeholder:text-placeholder focus-visible:border-0 focus-visible:ring-0 sm:px-4"
                 />
                 <div className="flex items-center justify-between gap-2 border-t border-border bg-muted/35 px-2 py-2 sm:px-3">
                   <div className="flex items-center gap-0.5">

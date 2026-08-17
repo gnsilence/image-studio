@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { StoredJob } from '@/lib/job-store';
-import { filterHistoryJobs, groupJobsByDay, isWaitingJob } from '@/components/workspace/results/HistoryJobList';
+import { filterHistoryJobs, formatElapsedTime, getHistoryColumnCount, groupJobsByDay, isWaitingJob } from '@/components/workspace/results/HistoryJobList';
 
 function makeJob(overrides: Partial<StoredJob> = {}): StoredJob {
   return {
@@ -49,5 +49,18 @@ describe('HistoryJobList helpers', () => {
     expect(isWaitingJob(makeJob({ status: 'processing' }))).toBe(true);
     expect(isWaitingJob(makeJob({ status: 'completed' }))).toBe(false);
     expect(isWaitingJob(makeJob({ status: 'failed' }))).toBe(false);
+  });
+
+  it('uses compact responsive history columns', () => {
+    expect(getHistoryColumnCount(499)).toBe(1);
+    expect(getHistoryColumnCount(500)).toBe(2);
+    expect(getHistoryColumnCount(759)).toBe(2);
+    expect(getHistoryColumnCount(760)).toBe(3);
+  });
+
+  it('formats active task elapsed time compactly', () => {
+    expect(formatElapsedTime(8)).toBe('8秒');
+    expect(formatElapsedTime(68)).toBe('1分08秒');
+    expect(formatElapsedTime(3730)).toBe('1时02分');
   });
 });

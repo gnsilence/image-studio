@@ -227,8 +227,8 @@ export const CompletedJobCard = memo(function CompletedJobCard({ job, onClear, o
 
   return (
     <>
-      <article className="studio-result-card overflow-hidden rounded-xl border border-border bg-card">
-        <div className="flex flex-col gap-0">
+      <article className="studio-result-card h-full overflow-hidden rounded-xl border border-border bg-card">
+        <div className="flex h-full flex-col gap-0">
           <div
             ref={lazyLoad.elementRef}
             className="studio-result-media group relative aspect-[4/3] w-full overflow-hidden bg-muted/35"
@@ -236,7 +236,7 @@ export const CompletedJobCard = memo(function CompletedJobCard({ job, onClear, o
             <button
               type="button"
               onClick={() => void openPreview()}
-              className="absolute inset-0 h-full w-full border-0 p-3"
+              className="absolute inset-0 h-full w-full border-0 p-0"
               title="看大图"
             >
               {isMultiple ? (
@@ -272,7 +272,7 @@ export const CompletedJobCard = memo(function CompletedJobCard({ job, onClear, o
                 <img
                   src={lazyLoad.isVisible ? (getImageSrc(images[0]) || undefined) : undefined}
                   alt="生成的图像"
-                  className={`h-full w-full rounded-md object-contain transition-opacity duration-300 ${lazyLoad.isLoaded ? 'opacity-100' : 'opacity-0'}`}
+                  className={`h-full w-full object-contain transition-opacity duration-300 ${lazyLoad.isLoaded ? 'opacity-100' : 'opacity-0'}`}
                   onLoad={lazyLoad.handleImageLoad}
                   onError={() => handleImageError(0)}
                 />
@@ -293,9 +293,9 @@ export const CompletedJobCard = memo(function CompletedJobCard({ job, onClear, o
             </button>
           </div>
 
-          <div className="min-w-0 w-full px-3 pt-3">
+          <div className="studio-result-content min-w-0 w-full px-3 pt-3">
             <div className="flex items-center gap-1.5">
-              <p className="line-clamp-2 text-sm leading-5 text-foreground">&quot;{job.prompt}&quot;</p>
+              <p className="studio-result-prompt line-clamp-2 text-sm leading-5 text-foreground">&quot;{job.prompt}&quot;</p>
               <button
                 onClick={copyPrompt}
                 className="flex-shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -312,17 +312,17 @@ export const CompletedJobCard = memo(function CompletedJobCard({ job, onClear, o
               </p>
             )}
 
-            <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
-              {getModelDisplayName(job.model)}
+            <p className="studio-result-meta mt-0.5 flex min-w-0 items-center gap-1 overflow-hidden whitespace-nowrap text-xs text-muted-foreground">
+              <span className="truncate" title={getModelDisplayName(job.model)}>{getModelDisplayName(job.model)}</span>
               <span>·</span>
-              {outputSizeLabel}
+              <span className="shrink-0">{outputSizeLabel}</span>
               {job.aspect_ratio !== '1:1' && job.aspect_ratio !== 'auto' && <><span>·</span><span>{job.aspect_ratio}</span></>}
               {supportsTemperature && <><span>·</span><Thermometer className="w-3 h-3" /><span>{job.temperature?.toFixed(2) ?? 1}</span></>}
               {isMultiple && <><span>·</span><span className="font-medium text-primary">x{sourceImages.length}{job.parallelCount && job.parallelCount > sourceImages.length ? `/${job.parallelCount}` : ''}</span></>}
             </p>
           </div>
 
-          <div className="studio-result-toolbar flex w-full flex-shrink-0 items-center justify-end gap-1 border-t border-border px-3 py-2">
+          <div className="studio-result-toolbar mt-auto flex w-full flex-shrink-0 items-center justify-end gap-1 border-t border-border px-3 py-2">
             <Button
               variant="ghost"
               size="icon-sm"

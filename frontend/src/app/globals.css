@@ -4,137 +4,149 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Professional studio palette: neutral surfaces with a single cyan-blue accent. */
+/* Fresh glass palette: mint background, translucent surfaces, and one green accent. */
 :root {
-  --background: #f4f6f8;
-  --foreground: #17212b;
-  --card: #fbfcfd;
-  --card-foreground: #17212b;
-  --popover: #fbfcfd;
-  --popover-foreground: #17212b;
-  --border: #dce2e8;
-  --input: #dce2e8;
-  --primary: #0284C7;
+  --background: #eef7f1;
+  --foreground: #20332a;
+  --card: rgb(255 255 255 / 0.76);
+  --card-foreground: #20332a;
+  --popover: rgb(255 255 255 / 0.9);
+  --popover-foreground: #20332a;
+  --border: rgb(177 207 187 / 0.62);
+  --input: rgb(177 207 187 / 0.62);
+  --primary: #43b957;
   --primary-foreground: #ffffff;
-  --secondary: #e9edf1;
-  --secondary-foreground: #17212b;
-  --accent: #0b92c8;
+  --secondary: rgb(229 242 232 / 0.82);
+  --secondary-foreground: #20332a;
+  --accent: #35ad4e;
   --accent-foreground: #ffffff;
-  --muted: #e9edf1;
-  --muted-foreground: #66727e;
-  --placeholder: #8a96a3;
+  --muted: rgb(228 241 232 / 0.78);
+  --muted-foreground: #617469;
+  --placeholder: #91a398;
   --destructive: #ef4444;
-  --ring: #0284C7;
-  --chart-1: #0284C7;
-  --chart-2: #0EA5E9;
-  --chart-3: #0ea5e9;
-  --chart-4: #0284C7;
-  --chart-5: #38BDF8;
-  --sidebar: #eef1f4;
-  --sidebar-foreground: #17212b;
-  --sidebar-primary: #0284C7;
+  --ring: #43b957;
+  --chart-1: #43b957;
+  --chart-2: #78ca6e;
+  --chart-3: #35ad4e;
+  --chart-4: #a0d98b;
+  --chart-5: #2f8f45;
+  --sidebar: rgb(255 255 255 / 0.66);
+  --sidebar-foreground: #20332a;
+  --sidebar-primary: #43b957;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #f1f5f9;
-  --sidebar-accent-foreground: #0f172a;
-  --sidebar-border: #dce2e8;
-  --sidebar-ring: #0284C7;
+  --sidebar-accent: rgb(219 244 218 / 0.8);
+  --sidebar-accent-foreground: #20332a;
+  --sidebar-border: rgb(177 207 187 / 0.52);
+  --sidebar-ring: #43b957;
   --radius: 0.625rem;
+  --glass-border: rgb(255 255 255 / 0.74);
+  --glass-surface: linear-gradient(145deg, rgb(255 255 255 / 0.9), rgb(241 250 244 / 0.7));
+  --glass-surface-soft: linear-gradient(145deg, rgb(255 255 255 / 0.74), rgb(239 249 243 / 0.5));
+  --glass-shadow: 0 16px 40px rgb(53 100 66 / 0.1), inset 0 1px 0 rgb(255 255 255 / 0.82);
   --success: #22c55e;
   --success-foreground: #ffffff;
   --error: #ef4444;
   --error-foreground: #ffffff;
   --warning: #f59e0b;
   --warning-foreground: #ffffff;
-  --processing: #0EA5E9;
+  --processing: #32a979;
   --processing-foreground: #ffffff;
 }
 
-/* Dark studio surfaces */
+/* Dark glass surfaces */
 [data-theme="dark"] {
-  --background: #11161b;
-  --foreground: #edf2f5;
-  --card: #181f26;
-  --card-foreground: #edf2f5;
-  --popover: #1b232b;
-  --popover-foreground: #edf2f5;
-  --border: #303b45;
-  --input: #303b45;
-  --primary: #38BDF8;
-  --primary-foreground: #0d1b24;
-  --secondary: #222c35;
-  --secondary-foreground: #edf2f5;
-  --accent: #23a9da;
+  --background: #101a15;
+  --foreground: #edf7f0;
+  --card: rgb(25 40 30 / 0.78);
+  --card-foreground: #edf7f0;
+  --popover: rgb(28 45 34 / 0.92);
+  --popover-foreground: #edf7f0;
+  --border: rgb(154 204 166 / 0.24);
+  --input: rgb(154 204 166 / 0.24);
+  --primary: #72d37b;
+  --primary-foreground: #102015;
+  --secondary: rgb(40 61 46 / 0.82);
+  --secondary-foreground: #edf7f0;
+  --accent: #68c975;
   --accent-foreground: #ffffff;
-  --muted: #222c35;
-  --muted-foreground: #9aa8b4;
-  --placeholder: #71808c;
+  --muted: rgb(40 61 46 / 0.78);
+  --muted-foreground: #a9bdb0;
+  --placeholder: #7e9786;
   --destructive: #ef4444;
-  --ring: #38BDF8;
-  --chart-1: #38BDF8;
-  --chart-2: #0EA5E9;
-  --chart-3: #0284C7;
-  --chart-4: #38BDF8;
-  --chart-5: #0EA5E9;
-  --sidebar: #151c22;
-  --sidebar-foreground: #edf2f5;
-  --sidebar-primary: #38BDF8;
-  --sidebar-primary-foreground: #0f172a;
-  --sidebar-accent: #1e293b;
-  --sidebar-accent-foreground: #f1f5f9;
-  --sidebar-border: #303b45;
-  --sidebar-ring: #38BDF8;
+  --ring: #72d37b;
+  --chart-1: #72d37b;
+  --chart-2: #9bdb8e;
+  --chart-3: #4fac5c;
+  --chart-4: #b3e7a5;
+  --chart-5: #3e8f4b;
+  --sidebar: rgb(21 35 26 / 0.82);
+  --sidebar-foreground: #edf7f0;
+  --sidebar-primary: #72d37b;
+  --sidebar-primary-foreground: #102015;
+  --sidebar-accent: rgb(57 94 61 / 0.76);
+  --sidebar-accent-foreground: #edf7f0;
+  --sidebar-border: rgb(154 204 166 / 0.2);
+  --sidebar-ring: #72d37b;
+  --glass-border: rgb(224 255 229 / 0.14);
+  --glass-surface: linear-gradient(145deg, rgb(31 49 37 / 0.96), rgb(20 34 25 / 0.9));
+  --glass-surface-soft: linear-gradient(145deg, rgb(31 49 37 / 0.78), rgb(20 34 25 / 0.64));
+  --glass-shadow: 0 16px 40px rgb(0 0 0 / 0.2), inset 0 1px 0 rgb(224 255 229 / 0.1);
   --success: #22c55e;
   --success-foreground: #020617;
   --error: #ef4444;
   --error-foreground: #ffffff;
   --warning: #f59e0b;
   --warning-foreground: #020617;
-  --processing: #38BDF8;
+  --processing: #58c98b;
   --processing-foreground: #0f172a;
 }
 
 /* System preference - dark */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --background: #11161b;
-    --foreground: #edf2f5;
-    --card: #181f26;
-    --card-foreground: #edf2f5;
-    --popover: #1b232b;
-    --popover-foreground: #edf2f5;
-    --border: #303b45;
-    --input: #303b45;
-    --primary: #38BDF8;
-    --primary-foreground: #0d1b24;
-    --secondary: #222c35;
-    --secondary-foreground: #edf2f5;
-    --accent: #23a9da;
+    --background: #101a15;
+    --foreground: #edf7f0;
+    --card: rgb(25 40 30 / 0.78);
+    --card-foreground: #edf7f0;
+    --popover: rgb(28 45 34 / 0.92);
+    --popover-foreground: #edf7f0;
+    --border: rgb(154 204 166 / 0.24);
+    --input: rgb(154 204 166 / 0.24);
+    --primary: #72d37b;
+    --primary-foreground: #102015;
+    --secondary: rgb(40 61 46 / 0.82);
+    --secondary-foreground: #edf7f0;
+    --accent: #68c975;
     --accent-foreground: #ffffff;
-    --muted: #222c35;
-    --muted-foreground: #9aa8b4;
-    --placeholder: #71808c;
+    --muted: rgb(40 61 46 / 0.78);
+    --muted-foreground: #a9bdb0;
+    --placeholder: #7e9786;
     --destructive: #ef4444;
-    --ring: #38BDF8;
-    --chart-1: #38BDF8;
-    --chart-2: #0EA5E9;
-    --chart-3: #0284C7;
-    --chart-4: #38BDF8;
-    --chart-5: #0EA5E9;
-    --sidebar: #151c22;
-    --sidebar-foreground: #edf2f5;
-    --sidebar-primary: #38BDF8;
-    --sidebar-primary-foreground: #0f172a;
-    --sidebar-accent: #1e293b;
-    --sidebar-accent-foreground: #f1f5f9;
-    --sidebar-border: #303b45;
-    --sidebar-ring: #38BDF8;
+    --ring: #72d37b;
+    --chart-1: #72d37b;
+    --chart-2: #9bdb8e;
+    --chart-3: #4fac5c;
+    --chart-4: #b3e7a5;
+    --chart-5: #3e8f4b;
+    --sidebar: rgb(21 35 26 / 0.82);
+    --sidebar-foreground: #edf7f0;
+    --sidebar-primary: #72d37b;
+    --sidebar-primary-foreground: #102015;
+    --sidebar-accent: rgb(57 94 61 / 0.76);
+    --sidebar-accent-foreground: #edf7f0;
+    --sidebar-border: rgb(154 204 166 / 0.2);
+    --sidebar-ring: #72d37b;
+    --glass-border: rgb(224 255 229 / 0.14);
+    --glass-surface: linear-gradient(145deg, rgb(31 49 37 / 0.96), rgb(20 34 25 / 0.9));
+    --glass-surface-soft: linear-gradient(145deg, rgb(31 49 37 / 0.78), rgb(20 34 25 / 0.64));
+    --glass-shadow: 0 16px 40px rgb(0 0 0 / 0.2), inset 0 1px 0 rgb(224 255 229 / 0.1);
     --success: #22c55e;
     --success-foreground: #020617;
     --error: #ef4444;
     --error-foreground: #ffffff;
     --warning: #f59e0b;
     --warning-foreground: #020617;
-    --processing: #38BDF8;
+    --processing: #58c98b;
     --processing-foreground: #0f172a;
   }
 }
@@ -203,9 +215,36 @@ html[data-wide-mode] {
   overflow: hidden;
 }
 
-  body {
+body {
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  background-color: var(--background);
   transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* A pre-blurred bitmap provides depth without scroll-time blur repaints. */
+.nova-app-shell {
+  background-color: #eef7f1;
+  background-image: url('/studio-nature-bg.webp');
+  background-position: center;
+  background-size: cover;
+}
+
+.nova-app-frame {
+  border-color: color-mix(in srgb, var(--glass-border) 82%, var(--border)) !important;
+  background: var(--glass-surface-soft) !important;
+  box-shadow: var(--glass-shadow);
+}
+
+[data-theme="dark"] .nova-app-shell {
+  background-color: #101a15;
+  background-blend-mode: multiply;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .nova-app-shell {
+    background-color: #101a15;
+    background-blend-mode: multiply;
+  }
 }
 
 /* Image generation workbench */
@@ -220,6 +259,21 @@ html[data-wide-mode] {
 
 .studio-params-bar {
   gap: 0.375rem;
+}
+
+.nova-image-workspace .studio-params-bar {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.nova-image-workspace .studio-params-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.nova-image-workspace .studio-params-bar > * {
+  flex-shrink: 0;
 }
 
 .studio-params-bar [data-slot="button"] {
@@ -276,6 +330,51 @@ html[data-wide-mode] {
 .studio-waiting-card,
 .studio-failed-card {
   animation: studio-history-enter 180ms ease-out both;
+}
+
+.studio-history-list-wide .studio-history-job {
+  animation: none;
+}
+
+.studio-history-list-wide .studio-result-card {
+  background: color-mix(in srgb, var(--card) 88%, var(--background));
+}
+
+.studio-history-list-wide .studio-result-card:hover {
+  transform: none;
+}
+
+.studio-history-list-wide .studio-result-media {
+  aspect-ratio: 16 / 10;
+}
+
+.studio-history-list-wide .studio-result-content {
+  padding: 0.625rem 0.625rem 0.5rem;
+}
+
+.studio-history-list-wide .studio-result-prompt {
+  -webkit-line-clamp: 1;
+}
+
+.studio-history-list-wide .studio-result-toolbar {
+  gap: 0;
+  padding: 0.375rem 0.5rem;
+}
+
+.studio-history-list-wide .studio-failed-card {
+  min-height: 148px;
+}
+
+.studio-active-empty {
+  margin: 0 -0.75rem -0.75rem;
+  background-image: url('/studio-nature-bg.webp');
+  background-position: left 72%;
+  background-size: cover;
+  box-shadow: inset 0 0 0 999px rgb(255 255 255 / 0.36);
+}
+
+[data-theme="dark"] .studio-active-empty {
+  box-shadow: inset 0 0 0 999px rgb(10 24 15 / 0.62);
 }
 
 .studio-history-empty {
@@ -366,36 +465,43 @@ html[data-wide-mode] {
     min-height: 100dvh;
     gap: 0 !important;
     padding: 0 !important;
-    background: color-mix(in srgb, var(--background) 96%, var(--foreground) 4%);
+    background: transparent;
     animation: nova-desktop-enter 220ms ease-out both;
   }
 
   .nova-desktop-frame {
     overflow: hidden;
     border-radius: 18px !important;
-    border-color: color-mix(in srgb, var(--border) 82%, var(--primary) 18%) !important;
-    background: color-mix(in srgb, var(--card) 96%, var(--background) 4%) !important;
-    box-shadow:
-      0 1px 0 color-mix(in srgb, var(--foreground) 7%, transparent),
-      0 18px 48px color-mix(in srgb, var(--foreground) 10%, transparent) !important;
+    border-color: transparent !important;
+    background: transparent !important;
+    box-shadow: none !important;
   }
 
   .nova-desktop-inner {
     padding: 14px !important;
   }
 
+  .nova-app-sidebar {
+    width: 216px;
+    flex-shrink: 0;
+    border: 1px solid color-mix(in srgb, var(--glass-border) 86%, var(--sidebar-border));
+    border-radius: 16px;
+    background: var(--glass-surface);
+    box-shadow: var(--glass-shadow);
+  }
+
   .nova-desktop-sidebar {
-    width: 206px;
+    width: 216px;
     padding: 2px 10px 0 2px;
   }
 
-  .nova-desktop-sidebar > button:first-child {
+  .nova-app-sidebar > button:first-child {
     margin-bottom: 4px;
     padding: 8px 9px 10px;
     border-radius: 8px;
   }
 
-  .nova-desktop-sidebar [data-slot="tabs-list"] {
+  .nova-app-sidebar [data-slot="tabs-list"] {
     gap: 3px;
     padding: 0;
     border: 0;
@@ -403,7 +509,7 @@ html[data-wide-mode] {
     background: transparent;
   }
 
-  .nova-desktop-sidebar [data-slot="tabs-trigger"] {
+  .nova-app-sidebar [data-slot="tabs-trigger"] {
     min-height: 40px;
     gap: 10px;
     padding: 8px 10px;
@@ -413,19 +519,19 @@ html[data-wide-mode] {
     transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
   }
 
-  .nova-desktop-sidebar [data-slot="tabs-trigger"]:hover {
+  .nova-app-sidebar [data-slot="tabs-trigger"]:hover {
     background: color-mix(in srgb, var(--muted) 72%, transparent);
     color: var(--foreground);
   }
 
-  .nova-desktop-sidebar [data-slot="tabs-trigger"][data-active] {
+  .nova-app-sidebar [data-slot="tabs-trigger"][data-active] {
     border-color: color-mix(in srgb, var(--primary) 24%, var(--border));
     background: color-mix(in srgb, var(--primary) 10%, var(--card));
     color: var(--foreground);
     box-shadow: inset 3px 0 0 var(--primary);
   }
 
-  .nova-desktop-sidebar [data-slot="tabs-trigger"][data-active] svg {
+  .nova-app-sidebar [data-slot="tabs-trigger"][data-active] svg {
     color: var(--primary);
   }
 
@@ -474,6 +580,32 @@ html[data-wide-mode] {
   .nova-desktop-topnav [data-slot="tabs-trigger"][data-active] {
     border-color: color-mix(in srgb, var(--primary) 20%, var(--border));
     background: color-mix(in srgb, var(--primary) 8%, var(--card));
+  }
+
+  .nova-app-workspace {
+    border: 1px solid color-mix(in srgb, var(--glass-border) 74%, var(--border));
+    border-radius: 16px;
+    background: var(--glass-surface-soft);
+    box-shadow: var(--glass-shadow);
+  }
+
+  .nova-app-workspace.nova-image-workspace {
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .nova-studio-panel,
+  .nova-studio-history-panel {
+    border-color: color-mix(in srgb, var(--glass-border) 86%, var(--border));
+    background: var(--glass-surface);
+    box-shadow: var(--glass-shadow);
+  }
+
+  .nova-studio-history-panel {
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--glass-border) 86%, var(--border));
+    border-radius: 16px;
   }
 
   .nova-desktop-workspace {
@@ -530,21 +662,35 @@ html[data-wide-mode] {
     background-clip: padding-box;
   }
 
-  .nova-desktop-settings {
+  .nova-app-settings {
     border: 1px solid color-mix(in srgb, var(--border) 82%, var(--primary) 18%);
     border-radius: 14px !important;
-    background: color-mix(in srgb, var(--popover) 96%, var(--background) 4%);
-    box-shadow: 0 28px 90px rgb(0 0 0 / 32%);
+    background: var(--glass-surface);
+    box-shadow: 0 24px 72px color-mix(in srgb, var(--foreground) 18%, transparent);
   }
 
-  .nova-desktop-settings [data-slot="dialog-header"] {
+  .nova-app-settings [data-slot="dialog-header"] {
     border-bottom: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
     background: color-mix(in srgb, var(--muted) 28%, transparent);
   }
 
-  body:has(.nova-desktop-settings) [data-slot="dialog-overlay"] {
+  body:has(.nova-app-settings) [data-slot="dialog-overlay"] {
     background: rgb(3 7 12 / 68%);
-    backdrop-filter: blur(8px);
+  }
+}
+
+@media (min-width: 1280px) and (max-height: 820px) {
+  .nova-image-workspace .studio-workbench-head {
+    gap: 0.625rem;
+    padding-block: 0.625rem;
+  }
+
+  .nova-image-workspace .studio-prompt-surface textarea {
+    min-height: 8.5rem;
+  }
+
+  .nova-image-workspace .studio-reference-rail {
+    min-height: 4rem;
   }
 }
 

@@ -16,13 +16,25 @@ export type GenerationHistoryFilter = 'all' | 'text-to-image' | 'image-to-image'
 export type HistoryClearScope = GenerationHistoryFilter;
 
 const historyFilterOptions: { value: GenerationHistoryFilter; label: string }[] = [
-  { value: 'all', label: '同时显示' },
+  { value: 'all', label: '全部' },
   { value: 'text-to-image', label: '文生图' },
   { value: 'image-to-image', label: '图生图' },
 ];
 
 export function isWaitingJob(job: StoredJob): boolean {
   return job.status === 'processing' || job.status === 'queued' || job.status === '排队中';
+}
+
+export function getHistoryColumnCount(width: number): number {
+  return width >= 760 ? 3 : width >= 500 ? 2 : 1;
+}
+
+export function formatElapsedTime(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  if (seconds < 60) return `${seconds}秒`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}分${String(seconds % 60).padStart(2, '0')}秒`;
+  return `${Math.floor(minutes / 60)}时${String(minutes % 60).padStart(2, '0')}分`;
 }
 
 export interface JobDayGroup {
@@ -161,14 +173,15 @@ const WaitingJobCard = memo(function WaitingJobCard({
 }) {
   const parallelCount = job.parallelCount || 1;
   const statusText = job.status === 'queued' || job.status === '排队中'
-    ? '排队中...'
+    ? '排队中'
     : job.mode === 'text-to-image'
-      ? (parallelCount > 1 ? `生成中 (x${parallelCount})...` : '生成中...')
-      : (parallelCount > 1 ? `转换中 (x${parallelCount})...` : '转换中...');
-  const elapsedSeconds = Math.max(0, Math.floor((now - Date.parse(job.created_at)) / 1000));
+      ? (parallelCount > 1 ? `生成中 x${parallelCount}` : '生成中')
+      : (parallelCount > 1 ? `转换中 x${parallelCount}` : '转换中');
+  const createdAt = Date.parse(job.created_at);
+  const elapsedSeconds = Number.isFinite(createdAt) ? Math.max(0, Math.floor((now - createdAt) / 1000)) : 0;
 
   return (
-    <div className={cn('studio-waiting-card overflow-hidden border border-border bg-card', compact ? 'rounded-lg' : 'rounded-xl')}>
+    <div className={cn('studio-waiting-card h-full overflow-hidden border border-border bg-card', compact ? 'rounded-lg' : 'rounded-xl')}>
       <div className={cn('flex gap-3', compact ? 'p-3' : 'p-4')}>
         <div className={cn(
           'studio-waiting-art relative flex flex-shrink-0 items-center justify-center overflow-hidden border border-processing/20 bg-processing/10',
@@ -179,14 +192,14 @@ const WaitingJobCard = memo(function WaitingJobCard({
           </div>
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="rounded-md bg-processing/10 px-1.5 py-0.5 text-[11px] font-medium text-processing">{statusText}</span>
-            <span className="text-xs text-muted-foreground">{getModelDisplayName(job.model)}</span>
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="shrink-0 rounded-md bg-processing/10 px-1.5 py-0.5 text-[11px] font-medium text-processing">{statusText}</span>
+            <span className="truncate text-xs text-muted-foreground" title={getModelDisplayName(job.model)}>{getModelDisplayName(job.model)}</span>
           </div>
           <p className={cn('truncate text-sm text-foreground', compact ? 'mt-1.5' : 'mt-2')}>&quot;{job.prompt}&quot;</p>
           <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
             <span className="size-1.5 animate-pulse rounded-full bg-processing" />
-            已用 <span className="font-mono text-foreground">{elapsedSeconds}</span> 秒
+            已用 <span className="font-mono text-foreground">{formatElapsedTime(elapsedSeconds)}</span>
           </p>
         </div>
         <div className="flex shrink-0 items-start gap-1">
@@ -235,7 +248,7 @@ export function ActiveJobList({
   const now = useNow(hasActiveTimers);
 
   return (
-    <section className="flex min-h-[148px] max-h-[30vh] min-w-0 flex-col rounded-xl border border-processing/20 bg-processing/[0.03] p-3">
+    <section className="nova-studio-panel flex min-h-[136px] max-h-[28vh] min-w-0 flex-col overflow-hidden rounded-xl border border-processing/20 bg-processing/[0.03] p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <div>
           <h3 className="text-sm font-semibold text-foreground">进行中任务</h3>
@@ -259,8 +272,8 @@ export function ActiveJobList({
           ))}
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 items-center justify-center text-xs text-muted-foreground">
-          提交后的任务会显示在这里
+        <div className="studio-active-empty relative flex min-h-0 flex-1 items-center justify-center overflow-hidden text-xs text-muted-foreground">
+          <span className="relative z-10">提交后的任务会显示在这里</span>
         </div>
       )}
     </section>
@@ -270,7 +283,6 @@ export function ActiveJobList({
 function JobsHeader({
   title,
   jobsList,
-  hasAnyJobs,
   groups,
   searchValue,
   onSearchChange,
@@ -282,7 +294,6 @@ function JobsHeader({
 }: {
   title: string;
   jobsList: StoredJob[];
-  hasAnyJobs: boolean;
   groups: JobDayGroup[];
   searchValue: string;
   onSearchChange: (value: string) => void;
@@ -292,8 +303,6 @@ function JobsHeader({
   onFilterChange?: (filter: GenerationHistoryFilter) => void;
   onClearAll: () => void;
 }) {
-  if (!hasAnyJobs) return null;
-
   const completed = jobsList.filter(job => job.status === 'completed').length;
   const queued = jobsList.filter(job => job.status === 'queued' || job.status === '排队中').length;
   const processing = jobsList.filter(job => job.status === 'processing').length;
@@ -361,7 +370,7 @@ function useColumnCount(
   wideMode: boolean,
   ready: boolean,
 ) {
-  const [columns, setColumns] = useState(() => (wideMode && ready ? 2 : 1));
+  const [columns, setColumns] = useState(() => (wideMode && ready ? 3 : 1));
 
   useEffect(() => {
     if (!wideMode || !ready) {
@@ -373,7 +382,7 @@ function useColumnCount(
 
     const compute = () => {
       const width = el.clientWidth;
-      setColumns(width >= 1080 ? 3 : width >= 680 ? 2 : 1);
+      setColumns(getHistoryColumnCount(width));
     };
 
     compute();
@@ -461,13 +470,13 @@ function VirtualJobList({
                 transform: `translateY(${virtualRow.start}px)`,
               }}
             >
-              <section className="studio-history-day-group pb-5">
-                <div className="studio-history-day-divider mb-3 flex items-center gap-3">
+              <section className="studio-history-day-group pb-4">
+                <div className="studio-history-day-divider mb-2.5 flex items-center gap-3">
                   <span className="text-xs font-medium text-foreground">{group.label}</span>
                   <span className="text-[11px] text-muted-foreground">{group.jobs.length} 项</span>
                   <span className="h-px flex-1 bg-border/70" />
                 </div>
-                <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+                <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
                   {group.jobs.map((job) => (
                     <div key={job.id} className="studio-history-job">
                       {renderJobCard(job)}
@@ -489,7 +498,6 @@ interface HistoryJobListProps {
   title: string;
   mode: Mode;
   historyFilter?: GenerationHistoryFilter;
-  hasAnyJobs?: boolean;
   emptyDescription?: string;
   jobs: StoredJob[];
   loadedImages: Set<string>;
@@ -510,7 +518,6 @@ export function HistoryJobList({
   title,
   mode,
   historyFilter,
-  hasAnyJobs,
   emptyDescription,
   jobs,
   loadedImages,
@@ -561,7 +568,7 @@ export function HistoryJobList({
       // 其他情况（默认 / 网络错误 / 未分类）都允许"查看进度"，让用户兜底
       const allowCheckStatus = !job.terminal && !!job.serverTaskId;
       return (
-        <div className="studio-failed-card rounded-xl border border-destructive/20 bg-card p-4">
+        <div className="studio-failed-card h-full rounded-xl border border-destructive/20 bg-card p-3">
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 gap-3">
               <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-destructive/10 text-destructive">
@@ -569,8 +576,8 @@ export function HistoryJobList({
               </div>
               <div className="min-w-0 space-y-1">
                 <p className="truncate text-sm text-foreground">&quot;{job.prompt}&quot;</p>
-                <p className="max-h-20 overflow-y-auto text-sm text-destructive">{job.error || '任务失败'}</p>
-                <p className="text-xs text-muted-foreground">{getModelDisplayName(job.model)}</p>
+                <p className="line-clamp-3 text-xs leading-5 text-destructive" title={job.error || '任务失败'}>{job.error || '任务失败'}</p>
+                <p className="truncate text-xs text-muted-foreground" title={getModelDisplayName(job.model)}>{getModelDisplayName(job.model)}</p>
               </div>
             </div>
             <div className="flex gap-1">
@@ -582,7 +589,7 @@ export function HistoryJobList({
                 </Button>
               )}
               <Button variant="ghost" size="icon-sm" onClick={() => onRetry(job)} title="重试">
-                <Loader2 className="w-4 h-4" />
+                <RefreshCw className="w-4 h-4" />
               </Button>
               <Button variant="ghost" size="icon-sm" onClick={() => onClear(job.id)} title="删除">
                 <X className="w-4 h-4" />
@@ -596,11 +603,10 @@ export function HistoryJobList({
   };
 
   return (
-    <section className={cn(wideMode ? 'flex h-full min-h-0 flex-col space-y-4' : 'space-y-3')}>
+    <section className={cn(wideMode ? 'nova-studio-history-panel flex h-full min-h-0 flex-col space-y-3 p-4' : 'space-y-3')}>
       <JobsHeader
         title={title}
         jobsList={filteredJobs}
-        hasAnyJobs={hasAnyJobs ?? jobs.length > 0}
         groups={jobGroups}
         searchValue={searchValue}
         onSearchChange={setSearchValue}

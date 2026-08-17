@@ -249,6 +249,7 @@ export function WorkspaceShell() {
     <div
       className={cn(
         'flex min-h-screen w-full flex-col gap-0 overflow-x-hidden px-0 py-0 transition-[max-width] duration-200',
+        'nova-app-shell',
         desktopRuntime && 'nova-desktop-shell',
         wideMode
           ? 'max-w-none xl:h-dvh xl:min-h-0 xl:overflow-hidden'
@@ -258,6 +259,7 @@ export function WorkspaceShell() {
     >
       <div className={cn(
         'flex-1 bg-transparent shadow-none sm:rounded-3xl sm:bg-card/95 sm:shadow-sm sm:border sm:border-border/70',
+        'nova-app-frame',
         desktopRuntime && 'nova-desktop-frame',
         wideMode && 'flex min-h-0 flex-col',
         !wideMode && activeTab === 'agent' && 'flex min-h-0 flex-col'
@@ -296,6 +298,7 @@ export function WorkspaceShell() {
             <div className={cn(
               'flex flex-col',
               wideMode && 'self-stretch sticky top-4 h-full xl:shrink-0',
+              wideMode && 'nova-app-sidebar',
               wideMode && sidebarCollapsed && 'hidden',
               desktopRuntime && (wideMode ? 'nova-desktop-sidebar' : 'nova-desktop-topnav'),
             )}>
@@ -375,6 +378,8 @@ export function WorkspaceShell() {
             </div>
 
             <div data-workspace-content-scroll className={cn(
+              wideMode && 'nova-app-workspace',
+              wideMode && activeTab === 'image-generation' && 'nova-image-workspace',
               desktopRuntime && 'nova-desktop-workspace',
               wideMode && 'xl:relative xl:flex xl:flex-1 xl:min-h-0 xl:min-w-0',
               wideMode && sidebarCollapsed && 'xl:pt-10',
@@ -396,7 +401,7 @@ export function WorkspaceShell() {
                 </Button>
               )}
               <TabsContent value="image-generation" keepMounted className={cn(wideMode ? 'space-y-6 xl:flex xl:min-h-0 xl:space-y-0' : 'space-y-3')}>
-                <div className={cn(wideMode ? 'grid items-start gap-5 xl:h-full xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(460px,0.95fr)_minmax(0,1.35fr)] xl:items-stretch' : 'space-y-3')}>
+                <div className={cn(wideMode ? 'grid items-start gap-4 xl:h-full xl:min-h-0 xl:flex-1 xl:grid-cols-[clamp(480px,34vw,540px)_minmax(0,1fr)] xl:items-stretch' : 'space-y-3')}>
                   {wideMode ? (
                     <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4 xl:h-full xl:overflow-hidden">
                       <ActiveJobList
@@ -440,7 +445,6 @@ export function WorkspaceShell() {
                     mode="text-to-image"
                     historyFilter={generationHistoryFilter}
                     onHistoryFilterChange={setGenerationHistoryFilter}
-                    hasAnyJobs={generationHistoryJobs.length > 0}
                     emptyDescription={generationEmptyDescription}
                     jobs={generationHistoryJobs}
                     loadedImages={workspace.loadedImages}

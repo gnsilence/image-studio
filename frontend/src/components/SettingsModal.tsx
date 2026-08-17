@@ -541,7 +541,7 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
       if (!open && isBackupActive) return;
       if (!open) onClose();
     }}>
-      <DialogContent className={`flex max-h-[92vh] flex-col overflow-hidden p-0 pt-0 gap-0 sm:max-w-5xl ${getDesktopBridge() ? 'nova-desktop-settings' : ''}`}>
+      <DialogContent className={`nova-app-settings flex max-h-[92vh] flex-col overflow-hidden p-0 pt-0 gap-0 sm:max-w-5xl ${getDesktopBridge() ? 'nova-desktop-settings' : ''}`}>
         <DialogHeader className="p-4 pb-3">
           <div className="flex items-center gap-2">
             <Settings className="w-5 h-5 text-muted-foreground" />
