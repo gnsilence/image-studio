@@ -61,6 +61,8 @@ import { syncDynamicModelExports } from '@/lib/gemini-config';
 import { exportAllData, importAllData, downloadBlob, generateBackupFilename, type BackupProgress as BackupProgressType } from '@/lib/backup-utils';
 import { checkModelsAvailability, type ModelStatus } from '@/lib/ccode-task-client';
 import { hasAnyApiKey } from '@/lib/settings-storage';
+import { loadJsonFromStorage, saveJsonToStorage } from '@/lib/settings-storage';
+import { IMAGE_GENERATION_WORKBENCH_SETTINGS_KEY, type ImageFormSettings } from '@/lib/form-settings';
 import { BA_RANDOM_URL, BING_WALLPAPER_SOURCE_URL } from '@/lib/constants';
 import { PROMPT_DATA_SOURCES, getPromptSourceLabel } from '@/lib/prompt-gallery-data';
 import {
@@ -179,6 +181,7 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
   const [backupError, setBackupError] = useState<string | null>(null);
   const [backupSuccess, setBackupSuccess] = useState<string | null>(null);
   const [updateStatus, setUpdateStatus] = useState<DesktopUpdateStatus | null>(null);
+  const [keepPromptAfterSubmit, setKeepPromptAfterSubmit] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -198,6 +201,7 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
     setBackupSuccess(null);
     setS3Error(null);
     setS3Success(null);
+    setKeepPromptAfterSubmit(loadJsonFromStorage<ImageFormSettings>(IMAGE_GENERATION_WORKBENCH_SETTINGS_KEY).keepPromptAfterSubmit === true);
     setS3Credentials({ accessKeyId: '', secretAccessKey: '', sessionToken: '' });
     const desktop = getDesktopBridge();
     if (desktop) {
@@ -217,6 +221,12 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
       }).catch(err => setS3Error(err instanceof Error ? err.message : '读取 S3 配置失败'));
     }
   }, [isOpen]);
+
+  const handleKeepPromptAfterSubmitChange = (checked: boolean) => {
+    setKeepPromptAfterSubmit(checked);
+    const settings = loadJsonFromStorage<ImageFormSettings>(IMAGE_GENERATION_WORKBENCH_SETTINGS_KEY);
+    saveJsonToStorage(IMAGE_GENERATION_WORKBENCH_SETTINGS_KEY, { ...settings, keepPromptAfterSubmit: checked });
+  };
 
   useEffect(() => {
     if (!isOpen) return;
@@ -556,6 +566,10 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
               <ImageIcon className="w-4 h-4" />
               模型配置
             </TabsTrigger>
+            <TabsTrigger value="preferences" className="gap-2 rounded-none border-b-2 border-transparent data-active:border-primary data-active:bg-transparent data-active:shadow-none px-4 py-3">
+              <Wand2 className="w-4 h-4" />
+              创作偏好
+            </TabsTrigger>
             {getDesktopBridge() && (
               <TabsTrigger value="s3" className="gap-2 rounded-none border-b-2 border-transparent data-active:border-primary data-active:bg-transparent data-active:shadow-none px-4 py-3">
                 <Cloud className="w-4 h-4" />
@@ -880,6 +894,18 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
                   ))}
                 </div>
               )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="preferences" className="min-h-0 overflow-y-auto p-4 sm:p-6 mt-0">
+            <div className="max-w-2xl rounded-lg border px-4 py-3">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium">保留生图提示词</p>
+                  <p className="mt-1 text-xs text-muted-foreground">开启后，提交生图任务不会自动清空提示词；手动清空仍然有效。</p>
+                </div>
+                <Switch checked={keepPromptAfterSubmit} onCheckedChange={handleKeepPromptAfterSubmitChange} />
+              </div>
             </div>
           </TabsContent>
 

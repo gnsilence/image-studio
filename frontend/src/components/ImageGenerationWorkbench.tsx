@@ -41,11 +41,11 @@ import { prepareUploadImage, getOptimizationBadge } from '@/lib/upload-image-cac
 import { MAX_UPLOAD_SIZE_BYTES } from '@/lib/constants';
 import { dispatchImageActionToast } from '@/lib/image-actions';
 import type { AspectRatio, OutputSize, RefImageData } from '@/lib/job-store';
-import type { ImageFormSettings } from '@/lib/form-settings';
+import { IMAGE_GENERATION_WORKBENCH_SETTINGS_KEY, type ImageFormSettings } from '@/lib/form-settings';
 import type { ImageToImageSubmitInput, TextToImageSubmitInput } from '@/lib/workspace-task-service';
 import { cn } from '@/lib/utils';
 
-const WORKBENCH_SETTINGS_KEY = 'nova-image-generation-settings';
+const WORKBENCH_SETTINGS_KEY = IMAGE_GENERATION_WORKBENCH_SETTINGS_KEY;
 const T2I_SETTINGS_KEY = 'nova-t2i-settings';
 const I2I_SETTINGS_KEY = 'nova-i2i-settings';
 const MAX_ASSET_IMPORTS = 5;
@@ -124,6 +124,7 @@ export function ImageGenerationWorkbench({
   const [temperature, setTemperature] = useState<number>(1);
   const [gptImageAdvancedParams, setGptImageAdvancedParams] = useState<GptImageAdvancedParams>(DEFAULT_GPT_IMAGE_ADVANCED_PARAMS);
   const [parallelCount, setParallelCount] = useState<ParallelCount>(1);
+  const [keepPromptAfterSubmit, setKeepPromptAfterSubmit] = useState(false);
   const [settingsReady, setSettingsReady] = useState(false);
 
   const [isDragOver, setIsDragOver] = useState(false);
@@ -207,6 +208,7 @@ export function ImageGenerationWorkbench({
       const nextParallelCount: ParallelCount = useInitial && initialData?.parallelCount && [1, 2, 3, 4].includes(initialData.parallelCount)
         ? initialData.parallelCount
         : (saved.parallelCount && [1, 2, 3, 4].includes(saved.parallelCount) ? saved.parallelCount : 1);
+      const nextKeepPromptAfterSubmit = saved.keepPromptAfterSubmit === true;
 
       setModel(nextModel);
       setOutputSize(nextOutputSize);
@@ -215,6 +217,7 @@ export function ImageGenerationWorkbench({
       setTemperature(nextTemperature);
       setGptImageAdvancedParams(nextAdvancedParams);
       setParallelCount(nextParallelCount);
+      setKeepPromptAfterSubmit(nextKeepPromptAfterSubmit);
       if (useInitial) {
         setPrompt(initialData?.prompt || '');
         setPendingFiles((initialData?.refImages || []).map(img => ({
@@ -236,6 +239,17 @@ export function ImageGenerationWorkbench({
   }, [initialData]);
 
   useEffect(() => {
+    const handleSettingsStorageUpdated = (event: Event) => {
+      const key = (event as CustomEvent<{ key?: string }>).detail?.key;
+      if (key !== WORKBENCH_SETTINGS_KEY) return;
+      setKeepPromptAfterSubmit(loadJsonFromStorage<WorkbenchSettings>(WORKBENCH_SETTINGS_KEY).keepPromptAfterSubmit === true);
+    };
+
+    window.addEventListener('nova-settings-storage-updated', handleSettingsStorageUpdated);
+    return () => window.removeEventListener('nova-settings-storage-updated', handleSettingsStorageUpdated);
+  }, []);
+
+  useEffect(() => {
     if (!settingsReady) return;
     saveJsonToStorage(WORKBENCH_SETTINGS_KEY, {
       model,
@@ -247,8 +261,9 @@ export function ImageGenerationWorkbench({
       gptImageStyle: gptImageAdvancedParams.style,
       gptImageBackground: gptImageAdvancedParams.background,
       parallelCount,
+      keepPromptAfterSubmit,
     });
-  }, [model, outputSize, customSize, aspectRatio, temperature, gptImageAdvancedParams, parallelCount, settingsReady]);
+  }, [model, outputSize, customSize, aspectRatio, temperature, gptImageAdvancedParams, parallelCount, keepPromptAfterSubmit, settingsReady]);
 
   const handleOptimize = useCallback(() => {
     const textModel = requireDefaultConfiguredTextModel('promptOptimize');
@@ -597,7 +612,7 @@ export function ImageGenerationWorkbench({
     }
 
     setPendingFiles([]);
-    setPrompt('');
+    if (!keepPromptAfterSubmit) setPrompt('');
     setUploadError(null);
     onDraftConsumed?.();
   };

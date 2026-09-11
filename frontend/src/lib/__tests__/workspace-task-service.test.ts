@@ -123,6 +123,35 @@ describe('submitTextToImage', () => {
     }));
     expect(getJob().serverTaskId).toBe('task-advanced-1');
   });
+
+  it('forwards the GPT Image 2.5 upstream model ID', async () => {
+    mockedResolveImageTaskProvider.mockReturnValue({
+      apiKey: 'test-api-key',
+      baseUrl: 'https://api.openai.com',
+      protocol: 'openai',
+      modelId: 'gpt-image-2.5',
+    });
+    const { actions } = createActions(makeJob({ model: 'image-2.5-config' }));
+
+    await submitTextToImage({
+      prompts: ['test 2.5'],
+      outputSize: '2K',
+      aspectRatio: '16:9',
+      temperature: 1,
+      model: 'image-2.5-config',
+      gptImageQuality: 'high',
+      gptImageStyle: 'natural',
+      gptImageBackground: 'opaque',
+      parallelCount: 1,
+    }, actions, vi.fn());
+
+    expect(mockedCreateNovaTask).toHaveBeenCalledWith(expect.objectContaining({
+      protocol: 'openai',
+      model: 'gpt-image-2.5',
+      outputSize: '2K',
+      aspectRatio: '16:9',
+    }));
+  });
 });
 
 describe('finalizeCompletedServerTask', () => {

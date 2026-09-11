@@ -36,6 +36,10 @@ function getBuiltinPresetId(modelId: string): string {
   return getModelConfig(modelId)?.builtinPreset || modelId;
 }
 
+function isGptImage2Preset(presetId: string): boolean {
+  return presetId.startsWith('gpt-image-2');
+}
+
 export const GPT_IMAGE_QUALITY_OPTIONS: { value: GptImageQuality; label: string }[] = [
   { value: 'auto', label: '自动' },
   { value: 'high', label: '高' },
@@ -245,7 +249,7 @@ export function supportsCustomSize(model: ModelId): boolean {
 
 export function supportsAutoLayout(model: ModelId): boolean {
   const presetId = getBuiltinPresetId(model);
-  return String(presetId).startsWith('gpt-image-2');
+  return isGptImage2Preset(presetId);
 }
 
 export function supportsGptImageAdvancedParams(model: string): boolean {
@@ -325,7 +329,7 @@ export function getSizeOptions(model: ModelId): { value: OutputSize; label: stri
       { value: '4K', label: '4K' },
     ];
   }
-  if (presetId === 'gemini-3-pro-image-preview' || presetId === 'gpt-image-2') {
+  if (presetId === 'gemini-3-pro-image-preview' || isGptImage2Preset(presetId)) {
     return [
       { value: '1K', label: '1K' },
       { value: '2K', label: '2K' },
@@ -362,15 +366,12 @@ export function getAspectRatioOptions(model: ModelId, outputSize: OutputSize): A
       resolution: ar.resolutions[outputSize] || ar.resolutions['1K'],
     }));
   }
-  if (presetId === 'gpt-image-2') {
+  if (isGptImage2Preset(presetId)) {
     return GPT_IMAGE_ASPECT_RATIOS.map(ar => ({
       value: ar.value,
       label: ar.label,
       resolution: getGptImageResolution(outputSize, ar.value) || '',
     })).filter(option => isGptImage2ProResolutionSupported(option.resolution));
-  }
-  if (String(presetId).startsWith('gpt-image-2')) {
-    return BANANA_ASPECT_RATIOS.map(ar => ({ ...ar, resolution: '' }));
   }
   if (isGrokImagePreset(presetId)) {
     return GROK_IMAGE_ASPECT_RATIOS.map(ar => ({
@@ -448,7 +449,7 @@ export function isRetryLayoutCompatible(model: ModelId, outputSize: OutputSize, 
     return ['1K', '2K', '4K'].includes(outputSize);
   }
 
-  if (presetId === 'gpt-image-2') {
+  if (isGptImage2Preset(presetId)) {
     const resolution = getGptImageResolution(outputSize, aspectRatio);
     return ['1K', '2K', '4K'].includes(outputSize) && isGptImage2ProResolutionSupported(resolution);
   }

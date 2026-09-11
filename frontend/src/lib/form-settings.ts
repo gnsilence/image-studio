@@ -8,6 +8,8 @@ import type { ModelId } from '@/lib/gemini-config';
 import type { OutputSize, AspectRatio } from '@/lib/job-store';
 import type { GptImageBackground, GptImageQuality, GptImageStyle, ParallelCount } from '@/lib/model-capabilities';
 
+export const IMAGE_GENERATION_WORKBENCH_SETTINGS_KEY = 'nova-image-generation-settings';
+
 export interface ImageFormSettings {
   model: ModelId;
   outputSize: OutputSize;
@@ -18,4 +20,5 @@ export interface ImageFormSettings {
   gptImageStyle: GptImageStyle;
   gptImageBackground: GptImageBackground;
   parallelCount: ParallelCount;
+  keepPromptAfterSubmit?: boolean;
 }

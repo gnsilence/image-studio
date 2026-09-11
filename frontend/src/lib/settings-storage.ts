@@ -40,4 +40,5 @@ export function loadJsonFromStorage<T>(key: string): Partial<T> {
 export function saveJsonToStorage<T>(key: string, value: T): void {
   if (typeof window === 'undefined') return;
   runtimeStorage.setItem(key, JSON.stringify(value));
+  window.dispatchEvent(new CustomEvent('nova-settings-storage-updated', { detail: { key } }));
 }
