@@ -4,6 +4,7 @@ import { finalizeCompletedServerTask, type SubmitActions } from '@/lib/workspace
 import type { StoredJob } from '@/lib/job-store';
 import { classifyTaskFailure } from '@/lib/task-failure';
 import type { NovaTaskResponse } from '@/lib/ccode-task-client';
+import { setTaskProgress } from '@/lib/task-progress-store';
 
 function isWaitingJob(job: StoredJob): boolean {
   return job.status === 'processing' || job.status === 'queued' || job.status === '排队中';
@@ -12,7 +13,7 @@ function isWaitingJob(job: StoredJob): boolean {
 /**
  * 用 WebSocket 替代原有的 HTTP 轮询：
  * - 每个等待中的 serverTaskId 走 novaTaskSocket.subscribeTask
- * - 收到 processing → replaceJob 改状态
+ * - 收到 processing → 更新传输进度（独立的进度存储），状态变化时才 replaceJob
  * - 收到 completed → finalizeCompletedServerTask
  * - 收到 failed/expired → failJob，并根据 classifyTaskFailure 标记 terminal
  * - jobs 变化时新增/取消订阅；卸载时全部取消
@@ -62,6 +63,7 @@ export function useServerTaskPolling(
         const actions = actionsRef.current;
         // 取最新 job 快照，避免使用订阅时捕获的过期闭包覆盖较新状态。
         const currentJob = actions.getJob?.(jobId) ?? job;
+        if (task.status !== 'processing') setTaskProgress(taskId, undefined);
 
         if (task.status === 'completed') {
           // 幂等：重连重订阅或 HTTP 兜底可能重复投递 completed；已完成则跳过。
@@ -78,7 +80,11 @@ export function useServerTaskPolling(
           return;
         }
         if (task.status === 'processing') {
-          actions.replaceJob(jobId, current => ({ ...current, status: 'processing' }));
+          // Progress arrives about once per second: keep it out of the job list (no list re-render, no storage write).
+          setTaskProgress(taskId, task.progress);
+          if (currentJob.status !== 'processing') {
+            actions.replaceJob(jobId, current => ({ ...current, status: 'processing' }));
+          }
           return;
         }
         if (task.status === 'queued' || task.status === '排队中') {
@@ -89,11 +95,12 @@ export function useServerTaskPolling(
       subscriptions.set(taskId, unsubscribe);
     }
 
-    // 任务从等待状态消失（已完成/已删除）→ 取消订阅
+    // 任务从等待状态消失（已完成/已删除）→ 取消订阅，并清掉它的传输进度
     for (const [taskId, unsubscribe] of subscriptions) {
       if (!activeTaskIds.has(taskId)) {
         try { unsubscribe(); } catch { /* ignore */ }
         subscriptions.delete(taskId);
+        setTaskProgress(taskId, undefined);
       }
     }
   }, [jobs]);

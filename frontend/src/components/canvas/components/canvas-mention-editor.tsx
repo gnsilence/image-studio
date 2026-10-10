@@ -351,7 +351,7 @@ function MentionMenu({ rect, references, activeIndex, onSelect }: { rect: DOMRec
   return createPortal(
     <div
       data-canvas-no-zoom
-      className="fixed z-[140] max-h-56 w-64 overflow-y-auto rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-2xl"
+      className="nova-float fixed z-[140] max-h-56 w-64 overflow-y-auto rounded-xl p-1"
       style={{ left, top }}
       onPointerDown={(event) => event.stopPropagation()}
       onMouseDown={(event) => event.preventDefault()}

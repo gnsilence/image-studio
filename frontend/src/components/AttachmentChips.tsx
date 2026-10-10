@@ -88,7 +88,7 @@ export function AttachmentChips({
               )}
             </button>
             {file.badge && (
-              <div className="absolute left-0.5 bottom-0.5 max-w-[62px] rounded-md bg-black/70 px-1 py-0.5 text-[10px] leading-none text-white shadow-sm backdrop-blur-sm">
+              <div className="absolute left-0.5 bottom-0.5 max-w-[62px] rounded-md bg-black/70 px-1 py-0.5 text-[10px] leading-none text-white shadow-sm">
                 <span className="inline-flex items-center gap-0.5 truncate">
                   <BadgeCheck className="w-2.5 h-2.5" />
                   {file.badge}

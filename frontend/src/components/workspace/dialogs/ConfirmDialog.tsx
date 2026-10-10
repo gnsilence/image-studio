@@ -58,8 +58,8 @@ export function ConfirmDialog({
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex items-stretch justify-center overflow-y-auto bg-black/50 transition-opacity duration-200 sm:items-center sm:p-4 ${
-        isMounted && !isClosing ? 'opacity-100' : 'opacity-0'
+      className={`fixed inset-0 z-50 flex items-stretch justify-center overflow-y-auto transition-colors duration-200 sm:items-center sm:p-4 ${
+        isMounted && !isClosing ? 'bg-scrim' : 'bg-transparent'
       }`}
       style={{
         position: 'fixed',
@@ -76,7 +76,7 @@ export function ConfirmDialog({
       onTouchMove={event => event.stopPropagation()}
     >
       <div
-        className={`flex min-h-[100dvh] w-full flex-col overflow-y-auto rounded-none border border-border bg-card p-6 pt-12 shadow-lg transition-all duration-200 sm:min-h-0 sm:max-h-[calc(100dvh-2rem)] sm:max-w-md sm:rounded-xl sm:pt-6 ${
+        className={`nova-float-sheet flex min-h-[100dvh] w-full flex-col overflow-y-auto rounded-none p-6 pt-12 transition-[opacity,scale] duration-200 sm:min-h-0 sm:max-h-[calc(100dvh-2rem)] sm:max-w-md sm:rounded-2xl sm:pt-6 ${
           isMounted && !isClosing ? 'scale-100 opacity-100' : 'scale-95 opacity-0'
         }`}
         onClick={event => event.stopPropagation()}

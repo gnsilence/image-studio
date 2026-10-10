@@ -150,7 +150,7 @@ export function CanvasCropDialog({ open, source, onClose, onApply }: BaseProps &
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex select-none flex-col bg-background/95 backdrop-blur-sm"
+      className="fixed inset-0 z-[9999] flex select-none flex-col bg-background"
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
     >
@@ -384,7 +384,7 @@ export function CanvasSplitDialog({ open, source, onClose, onApply }: BaseProps 
   const total = rows * columns;
 
   return (
-    <div className="fixed inset-0 z-[9999] flex select-none flex-col bg-background/95 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[9999] flex select-none flex-col bg-background">
       {/* 顶部栏 */}
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4">
         <span className="text-sm font-medium">分割图片</span>

@@ -1,0 +1,41 @@
+﻿# DotCraft workspace - generated artifacts only
+# To keep the whole workspace private, ignore `.craft/` in the repository root.
+
+# Runtime databases and SQLite sidecars
+/state.db
+/state.db-*
+/*.db
+/*.db-*
+/*.sqlite
+/*.sqlite-*
+/*.sqlite3
+/*.sqlite3-*
+
+# Runtime locks
+/appserver.lock
+
+# Logs, traces, caches, and tool captures
+/logs/
+/tracing/
+/cache/
+/terminals/
+/tool-results/
+/visualizations/
+*.log
+
+# Temporary files
+/tmp/
+/temp/
+*.tmp
+*.temp
+
+# Binary attachment payloads
+/attachments/
+
+# Dreams run intermediates
+/dreams/runs/
+/workflows/runs/
+
+# Managed worktrees
+/worktrees/
+/oratorio/worktrees/

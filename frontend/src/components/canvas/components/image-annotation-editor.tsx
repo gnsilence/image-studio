@@ -627,7 +627,7 @@ export function ImageAnnotationEditor({ src, title, onClose, onSubmit }: ImageAn
   ];
 
   return (
-    <div className="fixed inset-0 z-[9999] flex select-none flex-col bg-background/95 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[9999] flex select-none flex-col bg-background">
       {/* 顶部工具栏 */}
       <div className="scrollbar-hide flex h-12 shrink-0 touch-pan-x select-none items-center gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain border-b border-border bg-background/95 px-3 sm:px-4">
         <div className="flex shrink-0 items-center gap-2 text-sm font-medium text-foreground">

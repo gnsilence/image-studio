@@ -121,19 +121,20 @@ test('image tasks call the configured Base URL', async () => {
     });
   });
   const upstreamAddress = await listen(upstream);
+  const childEnv = {
+    ...process.env,
+    NODE_ENV: 'production',
+    HOSTNAME: '127.0.0.1',
+    PORT: '0',
+    NOVA_TASK_DB: path.join(tempDir, 'tasks.sqlite'),
+    NOVA_IMAGE_DIR: path.join(tempDir, 'images'),
+    NOVA_DESKTOP_SESSION_TOKEN: token,
+  };
+  delete childEnv.NOVA_IMAGE_STREAM;
   const child = fork(path.join(__dirname, 'server.js'), [], {
     cwd: path.join(__dirname, '..'),
     silent: true,
-    env: {
-      ...process.env,
-      NODE_ENV: 'production',
-      HOSTNAME: '127.0.0.1',
-      PORT: '0',
-      NOVA_TASK_DB: path.join(tempDir, 'tasks.sqlite'),
-      NOVA_IMAGE_DIR: path.join(tempDir, 'images'),
-      NOVA_DESKTOP_SESSION_TOKEN: token,
-      NOVA_IMAGE_STREAM: 'false',
-    },
+    env: childEnv,
   });
 
   try {
@@ -170,6 +171,8 @@ test('image tasks call the configured Base URL', async () => {
     assert.equal(upstreamRequests[0].authorization, 'Bearer custom-image-key');
     assert.equal(upstreamBodies.length, 1);
     assert.equal(upstreamBodies[0].size, '1024x1536');
+    assert.equal(upstreamBodies[0].stream, undefined);
+    assert.equal(upstreamBodies[0].response_format, 'url');
   } finally {
     if (child.connected) {
       const exitPromise = waitForExit(child);
@@ -221,6 +224,7 @@ test('OpenAI image tasks retry without streaming when the upstream rejects strea
       NOVA_TASK_DB: path.join(tempDir, 'tasks.sqlite'),
       NOVA_IMAGE_DIR: path.join(tempDir, 'images'),
       NOVA_DESKTOP_SESSION_TOKEN: token,
+      NOVA_IMAGE_STREAM: 'true',
       NOVA_IMAGE_PARTIAL_IMAGES: '2',
     },
   });
@@ -437,7 +441,7 @@ test('Grok image tasks complete from inline base64 without downloading remote UR
   }
 });
 
-test('URL image tasks complete with remote URL when server-side result download fails', async () => {
+test('URL image tasks preserve the remote URL when it is unreachable', async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nova-image-url-download-fallback-test-'));
   const token = 'test-image-url-download-fallback-token';
   const unreachableImageUrl = 'http://127.0.0.1:9/generated.png';
@@ -511,7 +515,7 @@ test('URL image tasks complete with remote URL when server-side result download 
   }
 });
 
-test('Grok URL image tasks download remote URL results normally', async () => {
+test('Grok URL image tasks preserve remote URL results without server-side download', async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nova-image-grok-no-proxy-test-'));
   const token = 'test-image-grok-no-proxy-token';
   const pngBuffer = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lW2mWQAAAABJRU5ErkJggg==', 'base64');
@@ -584,9 +588,8 @@ test('Grok URL image tasks download remote URL results normally', async () => {
     const task = await waitForTaskDone(ready.url, taskId, headers);
 
     assert.equal(task?.status, 'completed', task?.error);
-    assert.deepEqual(task.result?.images?.length, 1);
-    assert.equal(task.result?.images?.[0]?.startsWith('URL:/api/nova/images/'), true);
-    assert.equal(imageDownloads, 1);
+    assert.deepEqual(task.result?.images, [`URL:${originalImageUrl}`]);
+    assert.equal(imageDownloads, 0);
     assert.deepEqual(upstreamResponseFormats, ['b64_json', 'url']);
   } finally {
     if (child.connected) {

@@ -316,7 +316,7 @@ export const AgentInputEditor = forwardRef<AgentInputEditorHandle, AgentInputEdi
         {showMentionPopup && filteredImages.length > 0 && (
           <div
             ref={mentionPopupRef}
-            className="absolute bottom-full left-0 z-50 mb-1 w-56 rounded-lg border bg-popover p-1 shadow-lg"
+            className="nova-float absolute bottom-full left-0 z-50 mb-1 w-56 rounded-xl p-1"
           >
             <div className="max-h-40 overflow-y-auto space-y-0.5">
               {filteredImages.slice(0, 20).map(img => (

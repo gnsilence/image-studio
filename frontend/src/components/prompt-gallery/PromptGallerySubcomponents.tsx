@@ -138,7 +138,7 @@ export const PromptCard = memo(function PromptCard({
               <button
                 type="button"
                 title="导入到无限画布"
-                className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20 text-white shadow-sm backdrop-blur-sm transition-colors hover:bg-white/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-black/45 text-white shadow-sm ring-1 ring-inset ring-white/25 transition-colors hover:bg-black/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
                 onClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
@@ -329,7 +329,7 @@ export function PromptDetailModal({
 
   return (
     <div 
-      className={`fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 transition-opacity duration-150 ${
+      className={`fixed inset-0 z-50 bg-scrim flex items-center justify-center p-4 transition-opacity duration-150 ${
         isMounted && !isClosing ? 'opacity-100' : 'opacity-0'
       }`}
       style={{ 

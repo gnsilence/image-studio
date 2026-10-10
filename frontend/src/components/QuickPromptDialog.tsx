@@ -89,14 +89,14 @@ export function QuickPromptDialog({
   return (
     <>
       <div
-        className="fixed inset-0 z-50 flex items-stretch justify-center overflow-y-auto bg-black/50 sm:items-center sm:p-4"
+        className="fixed inset-0 z-50 flex items-stretch justify-center overflow-y-auto bg-scrim sm:items-center sm:p-4"
         style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, width: '100vw', height: '100vh' }}
         onClick={handleClose}
         onWheel={e => e.stopPropagation()}
         onTouchMove={e => e.stopPropagation()}
       >
         <div
-          className="flex min-h-[100dvh] w-full flex-col overflow-y-auto rounded-none border border-border bg-card p-6 pt-12 shadow-lg sm:min-h-0 sm:max-w-lg sm:rounded-xl sm:pt-6"
+          className="nova-float-sheet flex min-h-[100dvh] w-full flex-col overflow-y-auto rounded-none p-6 pt-12 sm:min-h-0 sm:max-w-lg sm:rounded-2xl sm:pt-6"
           onClick={e => e.stopPropagation()}
         >
           <div className="mb-4 flex items-center gap-2">

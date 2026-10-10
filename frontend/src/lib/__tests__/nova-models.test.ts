@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  BUILTIN_IMAGE_PRESET_OPTIONS,
   BUILTIN_IMAGE_PRESETS,
   FIXED_MODEL_BASE_URL,
   loadRegistry,
@@ -78,6 +79,47 @@ describe('Nova model Base URL', () => {
     expect(supportsAutoLayout('image-model')).toBe(true);
     expect(supportsGptImageAdvancedParams('image-model')).toBe(true);
     expect(isRetryLayoutCompatible('image-model', '4K', '16:9')).toBe(true);
+  });
+
+  it('offers GPT Image 2.5 Flare and Sunburst presets in the image preset picker', () => {
+    expect(BUILTIN_IMAGE_PRESETS['gpt-image-2.5-flare']).toMatchObject({
+      protocol: 'openai',
+      name: 'GPT Image 2.5 Flare',
+      modelId: 'gpt-image-2.5-flare',
+      baseUrl: FIXED_MODEL_BASE_URL,
+      maxRefImages: 16,
+      maxOutputSize: '4K',
+      supportsAdvancedParams: true,
+    });
+    expect(BUILTIN_IMAGE_PRESETS['gpt-image-2.5-sunburst']).toMatchObject({
+      protocol: 'openai',
+      name: 'GPT Image 2.5 Sunburst',
+      modelId: 'gpt-image-2.5-sunburst',
+      baseUrl: FIXED_MODEL_BASE_URL,
+      maxRefImages: 16,
+      maxOutputSize: '4K',
+      supportsAdvancedParams: true,
+    });
+    expect(BUILTIN_IMAGE_PRESET_OPTIONS).toEqual(expect.arrayContaining([
+      { value: 'gpt-image-2.5-flare', label: 'GPT Image 2.5 Flare' },
+      { value: 'gpt-image-2.5-sunburst', label: 'GPT Image 2.5 Sunburst' },
+    ]));
+  });
+
+  it('keeps the Flare and Sunburst presets and GPT Image capabilities after saving', () => {
+    for (const presetId of ['gpt-image-2.5-flare', 'gpt-image-2.5-sunburst'] as const) {
+      const next = structuredClone(registry);
+      next.imageModels[0] = {
+        ...next.imageModels[0],
+        modelId: presetId,
+        builtinPreset: presetId,
+      };
+      saveRegistry(next);
+
+      expect(loadRegistry().imageModels[0]).toMatchObject({ builtinPreset: presetId, modelId: presetId });
+      expect(getValidOutputSizes('image-model')).toEqual(['auto', '1K', '2K', '4K']);
+      expect(supportsGptImageAdvancedParams('image-model')).toBe(true);
+    }
   });
 
   it('keeps image addresses configurable while fixing text addresses', () => {

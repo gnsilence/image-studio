@@ -24,7 +24,7 @@ export function CanvasZoomControls({ scale, onScaleChange, onReset, isMiniMapOpe
 
   return (
     <div className="absolute bottom-5 left-5 z-50" onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
-      <div className="flex h-14 items-center gap-1 rounded-xl border border-border bg-card/95 px-2 shadow-lg backdrop-blur">
+      <div className="nova-float flex h-14 items-center gap-1 rounded-2xl px-2">
         <CanvasTooltip label={isMiniMapOpen ? "关闭小地图" : "打开小地图"}>
           <Button variant={isMiniMapOpen ? "secondary" : "ghost"} size="icon-sm" onClick={onToggleMiniMap} aria-label={isMiniMapOpen ? "关闭小地图" : "打开小地图"}>
             <Compass className="size-4" />

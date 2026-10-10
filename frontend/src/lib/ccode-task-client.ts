@@ -51,6 +51,17 @@ export interface CreateNovaTaskInput {
   images: ImageReference[];
 }
 
+/** Live progress of a processing task, pushed by the backend at most once per second. */
+export interface NovaTaskProgress {
+  /** generating: waiting for the upstream; receiving: reading its response; downloading: fetching a result URL. */
+  phase: 'generating' | 'receiving' | 'downloading';
+  items?: number;
+  receivedBytes: number;
+  totalBytes?: number;
+  bytesPerSecond: number;
+  phaseStartedAt?: number;
+}
+
 export interface NovaTaskResponse {
   id: string;
   status: NovaTaskStatus;
@@ -61,6 +72,7 @@ export interface NovaTaskResponse {
   createdAt?: string;
   completedAt?: string;
   expiresAt?: string;
+  progress?: NovaTaskProgress;
 }
 
 export interface NovaQueueStatus {
@@ -201,9 +213,11 @@ export async function createNovaTask(input: CreateNovaTaskInput): Promise<string
 
 export async function checkModelsAvailability(
   targetModelIds?: string[],
+  draftRegistry?: ReturnType<typeof loadRegistry>,
 ): Promise<ModelStatus[]> {
   try {
-    const registry = loadRegistry();
+    // Settings passes its unsaved draft so the check tests what the user is editing, not the saved copy.
+    const registry = draftRegistry ?? loadRegistry();
     const completeImageModels = getCompleteImageModels(registry);
     const completeTextModels = getCompleteTextModels(registry);
     const configuredModels = [
@@ -250,7 +264,8 @@ export async function checkModelsAvailability(
         // 统一通过后端代理使用 /v1/models（NewAPI 兼容）
         const modelType = completeImageModels.some(imageModel => imageModel.id === model.id) ? 'image' : 'text';
         const proxyUrl = `/api/nova/proxy/models?baseUrl=${encodeURIComponent(normalizedBaseUrl)}&apiKey=${encodeURIComponent(model.apiKey)}&protocol=${model.protocol}&modelType=${modelType}`;
-        const response = await fetch(proxyUrl, { method: 'GET', cache: 'no-store' });
+        // Bounded: the backend proxy would otherwise wait up to its 30-minute default.
+        const response = await fetch(proxyUrl, { method: 'GET', cache: 'no-store', signal: AbortSignal.timeout(20000) });
         if (!response.ok) {
           const detail = await response.text().catch(() => '');
           return {
@@ -276,14 +291,15 @@ export async function checkModelsAvailability(
           modelId: model.id,
           actualName: model.name,
           available: exists,
-          message: exists ? model.modelId : `未在 /models 中找到 ${model.modelId}`,
+          message: exists ? model.modelId : `未在模型列表中找到 ${model.modelId}（部分中转站不会列出全部模型，不代表一定不能生成）`,
         };
       } catch (error) {
+        const timedOut = error instanceof DOMException && error.name === 'TimeoutError';
         return {
           modelId: model.id,
           actualName: model.name,
           available: false,
-          message: getErrorMessage(error),
+          message: timedOut ? '检查超时（20 秒），地址可能无法访问' : getErrorMessage(error),
         };
       }
     }));

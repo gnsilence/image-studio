@@ -467,7 +467,7 @@ function RandomImageViewer({ src, title, loading, onRefresh, onImageLoaded, onIm
       onWheel={handleWheel}
     >
       {/* Top bar */}
-      <div className="absolute top-0 left-0 right-0 z-20 flex h-12 items-center justify-between border-b border-border bg-background/95 backdrop-blur-sm px-4">
+      <div className="absolute top-0 left-0 right-0 z-20 flex h-12 items-center justify-between border-b border-border bg-background/95 px-4">
         <span className="text-sm font-medium text-foreground">{title}</span>
         <div className="flex items-center gap-1">
           {canRefresh && (

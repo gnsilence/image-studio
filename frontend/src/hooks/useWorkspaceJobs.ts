@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { hasAnyApiKey } from '@/lib/settings-storage';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { hasImageModelConfigured, hasTextModelConfigured } from '@/lib/settings-storage';
 import {
   deleteImage,
   loadJobs,
   loadStoredImages,
   saveImage,
   saveJobs,
+  scheduleSaveJobs,
   type Mode,
   type StoredJob,
 } from '@/lib/job-store';
@@ -27,8 +28,12 @@ function loadInitialJobs(): StoredJob[] {
 }
 
 export function useWorkspaceJobs() {
-  const [hasApiKey, setHasApiKey] = useState(() => hasAnyApiKey());
-  const [jobs, setJobs] = useState<StoredJob[]>(loadInitialJobs);
+  // Stored state starts at what the static HTML was rendered with (no jobs, no models) and is restored in the
+  // layout effects below. Reading storage during the first render caused hydration error #418; a layout
+  // effect commits before the first paint, so the restored UI appears without a flash.
+  const [hasImageModel, setHasImageModel] = useState(false);
+  const [hasTextModel, setHasTextModel] = useState(false);
+  const [jobs, setJobs] = useState<StoredJob[]>([]);
   const jobsRef = useRef(jobs);
   useEffect(() => { jobsRef.current = jobs; }, [jobs]);
   const [loadedImages, setLoadedImages] = useState<Set<string>>(new Set());
@@ -36,16 +41,23 @@ export function useWorkspaceJobs() {
   const [clearAllDialogOpen, setClearAllDialogOpen] = useState<Mode | null>(null);
   const [cancelJobId, setCancelJobId] = useState<string | null>(null);
 
-  useEffect(() => {
-    const refreshApiKeyState = () => setHasApiKey(hasAnyApiKey());
-    refreshApiKeyState();
-    window.addEventListener('nova-model-registry-updated', refreshApiKeyState);
-    return () => window.removeEventListener('nova-model-registry-updated', refreshApiKeyState);
+  const refreshModelAvailability = useCallback(() => {
+    setHasImageModel(hasImageModelConfigured());
+    setHasTextModel(hasTextModelConfigured());
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- restores stored state before the first paint (see above)
+    refreshModelAvailability();
+    window.addEventListener('nova-model-registry-updated', refreshModelAvailability);
+    return () => window.removeEventListener('nova-model-registry-updated', refreshModelAvailability);
+  }, [refreshModelAvailability]);
+
+  useLayoutEffect(() => {
     const stored = loadInitialJobs();
     saveJobs(stored);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- restores stored state before the first paint (see above)
+    setJobs(stored);
 
     if (stored.length > 0) {
       loadStoredImages()
@@ -79,7 +91,7 @@ export function useWorkspaceJobs() {
   const persistJobs = useCallback((updater: (prev: StoredJob[]) => StoredJob[]) => {
     setJobs(prev => {
       const next = updater(prev);
-      saveJobs(next);
+      scheduleSaveJobs(next);
       return next;
     });
   }, []);
@@ -191,7 +203,11 @@ export function useWorkspaceJobs() {
   }, []);
 
   return {
-    hasApiKey,
+    /** Image generation availability (kept under the old name for the image workbench). */
+    hasApiKey: hasImageModel,
+    hasImageModel,
+    hasTextModel,
+    refreshModelAvailability,
     jobs,
     textJobs,
     imageJobs,
@@ -199,7 +215,6 @@ export function useWorkspaceJobs() {
     retryData,
     clearAllDialogOpen,
     cancelJobId,
-    setHasApiKey,
     setRetryData,
     setClearAllDialogOpen,
     setCancelJobId,

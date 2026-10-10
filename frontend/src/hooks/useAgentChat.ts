@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { hasAnyApiKey } from '@/lib/settings-storage';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { hasTextModelConfigured } from '@/lib/settings-storage';
 import { generateUUID } from '@/lib/uuid';
 import { createNovaTask, getNovaTask, resolveImageTaskProvider, type ImageReference } from '@/lib/ccode-task-client';
 import { fetchImageAsBlob } from '@/lib/image-downloader';
@@ -176,7 +176,7 @@ async function resultImageToBlob(ref: string): Promise<Blob> {
 
 export function useAgentChat() {
   const [ready, setReady] = useState(false);
-  const [hasApiKey, setHasApiKey] = useState(() => hasAnyApiKey());
+  const [hasApiKey, setHasApiKey] = useState(false);
   const [phase, setPhase] = useState<AgentPhase>('idle');
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [images, setImages] = useState<AgentImageRecord[]>([]);
@@ -189,12 +189,10 @@ export function useAgentChat() {
   const [generatingStartedAt, setGeneratingStartedAt] = useState<number | null>(null);
   const [generationDraft, setGenerationDraft] = useState<AgentGenerationDraft | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [webSearchEnabled, setWebSearchEnabled] = useState(() =>
-    typeof localStorage !== 'undefined' ? runtimeStorage.getItem('nova-agent-web-search') === 'true' : false
-  );
-  const [intentRecognition, setIntentRecognition] = useState(() =>
-    typeof localStorage !== 'undefined' ? runtimeStorage.getItem('nova-agent-intent-recognition') !== 'false' : true
-  );
+  // Stored toggles and key state start at the server-rendered defaults and are restored before the first paint
+  // (layout effect below). Reading storage in these initializers caused hydration mismatches.
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const [intentRecognition, setIntentRecognition] = useState(true);
 
   const streamHandleRef = useRef<StreamAgentHandle | null>(null);
   const mountedRef = useRef(true);
@@ -213,12 +211,21 @@ export function useAgentChat() {
   const imageModelRef = useRef(imageModel);
   useEffect(() => { imageModelRef.current = imageModel; }, [imageModel]);
 
-  useEffect(() => {
-    const refreshApiKeyState = () => setHasApiKey(hasAnyApiKey());
+  /* eslint-disable react-hooks/set-state-in-effect -- restores stored state before the first paint (see above) */
+  useLayoutEffect(() => {
+    // Agent chat needs a text model; its image step reports a missing image model on its own.
+    const refreshApiKeyState = () => setHasApiKey(hasTextModelConfigured());
     refreshApiKeyState();
+    try {
+      setWebSearchEnabled(runtimeStorage.getItem('nova-agent-web-search') === 'true');
+      setIntentRecognition(runtimeStorage.getItem('nova-agent-intent-recognition') !== 'false');
+    } catch {
+      // Storage unavailable: keep the defaults.
+    }
     window.addEventListener('nova-model-registry-updated', refreshApiKeyState);
     return () => window.removeEventListener('nova-model-registry-updated', refreshApiKeyState);
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const getAgentTextModelConfig = useCallback(() => {
     const configured = getDefaultConfiguredTextModel('agent');

@@ -9,6 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import type { Mode, StoredJob } from '@/lib/job-store';
 import { cn } from '@/lib/utils';
 import { getModelDisplayName } from '@/lib/model-capabilities';
+import { describeTaskProgress, useTaskProgress } from '@/lib/task-progress-store';
 import { CompletedJobCard } from '@/components/workspace/results/CompletedJobCard';
 import type { CanvasTaskImportRequest } from '@/components/canvas/canvas-job-import';
 
@@ -179,6 +180,8 @@ const WaitingJobCard = memo(function WaitingJobCard({
       : (parallelCount > 1 ? `转换中 x${parallelCount}` : '转换中');
   const createdAt = Date.parse(job.created_at);
   const elapsedSeconds = Number.isFinite(createdAt) ? Math.max(0, Math.floor((now - createdAt) / 1000)) : 0;
+  // Where the task is: waiting for the upstream, or receiving the image (bytes and current speed).
+  const progressText = describeTaskProgress(useTaskProgress(job.serverTaskId));
 
   return (
     <div className={cn('studio-waiting-card h-full overflow-hidden border border-border bg-card', compact ? 'rounded-lg' : 'rounded-xl')}>
@@ -197,9 +200,10 @@ const WaitingJobCard = memo(function WaitingJobCard({
             <span className="truncate text-xs text-muted-foreground" title={getModelDisplayName(job.model)}>{getModelDisplayName(job.model)}</span>
           </div>
           <p className={cn('truncate text-sm text-foreground', compact ? 'mt-1.5' : 'mt-2')}>&quot;{job.prompt}&quot;</p>
-          <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span className="size-1.5 animate-pulse rounded-full bg-processing" />
-            已用 <span className="font-mono text-foreground">{formatElapsedTime(elapsedSeconds)}</span>
+          <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-processing" />
+            <span className="shrink-0">已用 <span className="font-mono text-foreground">{formatElapsedTime(elapsedSeconds)}</span></span>
+            {progressText && <span className="truncate" title={progressText}>· {progressText}</span>}
           </p>
         </div>
         <div className="flex shrink-0 items-start gap-1">
@@ -416,14 +420,40 @@ function VirtualJobList({
   const columns = useColumnCount(parentRef, wideMode, shouldRender);
   const jobCount = useMemo(() => groups.reduce((total, group) => total + group.jobs.length, 0), [groups]);
 
+  // Virtualize rows (a day header, or one row of cards) instead of whole days: a day with hundreds of jobs
+  // used to mount every one of its cards at once.
+  type HistoryRow =
+    | { kind: 'header'; key: string; group: JobDayGroup }
+    | { kind: 'jobs'; key: string; group: JobDayGroup; jobs: StoredJob[]; last: boolean };
+  const rows = useMemo(() => {
+    const result: HistoryRow[] = [];
+    for (const group of groups) {
+      result.push({ kind: 'header', key: `${group.key}:header`, group });
+      for (let start = 0; start < group.jobs.length; start += columns) {
+        result.push({
+          kind: 'jobs',
+          key: `${group.key}:${columns}:${start}`,
+          group,
+          jobs: group.jobs.slice(start, start + columns),
+          last: start + columns >= group.jobs.length,
+        });
+      }
+    }
+    return result;
+  }, [groups, columns]);
+
   const virtualizer = useVirtualizer({
-    count: active ? groups.length : 0,
+    count: active ? rows.length : 0,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 420,
-    overscan: 5,
+    estimateSize: index => (rows[index]?.kind === 'header' ? 32 : 360),
+    getItemKey: index => rows[index]?.key ?? index,
+    overscan: 4,
   });
   const virtualItems = virtualizer.getVirtualItems();
-  const visibleDayKey = virtualItems.length > 0 ? groups[virtualItems[0].index]?.key : undefined;
+  // First row actually in view (overscan rows above the viewport are skipped).
+  const scrollOffset = virtualizer.scrollOffset ?? 0;
+  const firstVisible = virtualItems.find(item => item.end > scrollOffset) ?? virtualItems[0];
+  const visibleDayKey = firstVisible ? rows[firstVisible.index]?.group.key : undefined;
 
   useEffect(() => {
     onVisibleDayChange(visibleDayKey);
@@ -431,11 +461,11 @@ function VirtualJobList({
 
   useEffect(() => {
     if (!scrollToDayKey) return;
-    const groupIndex = groups.findIndex(group => group.key === scrollToDayKey);
-    if (groupIndex < 0) return;
-    virtualizer.scrollToIndex(groupIndex, { align: 'start' });
+    const rowIndex = rows.findIndex(row => row.kind === 'header' && row.group.key === scrollToDayKey);
+    if (rowIndex < 0) return;
+    virtualizer.scrollToIndex(rowIndex, { align: 'start' });
     onScrollToDayComplete();
-  }, [groups, onScrollToDayComplete, scrollToDayKey, virtualizer]);
+  }, [rows, onScrollToDayComplete, scrollToDayKey, virtualizer]);
 
   if (!shouldRender) return null;
 
@@ -459,10 +489,11 @@ function VirtualJobList({
         }}
       >
         {virtualItems.map(virtualRow => {
-          const group = groups[virtualRow.index];
+          const row = rows[virtualRow.index];
+          if (!row) return null;
           return (
             <div
-              key={group.key}
+              key={virtualRow.key}
               data-index={virtualRow.index}
               ref={virtualizer.measureElement}
               className="absolute top-0 w-full"
@@ -470,20 +501,25 @@ function VirtualJobList({
                 transform: `translateY(${virtualRow.start}px)`,
               }}
             >
-              <section className="studio-history-day-group pb-4">
-                <div className="studio-history-day-divider mb-2.5 flex items-center gap-3">
-                  <span className="text-xs font-medium text-foreground">{group.label}</span>
-                  <span className="text-[11px] text-muted-foreground">{group.jobs.length} 项</span>
-                  <span className="h-px flex-1 bg-border/70" />
+              {row.kind === 'header' ? (
+                <div className="studio-history-day-group pb-2.5">
+                  <div className="studio-history-day-divider flex items-center gap-3">
+                    <span className="text-xs font-medium text-foreground">{row.group.label}</span>
+                    <span className="text-[11px] text-muted-foreground">{row.group.jobs.length} 项</span>
+                    <span className="h-px flex-1 bg-border/70" />
+                  </div>
                 </div>
-                <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
-                  {group.jobs.map((job) => (
-                    <div key={job.id} className="studio-history-job">
-                      {renderJobCard(job)}
-                    </div>
-                  ))}
+              ) : (
+                <div className={cn('studio-history-day-group', row.last ? 'pb-4' : 'pb-3')}>
+                  <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+                    {row.jobs.map((job) => (
+                      <div key={job.id} className="studio-history-job">
+                        {renderJobCard(job)}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </section>
+              )}
             </div>
           );
         })}

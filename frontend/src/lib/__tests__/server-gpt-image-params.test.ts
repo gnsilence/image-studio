@@ -20,6 +20,7 @@ describe('backend GPT Image advanced params forwarding', () => {
     expect(serverSource).toContain("formData.append('quality', advancedParams.quality)");
     expect(serverSource).toContain("formData.append('background', advancedParams.background)");
     expect(serverSource).toContain("formData.append('output_format', 'png')");
+    expect(serverSource).toContain("formData.append('response_format', 'url')");
     expect(serverSource).toContain("formData.append('style', advancedParams.style)");
   });
 
@@ -27,6 +28,7 @@ describe('backend GPT Image advanced params forwarding', () => {
     expect(serverSource).toContain('quality: advancedParams.quality');
     expect(serverSource).toContain('background: advancedParams.background');
     expect(serverSource).toContain("output_format: 'png'");
+    expect(serverSource).toContain("response_format: 'url'");
     expect(serverSource).toContain("advancedParams.style === 'vivid' || advancedParams.style === 'natural' ? { style: advancedParams.style } : {}");
   });
 
@@ -44,13 +46,14 @@ describe('backend GPT Image advanced params forwarding', () => {
     expect(serverSource).toContain('return requestGptImage(apiKey, request, resolvedSize, { baseUrl, trace });');
   });
 
-  it('tries OpenAI image streaming with partial image support before falling back', () => {
-    expect(serverSource).toContain("const IMAGE_STREAM_ENABLED = String(process.env.NOVA_IMAGE_STREAM ?? 'true').toLowerCase() !== 'false'");
+  it('defaults OpenAI image requests to non-streaming while preserving opt-in streaming fallback', () => {
+    expect(serverSource).toContain("const IMAGE_STREAM_ENABLED = String(process.env.NOVA_IMAGE_STREAM ?? 'false').toLowerCase() !== 'false'");
     expect(serverSource).toContain('const IMAGE_STREAM_PARTIAL_IMAGES = Math.min(3, Math.max(0, Number.parseInt(process.env.NOVA_IMAGE_PARTIAL_IMAGES');
     expect(serverSource).toContain("formData.append('partial_images', String(partialImages))");
     expect(serverSource).toContain('partial_images: partialImages');
-    expect(serverSource).toContain('if (!isImageStreamUnsupportedError(error)) throw error');
-    expect(serverSource).toContain("console.warn('[image-stream] 上游不支持图片流式参数，回退非流式请求')");
+    expect(serverSource).toContain('if (upstreamShutdownController.signal.aborted || !shouldRetryWithoutStream(error)) throw error');
+    expect(serverSource).toContain("console.warn('[image-stream] 流式请求失败，回退非流式请求:'");
+    expect(serverSource).toContain('streamUnsupportedTargets.add(streamTarget)');
   });
 
   it('allows configuring task TTL hours', () => {

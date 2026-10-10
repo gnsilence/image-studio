@@ -92,7 +92,7 @@ export function CanvasContextMenu({ state, node, onClose, actions }: { state: Co
   return createPortal(
     <div
       data-canvas-no-zoom
-      className="fixed z-[130] min-w-40 overflow-hidden rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-xl"
+      className="nova-float fixed z-[130] min-w-40 overflow-hidden rounded-xl p-1"
       style={{ left: state.x, top: state.y }}
       onPointerDown={(event) => event.stopPropagation()}
       onContextMenu={(event) => event.preventDefault()}

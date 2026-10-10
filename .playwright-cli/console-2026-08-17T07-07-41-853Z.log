@@ -1,0 +1,19 @@
+[     423ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3001/api/nova/config:0
+[     440ms] [ERROR] WebSocket connection to 'ws://localhost:3001/api/nova/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://localhost:3001/_next/static/chunks/app/page-8b704d0ed85f9d8a.js:266
+[    1718ms] [ERROR] WebSocket connection to 'ws://localhost:3001/api/nova/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://localhost:3001/_next/static/chunks/app/page-8b704d0ed85f9d8a.js:266
+[    4296ms] [ERROR] WebSocket connection to 'ws://localhost:3001/api/nova/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://localhost:3001/_next/static/chunks/app/page-8b704d0ed85f9d8a.js:266
+[    8367ms] [ERROR] WebSocket connection to 'ws://localhost:3001/api/nova/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://localhost:3001/_next/static/chunks/app/page-8b704d0ed85f9d8a.js:266
+[   18256ms] [ERROR] WebSocket connection to 'ws://localhost:3001/api/nova/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://localhost:3001/_next/static/chunks/app/page-8b704d0ed85f9d8a.js:266
+[   18267ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3001/api/nova/queue-status:0
+[   48271ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3001/api/nova/queue-status:0
+[   78272ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3001/api/nova/queue-status:0
+[  108278ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3001/api/nova/queue-status:0
+[  138278ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3001/api/nova/queue-status:0
+[  168273ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3001/api/nova/queue-status:0
+[  198264ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3001/api/nova/queue-status:0
+[  228268ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3001/api/nova/queue-status:0
+[  258269ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3001/api/nova/queue-status:0
+[  288266ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3001/api/nova/queue-status:0
+[  320617ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3001/api/nova/queue-status:0
+[  350600ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3001/api/nova/queue-status:0
+[  380630ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3001/api/nova/queue-status:0

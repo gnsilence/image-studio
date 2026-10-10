@@ -2,17 +2,24 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import dynamic from 'next/dynamic';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { ImageGenerationWorkbench } from '@/components/ImageGenerationWorkbench';
 import { ReversePromptForm } from '@/components/ReversePromptForm';
 import { GifGenerationWorkspace } from '@/components/GifGenerationWorkspace';
 import { AgentChatWorkspace } from '@/components/agent/AgentChatWorkspace';
-import { AssetsWorkspace } from '@/components/assets/AssetsWorkspace';
-import { CanvasWorkspace } from '@/components/canvas/CanvasWorkspace';
 import type { CanvasTaskImportRequest } from '@/components/canvas/canvas-job-import';
-import { PromptGallery, type PromptGalleryRestorePosition } from '@/components/PromptGallery';
+import type { PromptGalleryRestorePosition } from '@/components/PromptGallery';
 import type { PromptWithKey } from '@/lib/prompt-gallery-data';
-import { SettingsModal } from '@/components/SettingsModal';
+import { MountOnFirstVisit } from '@/components/workspace/MountOnFirstVisit';
+import { getTaskProgress } from '@/lib/task-progress-store';
+
+// Heavy workspaces load on first visit instead of at startup (see visitedTabs). The settings dialog is always
+// rendered but loads right after hydration, keeping it and its backup/zip code off the startup path.
+const CanvasWorkspace = dynamic(() => import('@/components/canvas/CanvasWorkspace').then(m => m.CanvasWorkspace), { ssr: false });
+const AssetsWorkspace = dynamic(() => import('@/components/assets/AssetsWorkspace').then(m => m.AssetsWorkspace), { ssr: false });
+const PromptGallery = dynamic(() => import('@/components/PromptGallery').then(m => m.PromptGallery), { ssr: false });
+const SettingsModal = dynamic(() => import('@/components/SettingsModal').then(m => m.SettingsModal), { ssr: false });
 import { MissingApiKeyDialog } from '@/components/MissingApiKeyDialog';
 import { useQueueStatus } from '@/hooks/useQueueStatus';
 import { useWideMode } from '@/hooks/useWideMode';
@@ -248,18 +255,19 @@ export function WorkspaceShell() {
   return (
     <div
       className={cn(
-        'flex min-h-screen w-full flex-col gap-0 overflow-x-hidden px-0 py-0 transition-[max-width] duration-200',
+        'mx-auto flex min-h-screen w-full flex-col gap-0 overflow-x-hidden px-0 py-0 transition-[max-width] duration-200',
         'nova-app-shell',
         desktopRuntime && 'nova-desktop-shell',
         wideMode
           ? 'max-w-none xl:h-dvh xl:min-h-0 xl:overflow-hidden'
-          : desktopRuntime ? 'max-w-none' : 'max-w-5xl',
+          : desktopRuntime ? 'max-w-none' : 'max-w-[66rem] sm:px-4 sm:py-4',
         !wideMode && activeTab === 'agent' && 'h-dvh min-h-0 overflow-hidden'
       )}
     >
       <div className={cn(
         'flex-1 bg-transparent shadow-none sm:rounded-3xl sm:bg-card/95 sm:shadow-sm sm:border sm:border-border/70',
         'nova-app-frame',
+        wideMode && 'nova-app-frame-wide',
         desktopRuntime && 'nova-desktop-frame',
         wideMode && 'flex min-h-0 flex-col',
         !wideMode && activeTab === 'agent' && 'flex min-h-0 flex-col'
@@ -380,6 +388,7 @@ export function WorkspaceShell() {
             <div data-workspace-content-scroll className={cn(
               wideMode && 'nova-app-workspace',
               wideMode && activeTab === 'image-generation' && 'nova-image-workspace',
+              wideMode && (activeTab === 'image-generation' || activeTab === 'agent') && 'nova-workspace-bare',
               desktopRuntime && 'nova-desktop-workspace',
               wideMode && 'xl:relative xl:flex xl:flex-1 xl:min-h-0 xl:min-w-0',
               wideMode && sidebarCollapsed && 'xl:pt-10',
@@ -470,35 +479,39 @@ export function WorkspaceShell() {
               >
                 <AgentChatWorkspace
                   wideMode={wideMode}
-                  disabled={!workspace.hasApiKey}
+                  disabled={!workspace.hasTextModel}
                   onConfigureApiKey={() => setSettingsOpen(true)}
                 />
               </TabsContent>
 
               <TabsContent value="canvas" keepMounted className={cn('min-h-0', wideMode ? 'xl:flex xl:min-h-0 xl:flex-1 xl:flex-col' : 'space-y-6')}>
-                <CanvasWorkspace
-                  wideMode={wideMode}
-                  onConfigureApiKey={() => setSettingsOpen(true)}
-                  onEnableWideMode={() => { if (!wideMode) toggleWideMode(); }}
-                  showToast={showToast}
-                  showPromptGallery={promptGallery.showPromptGallery}
-                  taskImport={canvasTaskImport}
-                  onTaskImportHandled={() => setCanvasTaskImport(null)}
-                  promptGalleryImport={canvasPromptGalleryImport}
-                  onPromptGalleryImportHandled={() => setCanvasPromptGalleryImport(null)}
-                  returnToPromptGallery={canvasReturnToPromptGallery}
-                  onReturnToPromptGallery={handleReturnToPromptGallery}
-                />
+                <MountOnFirstVisit active={activeTab === 'canvas'}>
+                  <CanvasWorkspace
+                    wideMode={wideMode}
+                    onConfigureApiKey={() => setSettingsOpen(true)}
+                    onEnableWideMode={() => { if (!wideMode) toggleWideMode(); }}
+                    showToast={showToast}
+                    showPromptGallery={promptGallery.showPromptGallery}
+                    taskImport={canvasTaskImport}
+                    onTaskImportHandled={() => setCanvasTaskImport(null)}
+                    promptGalleryImport={canvasPromptGalleryImport}
+                    onPromptGalleryImportHandled={() => setCanvasPromptGalleryImport(null)}
+                    returnToPromptGallery={canvasReturnToPromptGallery}
+                    onReturnToPromptGallery={handleReturnToPromptGallery}
+                  />
+                </MountOnFirstVisit>
               </TabsContent>
 
               <TabsContent value="assets" keepMounted className={cn(wideMode ? 'space-y-6 xl:min-h-0 xl:min-w-0 xl:flex xl:flex-col' : 'space-y-6')}>
-                <AssetsWorkspace wideMode={wideMode} active={activeTab === 'assets'} onConfigure={() => setSettingsOpen(true)} />
+                <MountOnFirstVisit active={activeTab === 'assets'}>
+                  <AssetsWorkspace wideMode={wideMode} active={activeTab === 'assets'} onConfigure={() => setSettingsOpen(true)} />
+                </MountOnFirstVisit>
               </TabsContent>
 
               <TabsContent value="reverse-prompt" keepMounted className={cn(wideMode ? 'space-y-6 xl:min-h-0 xl:flex xl:flex-col' : 'space-y-6')}>
                 <ReversePromptForm
                   wideMode={wideMode}
-                  disabled={!workspace.hasApiKey}
+                  disabled={!workspace.hasTextModel}
                   onConfigureApiKey={() => setSettingsOpen(true)}
                 />
               </TabsContent>
@@ -515,14 +528,16 @@ export function WorkspaceShell() {
 
               {promptGallery.showPromptGallery && (
                 <TabsContent value="prompt-gallery" keepMounted>
-                  <div className={cn('bg-transparent p-0 shadow-none sm:rounded-2xl sm:bg-card sm:p-4 sm:shadow-sm sm:border sm:border-border', wideMode && 'sm:p-5')}>
-                    <PromptGallery
-                      wideMode={wideMode}
-                      onImportToCanvas={handlePromptGalleryImportToCanvas}
-                      restorePosition={promptGalleryRestorePosition}
-                      onRestorePositionHandled={(key) => setPromptGalleryRestorePosition((current) => current?.key === key ? null : current)}
-                    />
-                  </div>
+                  <MountOnFirstVisit active={activeTab === 'prompt-gallery'}>
+                    <div className={cn('nova-gallery-panel bg-transparent p-0 shadow-none sm:rounded-[20px] sm:bg-card sm:p-4 sm:shadow-sm sm:border sm:border-border', wideMode && 'sm:p-5')}>
+                      <PromptGallery
+                        wideMode={wideMode}
+                        onImportToCanvas={handlePromptGalleryImportToCanvas}
+                        restorePosition={promptGalleryRestorePosition}
+                        onRestorePositionHandled={(key) => setPromptGalleryRestorePosition((current) => current?.key === key ? null : current)}
+                      />
+                    </div>
+                  </MountOnFirstVisit>
                 </TabsContent>
               )}
             </div>
@@ -533,7 +548,7 @@ export function WorkspaceShell() {
       <SettingsModal
         isOpen={settingsOpen}
         onClose={() => setSettingsOpen(false)}
-        onApiKeyChange={workspace.setHasApiKey}
+        onApiKeyChange={workspace.refreshModelAvailability}
       />
 
       <MissingApiKeyDialog
@@ -556,7 +571,9 @@ export function WorkspaceShell() {
           message={
             <>
               取消后会删除本地任务记录并停止前端等待流程。
-              <span className="mt-1 block text-warning">如果任务已进入服务端队列，可能仍会继续执行。</span>
+              {['receiving', 'downloading'].includes(getTaskProgress(workspace.jobs.find(job => job.id === workspace.cancelJobId)?.serverTaskId)?.phase ?? '')
+                ? <span className="mt-1 block text-warning">图片已经生成，正在传回本机，这张图已经计费。取消后它不会出现在软件里，建议等传输完成。</span>
+                : <span className="mt-1 block text-warning">如果任务已进入服务端队列，可能仍会继续执行。</span>}
             </>
           }
           confirmText="取消并删除"
@@ -584,7 +601,7 @@ export function WorkspaceShell() {
       )}
 
       {error && createPortal(
-        <div className="fixed bottom-4 right-4 z-[10000] max-w-sm rounded-xl border border-destructive/20 bg-card px-4 py-3 text-sm text-destructive shadow-lg">
+        <div role="alert" className="nova-float nova-toast fixed bottom-4 right-4 z-[10000] max-w-sm rounded-2xl border-destructive/30 px-4 py-3 text-sm text-destructive">
           {error}
         </div>,
         document.body

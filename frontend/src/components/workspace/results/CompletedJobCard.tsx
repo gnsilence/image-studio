@@ -263,8 +263,10 @@ export const CompletedJobCard = memo(function CompletedJobCard({ job, onClear, o
                   {!lazyLoad.isLoaded && (
                     <div className="absolute inset-0 z-10 animate-pulse bg-gradient-to-r from-muted via-muted/50 to-muted" />
                   )}
-                  <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
-                    <Maximize className="size-5 text-white" />
+                  <div className="absolute inset-0 z-20 flex items-center justify-center bg-gradient-to-t from-black/55 via-black/25 to-black/10 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                    <span className="flex size-10 scale-90 items-center justify-center rounded-full bg-black/40 text-white shadow-lg ring-1 ring-inset ring-white/25 transition-transform duration-200 group-hover:scale-100">
+                      <Maximize className="size-[18px]" />
+                    </span>
                   </div>
                 </div>
               ) : (
@@ -285,8 +287,10 @@ export const CompletedJobCard = memo(function CompletedJobCard({ job, onClear, o
                 {!lazyLoad.isLoaded && (
                   <div className="absolute inset-0 animate-pulse bg-gradient-to-r from-muted via-muted/50 to-muted" />
                 )}
-                <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
-                  <Maximize className="size-5 text-white" />
+                <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-t from-black/55 via-black/25 to-black/10 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                  <span className="flex size-10 scale-90 items-center justify-center rounded-full bg-black/40 text-white shadow-lg ring-1 ring-inset ring-white/25 transition-transform duration-200 group-hover:scale-100">
+                      <Maximize className="size-[18px]" />
+                    </span>
                 </div>
                 </>
               )}

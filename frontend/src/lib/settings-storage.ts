@@ -26,9 +26,17 @@ export function getApiKeyFromStorage(): string {
   return getStoredApiKey();
 }
 
+export function hasImageModelConfigured(): boolean {
+  return getCompleteImageModels(loadRegistry()).length > 0;
+}
+
+export function hasTextModelConfigured(): boolean {
+  return getCompleteTextModels(loadRegistry()).length > 0;
+}
+
+/** At least one complete model of either kind. Image-only and text-only setups are both valid. */
 export function hasAnyApiKey(): boolean {
-  const registry = loadRegistry();
-  return getCompleteImageModels(registry).length > 0 && getCompleteTextModels(registry).length > 0;
+  return hasImageModelConfigured() || hasTextModelConfigured();
 }
 
 export function loadJsonFromStorage<T>(key: string): Partial<T> {

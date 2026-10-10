@@ -126,8 +126,10 @@ const DB_PATH = process.env.NOVA_TASK_DB || path.join(__dirname, 'nova-tasks.sql
 const TASK_TTL_MS = (Number(process.env.NOVA_TASK_TTL_HOURS) || 12) * 60 * 60 * 1000;
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
-const IMAGE_STREAM_ENABLED = String(process.env.NOVA_IMAGE_STREAM ?? 'true').toLowerCase() !== 'false';
-const IMAGE_STREAM_PARTIAL_IMAGES = Math.min(3, Math.max(0, Number.parseInt(process.env.NOVA_IMAGE_PARTIAL_IMAGES || '1', 10) || 1));
+const IMAGE_STREAM_ENABLED = String(process.env.NOVA_IMAGE_STREAM ?? 'false').toLowerCase() !== 'false';
+// Preview frames are not shown in the UI and add a whole extra image to every buffered stream,
+// so none are requested unless NOVA_IMAGE_PARTIAL_IMAGES (1-3) asks for them.
+const IMAGE_STREAM_PARTIAL_IMAGES = Math.min(3, Math.max(0, Number.parseInt(process.env.NOVA_IMAGE_PARTIAL_IMAGES || '0', 10) || 0));
 const IMAGE_STREAM_UNSUPPORTED_PATTERN = /(?:(?:stream|partial_images).*(?:unsupported|not supported|unknown|unrecognized|invalid)|(?:unsupported|not supported|unknown|unrecognized|invalid).*(?:stream|partial_images)|(?:stream|partial_images).*(?:不支持|未知|无效)|(?:不支持|未知|无效).*(?:stream|partial_images))/i;
 const IMAGE_RESPONSE_FORMAT_UNSUPPORTED_PATTERN = /(?:(?:response_format|b64_json).*(?:unsupported|not supported|unknown|unrecognized|invalid)|(?:unsupported|not supported|unknown|unrecognized|invalid).*(?:response_format|b64_json)|(?:response_format|b64_json).*(?:不支持|未知|无效)|(?:不支持|未知|无效).*(?:response_format|b64_json))/i;
 // 开源版：不再硬编码模型列表，由前端通过 protocol 字段指定协议类型
@@ -414,17 +416,19 @@ function getQueueStats() {
   const queuedCount = (counts[TASK_STATUS.QUEUED] || 0) + (counts[TASK_STATUS.LEGACY_QUEUED] || 0);
   const totalActiveTasks = processingCount + queuedCount;
   const acceptingNewTasks = !isShuttingDown && !isRejectNewTasksEnabled();
+  // Report the limit the scheduler actually uses (desktop sets NOVA_TASK_CONCURRENCY), not the global ceiling.
+  const concurrencyLimit = getMaxServerConcurrency();
 
   return {
-    concurrencyLimit: GLOBAL_TASK_CONCURRENCY,
-    configuredConcurrency: getMaxServerConcurrency(),
+    concurrencyLimit,
+    configuredConcurrency: concurrencyLimit,
     processingCount,
     queuedCount,
     pendingCount: totalActiveTasks,
     maxQueueSize: config.maxQueueSize,
     remainingQueueSlots: Math.max(0, config.maxQueueSize - totalActiveTasks),
-    displayConcurrency: Math.min(GLOBAL_TASK_CONCURRENCY, totalActiveTasks),
-    displayQueued: Math.max(0, totalActiveTasks - GLOBAL_TASK_CONCURRENCY),
+    displayConcurrency: Math.min(concurrencyLimit, totalActiveTasks),
+    displayQueued: Math.max(0, totalActiveTasks - concurrencyLimit),
     acceptingNewTasks,
     rateLimitWindowMs: config.rateLimitWindowMs,
     rateLimitMaxRequestsPerIp: config.maxRequestsPerIp,
@@ -473,42 +477,92 @@ function logTaskStage(trace, stage, details = {}) {
   })}`);
 }
 
+// ===== Live transfer progress (shown on the task card) =====
+// taskId -> Map(itemIndex -> { phase, receivedBytes, totalBytes, bytesPerSecond, phaseStartedAt, sampleBytes, sampleAt })
+// Phases: generating (waiting for the upstream), receiving (reading its response), downloading (result URL).
+const taskProgress = new Map();
+const lastProgressBroadcastAt = new Map();
+const PROGRESS_PHASE_ORDER = ['generating', 'receiving', 'downloading'];
+
+function reportTaskProgress(trace, patch, { force = false } = {}) {
+  if (!trace?.taskId) return;
+  let items = taskProgress.get(trace.taskId);
+  if (!items) {
+    items = new Map();
+    taskProgress.set(trace.taskId, items);
+  }
+  const now = Date.now();
+  const prev = items.get(trace.itemIndex) || {};
+  const next = { ...prev, ...patch };
+  if (patch.phase && patch.phase !== prev.phase) {
+    next.receivedBytes = patch.receivedBytes ?? 0;
+    next.bytesPerSecond = 0;
+    next.phaseStartedAt = now;
+    next.sampleBytes = next.receivedBytes;
+    next.sampleAt = now;
+  } else if (typeof patch.receivedBytes === 'number' && prev.sampleAt && now - prev.sampleAt >= 1000) {
+    // Speed over the last second or more, so the card shows the current rate rather than a lifetime average.
+    next.bytesPerSecond = Math.round(((patch.receivedBytes - (prev.sampleBytes || 0)) * 1000) / (now - prev.sampleAt));
+    next.sampleBytes = patch.receivedBytes;
+    next.sampleAt = now;
+  }
+  items.set(trace.itemIndex, next);
+  if (force || now - (lastProgressBroadcastAt.get(trace.taskId) || 0) >= 1000) {
+    lastProgressBroadcastAt.set(trace.taskId, now);
+    broadcastTask(trace.taskId);
+  }
+}
+
+function clearItemProgress(trace) {
+  const items = taskProgress.get(trace?.taskId);
+  if (!items) return;
+  items.delete(trace.itemIndex);
+  if (items.size === 0) {
+    taskProgress.delete(trace.taskId);
+    lastProgressBroadcastAt.delete(trace.taskId);
+  }
+}
+
+function getTaskProgressSummary(taskId) {
+  const items = taskProgress.get(taskId);
+  if (!items || items.size === 0) return undefined;
+  const list = [...items.values()];
+  const phase = list.reduce((best, item) => (
+    PROGRESS_PHASE_ORDER.indexOf(item.phase) > PROGRESS_PHASE_ORDER.indexOf(best) ? item.phase : best
+  ), 'generating');
+  const active = list.filter(item => item.phase === phase);
+  const sum = key => active.reduce((total, item) => total + (Number(item[key]) || 0), 0);
+  return {
+    phase,
+    items: items.size,
+    receivedBytes: sum('receivedBytes'),
+    totalBytes: active.every(item => Number(item.totalBytes) > 0) ? sum('totalBytes') : undefined,
+    bytesPerSecond: sum('bytesPerSecond'),
+    phaseStartedAt: Math.min(...active.map(item => item.phaseStartedAt || Date.now())),
+  };
+}
+
+// Reads a response body chunk by chunk, reporting bytes and speed to the task card.
+async function readBodyWithProgress(response, trace, phase) {
+  const totalBytes = Number(response.headers.get('content-length')) || undefined;
+  reportTaskProgress(trace, { phase, receivedBytes: 0, totalBytes }, { force: true });
+  if (!response.body) return Buffer.alloc(0);
+  const chunks = [];
+  let received = 0;
+  for await (const chunk of response.body) {
+    chunks.push(chunk);
+    received += chunk.length;
+    reportTaskProgress(trace, { receivedBytes: received });
+  }
+  return Buffer.concat(chunks, received);
+}
+
 function saveImageToDisk(taskId, itemIndex, subIndex, imageBuffer, mimeType) {
   const ext = getImageExtension(mimeType);
   const fileName = `${taskId}-${itemIndex}-${subIndex}.${ext}`;
   const filePath = path.join(IMAGE_DIR, fileName);
   fs.writeFileSync(filePath, imageBuffer);
   return { filePath, httpUrl: `/api/nova/images/${taskId}/${itemIndex}` };
-}
-
-async function downloadUrlToDisk(taskId, itemIndex, subIndex, imageUrl, trace) {
-  const startedAt = Date.now();
-  const sourceHost = getUrlHost(imageUrl);
-  logTaskStage(trace, 'result_download_started', { subIndex, sourceHost });
-  const response = await fetchWithTimeout(imageUrl, {});
-  logTaskStage(trace, 'result_download_headers_received', {
-    subIndex,
-    elapsedMs: Date.now() - startedAt,
-    httpStatus: response.status,
-    contentType: response.headers.get('content-type') || '',
-    contentLength: response.headers.get('content-length') || '',
-  });
-  if (!response.ok) throw new Error(`远程图片下载失败: ${response.status}`);
-  const contentType = response.headers.get('content-type') || 'image/png';
-  const buffer = Buffer.from(await response.arrayBuffer());
-  logTaskStage(trace, 'result_download_body_received', {
-    subIndex,
-    elapsedMs: Date.now() - startedAt,
-    bytes: buffer.length,
-  });
-  const result = saveImageToDisk(taskId, itemIndex, subIndex, buffer, contentType);
-  logTaskStage(trace, 'result_saved', {
-    subIndex,
-    source: 'url',
-    elapsedMs: Date.now() - startedAt,
-    bytes: buffer.length,
-  });
-  return result;
 }
 
 function getTaskImageFiles(taskId) {
@@ -733,11 +787,23 @@ function readJsonBody(req) {
 
 function normalizeError(error) {
   const message = error instanceof Error ? error.message : String(error);
-  if (/failed to fetch|fetch failed|networkerror|network request failed|load failed|network connection was lost|econnreset|socket hang up|terminated/i.test(message)) {
-    return '网络连接失败。请检查服务器网络连接或稍后重试。';
+  // Upstream HTTP errors keep their status and text. Keyword matching used to turn e.g. "API 请求失败: 504 ...
+  // timeout" into a generic local-timeout message and drop the status.
+  if (/^API 请求失败:\s*\d{3}/.test(message)) {
+    return message.length > 300 ? message.slice(0, 300) + '…' : message;
   }
-  if (/abort|timeout|timed out/i.test(message)) {
-    return `请求超时（${REQUEST_TIMEOUT_MS / 1000}秒）。高分辨率图片生成需要更长时间，请稍后重试。`;
+  // Requests aborted by stopServer(): reuse the restart marker the frontend already treats as terminal.
+  if (upstreamShutdownController.signal.aborted) {
+    return '服务器重启，任务已中断，请重新生成';
+  }
+  const name = error?.name || '';
+  const code = String(error?.cause?.code || error?.code || '');
+  if (name === 'TimeoutError' || name === 'AbortError' || /TIMEOUT/i.test(code) || /abort|timeout|timed out/i.test(message)) {
+    return '请求超时，上游长时间没有完成响应。高分辨率图片生成需要更长时间，请稍后重试。';
+  }
+  if (/failed to fetch|fetch failed|networkerror|network request failed|load failed|network connection was lost|econnreset|socket hang up|terminated/i.test(message)
+    || /^(ECONN|ENOTFOUND|EAI_AGAIN|EHOSTUNREACH|ENETUNREACH|UND_ERR)/.test(code)) {
+    return `网络连接失败${code ? `（${code}）` : ''}。请检查网络或上游地址后重试。`;
   }
   // 截断非预定义错误消息，避免泄露内部信息（文件路径、堆栈等）
   return message.length > 200 ? message.slice(0, 200) + '…' : message;
@@ -939,6 +1005,7 @@ function createGptImageRequestInit(apiKey, request, resolvedSize, options = {}) 
     formData.append('model', request.model);
     formData.append('prompt', prompt);
     formData.append('n', '1');
+    formData.append('response_format', 'url');
     if (stream) {
       formData.append('stream', 'true');
       if (partialImages > 0) formData.append('partial_images', String(partialImages));
@@ -975,6 +1042,7 @@ function createGptImageRequestInit(apiKey, request, resolvedSize, options = {}) 
   const payload = {
     prompt,
     model: request.model,
+    response_format: 'url',
     ...(stream ? { stream: true, ...(partialImages > 0 ? { partial_images: partialImages } : {}) } : {}),
     ...(resolvedSize ? { size: resolvedSize } : {}),
     ...(advancedParams ? {
@@ -1140,7 +1208,8 @@ function extractImagePayloadFromEventStream(text) {
 async function parseGptImageResponse(response, trace) {
   const contentType = String(response.headers.get('content-type') || '').toLowerCase();
   const bodyStartedAt = Date.now();
-  const responseText = await response.text();
+  // Read in chunks so the task card can show bytes received and the current speed.
+  const responseText = (await readBodyWithProgress(response, trace, 'receiving')).toString('utf8');
   logTaskStage(trace, 'upstream_response_body_received', {
     requestElapsedMs: Date.now() - trace.startedAt,
     bodyReadMs: Date.now() - bodyStartedAt,
@@ -1315,14 +1384,15 @@ try {
   console.warn('[network] undici Agent 配置失败，使用默认设置:', e?.message || e);
 }
 
-async function fetchWithTimeout(url, init, timeoutMs = REQUEST_TIMEOUT_MS) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } finally {
-    clearTimeout(timeout);
-  }
+// Aborted on shutdown so in-flight upstream requests stop instead of holding the exit for up to 30 minutes.
+const upstreamShutdownController = new AbortController();
+
+async function fetchWithTimeout(url, init = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
+  // The deadline covers the whole request, body included. The old timer was cleared as soon as headers
+  // arrived, which left slow bodies bounded only by undici's 30-minute idle timeout.
+  const signals = [AbortSignal.timeout(timeoutMs), upstreamShutdownController.signal];
+  if (init.signal) signals.push(init.signal);
+  return fetch(url, { ...init, signal: AbortSignal.any(signals) });
 }
 
 function readPromptGalleryCache() {
@@ -1452,12 +1522,25 @@ async function pipeRemoteImageToResponse(res, upstream, source) {
   }
 }
 
+// Base URL + model pairs whose streamed response failed while a plain request worked: skip streaming for them.
+const streamUnsupportedTargets = new Set();
+
+function shouldRetryWithoutStream(error) {
+  if (isImageStreamUnsupportedError(error)) return true;
+  const message = error instanceof Error ? error.message : String(error);
+  // The stream came back but could not be read, or the upstream rejected the request shape. Auth, quota,
+  // rate-limit and 5xx errors are not retried: the image may already have been generated (and billed).
+  return /响应中无图片数据|响应 JSON 格式无效/.test(message)
+    || /^API 请求失败:\s*(400|404|405|415|422|501)\b/.test(message);
+}
+
 async function generateNovaImage(apiKey, request, trace) {
   // 开源版：根据前端传入的 protocol 字段路由到对应的 API 协议
   const baseUrl = request.baseUrl || resolveNovaApiBaseUrl();
   if (request.protocol === 'openai') {
     const resolvedSize = resolveGptImageRequestSize(request);
-    if (!IMAGE_STREAM_ENABLED) {
+    const streamTarget = `${baseUrl}|${request.model}`;
+    if (!IMAGE_STREAM_ENABLED || streamUnsupportedTargets.has(streamTarget)) {
       return requestGptImage(apiKey, request, resolvedSize, { baseUrl, trace });
     }
     try {
@@ -1468,9 +1551,11 @@ async function generateNovaImage(apiKey, request, trace) {
         partialImages: IMAGE_STREAM_PARTIAL_IMAGES,
       });
     } catch (error) {
-      if (!isImageStreamUnsupportedError(error)) throw error;
-      console.warn('[image-stream] 上游不支持图片流式参数，回退非流式请求');
-      return requestGptImage(apiKey, request, resolvedSize, { baseUrl, trace });
+      if (upstreamShutdownController.signal.aborted || !shouldRetryWithoutStream(error)) throw error;
+      console.warn('[image-stream] 流式请求失败，回退非流式请求:', error instanceof Error ? error.message.slice(0, 160) : error);
+      const result = await requestGptImage(apiKey, request, resolvedSize, { baseUrl, trace });
+      streamUnsupportedTargets.add(streamTarget);
+      return result;
     }
   }
   if (request.protocol === 'grok') {
@@ -1528,7 +1613,7 @@ async function generateNovaGeminiImage(apiKey, request, options = {}) {
   }
 
   const bodyStartedAt = Date.now();
-  const responseText = await response.text();
+  const responseText = (await readBodyWithProgress(response, options.trace, 'receiving')).toString('utf8');
   logTaskStage(options.trace, 'upstream_response_body_received', {
     requestElapsedMs: Date.now() - options.trace.startedAt,
     bodyReadMs: Date.now() - bodyStartedAt,
@@ -1575,6 +1660,16 @@ function drainQueue() {
 
 async function generateSingleImage(apiKey, request, taskId, index) {
   const trace = { taskId, itemIndex: index, startedAt: Date.now() };
+  // The task card shows "waiting for the upstream" until the response starts arriving.
+  reportTaskProgress(trace, { phase: 'generating' }, { force: true });
+  try {
+    return await runSingleImage(apiKey, request, taskId, index, trace);
+  } finally {
+    clearItemProgress(trace);
+  }
+}
+
+async function runSingleImage(apiKey, request, taskId, index, trace) {
   try {
     logTaskStage(trace, 'upstream_request_started', {
       protocol: request.protocol,
@@ -1592,21 +1687,9 @@ async function generateSingleImage(apiKey, request, taskId, index) {
       const img = expanded[subIdx];
       if (img.startsWith('URL:')) {
         const remoteUrl = img.substring(4);
-        try {
-          const result = await downloadUrlToDisk(taskId, index, subIdx, remoteUrl, trace);
-          diskRefs.push(`URL:${result.httpUrl}`);
-        } catch (error) {
-          logTaskStage(trace, 'result_download_failed_remote_fallback', {
-            subIndex: subIdx,
-            elapsedMs: Date.now() - trace.startedAt,
-            sourceHost: getUrlHost(remoteUrl),
-            errorName: error?.name || '',
-            errorMessage: String(error?.message || error).slice(0, 300),
-            causeCode: error?.cause?.code || '',
-            causeMessage: String(error?.cause?.message || '').slice(0, 300),
-          });
-          diskRefs.push(`URL:${remoteUrl}`);
-        }
+        // Let the desktop/web client download the upstream result directly.
+        // This avoids routing the image body through the project server.
+        diskRefs.push(`URL:${remoteUrl}`);
       } else {
         const buffer = Buffer.from(img, 'base64');
         const result = saveImageToDisk(taskId, index, subIdx, buffer, detectImageMimeType(buffer));
@@ -1704,7 +1787,7 @@ function serializeTask(task) {
     return { id: task.id, status: 'expired', error: '该任务已超出取回时间' };
   }
   const result = task.result_json ? JSON.parse(task.result_json) : undefined;
-  return {
+  const serialized = {
     id: task.id,
     status: task.status,
     mode: task.mode,
@@ -1715,6 +1798,12 @@ function serializeTask(task) {
     completedAt: task.completed_at,
     expiresAt: task.expires_at,
   };
+  // Include transmission progress (bytes, speed) while the task is actively generating or downloading.
+  if (task.status === 'processing') {
+    const progress = getTaskProgressSummary(task.id);
+    if (progress) serialized.progress = progress;
+  }
+  return serialized;
 }
 
 function deleteTask(taskId) {
@@ -2124,10 +2213,14 @@ async function handleApi(req, res, pathname) {
           forwardedBody = clean;
         }
 
+        // Cancel the upstream request when the client goes away (chat closed), so it stops generating and billing.
+        const clientAbort = new AbortController();
+        res.on('close', () => { if (!res.writableFinished) clientAbort.abort(); });
         const upstream = await fetchWithTimeout(targetUrl, {
           method: 'POST',
           headers: authHeaders,
           body: JSON.stringify(forwardedBody),
+          signal: clientAbort.signal,
         });
 
         if (stream && upstream.ok) {
@@ -2137,15 +2230,11 @@ async function handleApi(req, res, pathname) {
             'Connection': 'keep-alive',
             'X-Accel-Buffering': 'no',
           });
-          const reader = upstream.body.getReader();
           try {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) { res.end(); return true; }
-              res.write(value);
-            }
+            // pipeline applies backpressure and destroys the upstream body if the client disconnects.
+            await pipeline(Readable.fromWeb(upstream.body), res);
           } catch {
-            res.end();
+            if (!res.destroyed && !res.writableEnded) res.end();
           }
           return true;
         }
@@ -2154,7 +2243,8 @@ async function handleApi(req, res, pathname) {
         try { data = await upstream.json(); } catch { /* ignore */ }
         sendJson(res, upstream.status, data || { error: `上游返回 ${upstream.status}` });
       } catch (error) {
-        if (error && error.message && /abort|timeout/i.test(error.message)) {
+        if (res.destroyed || res.writableEnded) return true; // client already gone
+        if (error?.name === 'TimeoutError' || (error && error.message && /abort|timeout/i.test(error.message))) {
           sendJson(res, 504, { error: '代理请求上游超时' });
         } else {
           sendJson(res, 502, { error: normalizeError(error) });
@@ -2196,12 +2286,14 @@ async function handleApi(req, res, pathname) {
           headers['Authorization'] = `Bearer ${apiKey}`;
         }
 
-        const response = await fetchWithTimeout(modelsUrl, { method: 'GET', headers });
+        // A model list should answer in seconds; the 30-minute default is meant for image generation.
+        const response = await fetchWithTimeout(modelsUrl, { method: 'GET', headers }, 20_000);
         let data = null;
         try { data = await response.json(); } catch { /* ignore */ }
-        sendJson(res, response.status, data);
+        sendJson(res, response.status, data ?? { error: `上游返回 ${response.status}（非 JSON 响应）` });
       } catch (error) {
-        sendJson(res, 502, { error: normalizeError(error) });
+        const timedOut = error?.name === 'TimeoutError';
+        sendJson(res, timedOut ? 504 : 502, { error: timedOut ? '模型列表请求超时（20 秒）' : normalizeError(error) });
       }
       return true;
     }
@@ -2382,6 +2474,9 @@ async function stopServer() {
   if (stoppingPromise) return stoppingPromise;
   stoppingPromise = (async () => {
     isShuttingDown = true;
+    // Abort in-flight upstream requests so running tasks settle within seconds (the desktop shell kills the
+    // process after 8 s) and are recorded as interrupted before the database closes.
+    upstreamShutdownController.abort();
     if (cleanupExpiredTimer) clearInterval(cleanupExpiredTimer);
     if (cleanupRateLimitTimer) clearInterval(cleanupRateLimitTimer);
     if (wsHeartbeatTimer) clearInterval(wsHeartbeatTimer);

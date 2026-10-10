@@ -34,6 +34,8 @@ class BackendProcess {
       NOVA_DESKTOP_SESSION_TOKEN: this.sessionToken,
       NOVA_STATIC_DIR: path.join(this.appRoot, 'frontend', 'out'),
       PROMPT_GALLERY_MODE: '1',
+      // Each in-flight image holds several copies of a multi-MB base64 payload; the server default (50) suits shared servers.
+      NOVA_TASK_CONCURRENCY: process.env.NOVA_TASK_CONCURRENCY || '8',
     };
     if (packaged) childEnv.NOVA_DESKTOP_MODULE_ROOT = this.appRoot;
     const child = packaged
@@ -97,6 +99,8 @@ class BackendProcess {
     if (!this.address) return { active: 0, queued: 0 };
     const response = await fetch(`${this.address.url}/api/nova/queue-status`, {
       headers: { 'X-Nova-Desktop-Token': this.sessionToken },
+      // Quitting from the tray awaits this check; a stuck backend must not hang it.
+      signal: AbortSignal.timeout(2000),
     });
     if (!response.ok) throw new Error(`任务状态读取失败: ${response.status}`);
     return response.json();

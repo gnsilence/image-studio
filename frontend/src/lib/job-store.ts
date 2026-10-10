@@ -166,6 +166,37 @@ export function saveJobs(jobs: StoredJob[]) {
   }
 }
 
+// Job updates arrive in bursts (submit, polling, completion). On desktop each write is a synchronous IPC call
+// that re-serializes the whole list, so coalesce writes and flush as soon as the page is hidden or closed.
+const SAVE_JOBS_DELAY_MS = 400;
+let pendingJobs: StoredJob[] | null = null;
+let saveJobsTimer: ReturnType<typeof setTimeout> | null = null;
+
+export function flushScheduledJobs(): void {
+  if (saveJobsTimer) {
+    clearTimeout(saveJobsTimer);
+    saveJobsTimer = null;
+  }
+  if (!pendingJobs) return;
+  const jobs = pendingJobs;
+  pendingJobs = null;
+  saveJobs(jobs);
+}
+
+export function scheduleSaveJobs(jobs: StoredJob[]): void {
+  if (typeof window === 'undefined') return;
+  pendingJobs = jobs;
+  if (!saveJobsTimer) saveJobsTimer = setTimeout(flushScheduledJobs, SAVE_JOBS_DELAY_MS);
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', flushScheduledJobs);
+  window.addEventListener('beforeunload', flushScheduledJobs);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushScheduledJobs();
+  });
+}
+
 export async function loadStoredImages(): Promise<StoredJob[]> {
   const desktop = getDesktopBridge();
   if (desktop) {

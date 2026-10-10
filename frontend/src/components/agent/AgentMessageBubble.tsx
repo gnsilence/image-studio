@@ -259,7 +259,7 @@ export function AgentMessageBubble({
                         event.stopPropagation();
                         setDescDialogImg({ imgId: img.imgId, description: img.description || 'AI 未生成描述' });
                       }}
-                      className="flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-white shadow-sm backdrop-blur-sm transition-colors hover:bg-white/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+                      className="flex h-5 w-5 items-center justify-center rounded-full bg-black/45 text-white shadow-sm ring-1 ring-inset ring-white/25 transition-colors hover:bg-black/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
                       title="查看描述"
                     >
                       <FileText className="h-3 w-3" />

@@ -1,0 +1,40 @@
+{
+  "ProviderId": "anthropic",
+  "ProviderPreferences": {
+    "anthropic": {
+      "Model": "claude-opus-5-5",
+      "Reasoning": {
+        "Enabled": true,
+        "Effort": "ExtraHigh",
+        "Output": "Full"
+      },
+      "Speed": "Standard"
+    },
+    "openai": {
+      "Model": "gpt-6-sol",
+      "Reasoning": {
+        "Enabled": true,
+        "Effort": "ExtraHigh",
+        "Output": "Full"
+      },
+      "Speed": "Standard"
+    }
+  },
+  "Plugins": {
+    "DisabledPlugins": []
+  },
+  "Tools": {
+    "CodeMode": {
+      "Mode": "on"
+    },
+    "ImageGeneration": {
+      "Provider": "gptiamge25"
+    }
+  },
+  "Permissions": {
+    "DefaultApprovalPolicy": "autoApprove"
+  },
+  "Dreams": {
+    "Enabled": true
+  }
+}

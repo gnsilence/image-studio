@@ -6,6 +6,7 @@ import {
   type TextProviderProtocol,
 } from '@/lib/nova-text-protocol';
 import { runtimeStorage } from '@/lib/runtime-storage';
+import { getDesktopBridge } from '@/lib/desktop-bridge';
 
 export type ProviderProtocol = 'google' | 'openai' | 'grok';
 export type ImageOutputSize = '512' | '1K' | '2K' | '4K';
@@ -15,6 +16,8 @@ export type BuiltinImagePresetId =
   | 'gemini-3.1-flash-image-preview'
   | 'gemini-3.1-flash-lite-image'
   | 'gpt-image-2.5'
+  | 'gpt-image-2.5-flare'
+  | 'gpt-image-2.5-sunburst'
   | 'gpt-image-2'
   | 'grok-imagine-image'
   | 'grok-imagine-image-quality'
@@ -129,6 +132,26 @@ export const BUILTIN_IMAGE_PRESETS: Record<BuiltinImagePresetId, BuiltinImagePre
     protocol: 'openai',
     name: 'GPT Image 2.5',
     modelId: 'gpt-image-2.5',
+    baseUrl: FIXED_MODEL_BASE_URL,
+    maxRefImages: 16,
+    maxOutputSize: '4K',
+    supportsAdvancedParams: true,
+  },
+  'gpt-image-2.5-flare': {
+    id: 'gpt-image-2.5-flare',
+    protocol: 'openai',
+    name: 'GPT Image 2.5 Flare',
+    modelId: 'gpt-image-2.5-flare',
+    baseUrl: FIXED_MODEL_BASE_URL,
+    maxRefImages: 16,
+    maxOutputSize: '4K',
+    supportsAdvancedParams: true,
+  },
+  'gpt-image-2.5-sunburst': {
+    id: 'gpt-image-2.5-sunburst',
+    protocol: 'openai',
+    name: 'GPT Image 2.5 Sunburst',
+    modelId: 'gpt-image-2.5-sunburst',
     baseUrl: FIXED_MODEL_BASE_URL,
     maxRefImages: 16,
     maxOutputSize: '4K',
@@ -340,21 +363,45 @@ function getInitialRegistry(): NovaModelRegistry {
   };
 }
 
-export function loadRegistry(): NovaModelRegistry {
-  if (typeof window === 'undefined') {
-    return getInitialRegistry();
-  }
+// Parsed-registry cache. On desktop every storage read is a synchronous IPC call in which the main process
+// decrypts every stored API key, while capability helpers call loadRegistry() many times per render.
+let registryCache: { raw: string | null; registry: NovaModelRegistry } | null = null;
 
-  const raw = runtimeStorage.getItem(REGISTRY_KEY);
-  if (!raw) {
-    return getInitialRegistry();
-  }
+/** Drop the cached registry so the next loadRegistry() reads storage again (e.g. after a backup restore). */
+export function invalidateRegistryCache(): void {
+  registryCache = null;
+}
 
+if (typeof window !== 'undefined') {
+  window.addEventListener('nova-model-registry-updated', invalidateRegistryCache);
+  window.addEventListener('storage', (event) => {
+    if (event.key === null || event.key === REGISTRY_KEY) invalidateRegistryCache();
+  });
+}
+
+function parseRegistry(raw: string | null): NovaModelRegistry {
+  if (!raw) return getInitialRegistry();
   const parsed = JSON.parse(raw) as Partial<NovaModelRegistry>;
   const imageModels = ensureImageModels(parsed.imageModels);
   const textModels = ensureTextModels(parsed.textModels);
   const defaults = ensureDefaults(parsed.defaults, imageModels, textModels);
   return { imageModels, textModels, defaults };
+}
+
+export function loadRegistry(): NovaModelRegistry {
+  if (typeof window === 'undefined') {
+    return getInitialRegistry();
+  }
+
+  // Desktop: serve the cache without another IPC round trip. Web: localStorage reads are cheap, so compare the
+  // raw string and only re-parse when it changed (this also picks up direct writes such as a backup import).
+  if (registryCache && getDesktopBridge()) return structuredClone(registryCache.registry);
+  const raw = runtimeStorage.getItem(REGISTRY_KEY);
+  if (!registryCache || registryCache.raw !== raw) {
+    registryCache = { raw, registry: parseRegistry(raw) };
+  }
+  // Callers get their own copy, so mutating a result never changes the cache.
+  return structuredClone(registryCache.registry);
 }
 
 export function saveRegistry(registry: NovaModelRegistry): void {
@@ -368,7 +415,9 @@ export function saveRegistry(registry: NovaModelRegistry): void {
     defaults: ensureDefaults(registry.defaults, imageModels, textModels),
   };
 
-  runtimeStorage.setItem(REGISTRY_KEY, JSON.stringify(normalized));
+  const raw = JSON.stringify(normalized);
+  runtimeStorage.setItem(REGISTRY_KEY, raw);
+  registryCache = { raw, registry: structuredClone(normalized) };
 }
 
 export function getImageModelById(registry: NovaModelRegistry, id: string): ImageModelConfig | undefined {

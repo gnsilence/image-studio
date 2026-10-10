@@ -266,10 +266,14 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
       const next = { ...model, ...patch };
       if (patch.builtinPreset) {
         const preset = BUILTIN_IMAGE_PRESETS[patch.builtinPreset];
+        const previous = BUILTIN_IMAGE_PRESETS[model.builtinPreset];
+        // Keep a Base URL or name the user customized (anything but empty or the previous template's value), so
+        // switching templates never moves a relay key to the default address. The model ID follows the template.
+        const untouched = (value: string, previousValue: string | undefined) => !value.trim() || value === previousValue;
         next.protocol = preset.protocol;
-        next.name = preset.name;
+        if (untouched(model.name, previous?.name)) next.name = preset.name;
         next.modelId = preset.modelId;
-        next.baseUrl = preset.baseUrl;
+        if (untouched(model.baseUrl, previous?.baseUrl)) next.baseUrl = preset.baseUrl;
         next.maxRefImages = preset.maxRefImages;
         next.maxOutputSize = preset.maxOutputSize;
         next.supportsAdvancedParams = preset.supportsAdvancedParams;
@@ -332,20 +336,15 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
   };
 
   const persistRegistry = () => {
-    if (imageModels.length === 0) {
-      setError('至少填写一个图片模型');
+    // Image-only or text-only setups are valid: each feature checks for the model kind it needs.
+    if (!imageModels.some(isCompleteImageModel) && !textModels.some(isCompleteTextModel)) {
+      setError('至少完成一个图片模型或文本模型的全部信息');
       return;
     }
-    if (textModels.length === 0) {
-      setError('至少填写一个文本模型');
-      return;
-    }
-    if (!imageModels.some(isCompleteImageModel)) {
-      setError('至少完成一个图片模型的全部信息');
-      return;
-    }
-    if (!textModels.some(isCompleteTextModel)) {
-      setError('至少完成一个文本模型的全部信息');
+    // An empty image Base URL would otherwise be saved as the default address, sending this key there.
+    const missingBaseUrl = imageModels.find((model) => !model.baseUrl.trim() && (model.apiKey.trim() || model.modelId.trim()));
+    if (missingBaseUrl) {
+      setError(`图片模型「${missingBaseUrl.name.trim() || missingBaseUrl.modelId.trim() || '未命名'}」缺少 Base URL`);
       return;
     }
 
@@ -379,7 +378,12 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
     setModelCheckError(null);
     setModelStatuses(null);
     try {
-      const statuses = await checkModelsAvailability(configuredModels.map((model) => model.id));
+      // Check the draft being edited (unsaved models and changed keys included), not the saved copy.
+      const statuses = await checkModelsAvailability(configuredModels.map((model) => model.id), {
+        imageModels,
+        textModels,
+        defaults: normalizeDefaults(defaults, imageModels, textModels),
+      });
       setModelStatuses(statuses);
     } catch (err) {
       setModelCheckError(err instanceof Error ? err.message : '检查模型失败');

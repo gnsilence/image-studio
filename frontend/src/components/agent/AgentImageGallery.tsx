@@ -13,7 +13,6 @@ import {
   Search,
   X,
 } from 'lucide-react';
-import JSZip from 'jszip';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { HistoryImagePreview } from '@/components/workspace/results/HistoryImagePreview';
@@ -149,7 +148,9 @@ export function AgentImageGallery({ images, onRedescribe }: AgentImageGalleryPro
     if (selectedIds.size === 0) return;
     setDownloading(true);
     try {
-      const zip = new JSZip();
+      // Loaded on demand: jszip is only needed when the user downloads a bundle.
+      const { default: Zip } = await import('jszip');
+      const zip = new Zip();
       const entries = await Promise.all(
         Array.from(selectedIds).map(async (imgId) => {
           const record = images.find(i => i.imgId === imgId);
@@ -336,7 +337,7 @@ export function AgentImageGallery({ images, onRedescribe }: AgentImageGalleryPro
                             event.stopPropagation();
                             setDescDialogImg({ imgId: img.imgId, description: img.description || '(无描述)' });
                           }}
-                          className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20 text-white shadow-sm backdrop-blur-sm transition-colors hover:bg-white/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+                          className="flex h-7 w-7 items-center justify-center rounded-full bg-black/45 text-white shadow-sm ring-1 ring-inset ring-white/25 transition-colors hover:bg-black/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
                           title="查看描述"
                         >
                           <FileText className="h-3.5 w-3.5" />

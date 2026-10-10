@@ -1,5 +1,15 @@
 import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
+import { extendTailwindMerge } from "tailwind-merge"
+
+// Register the custom shadow tokens from globals.css (@theme) so overrides such as
+// `shadow-none` replace `shadow-raised` instead of both classes surviving the merge.
+const twMerge = extendTailwindMerge({
+  extend: {
+    theme: {
+      shadow: ["raised", "lifted", "glow", "float"],
+    },
+  },
+})
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))

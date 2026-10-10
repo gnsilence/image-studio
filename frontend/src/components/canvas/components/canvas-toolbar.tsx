@@ -67,7 +67,7 @@ export function CanvasToolbar({
   return (
     <div
       data-canvas-no-zoom
-      className="absolute top-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-1 rounded-2xl border border-border bg-card/95 px-2 py-1.5 shadow-lg backdrop-blur"
+      className="absolute top-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-1 nova-float rounded-2xl px-2 py-1.5"
       onPointerDown={(event) => event.stopPropagation()}
     >
       <Segmented

@@ -1,0 +1,51 @@
+- generic [active] [ref=e1]:
+  - main [ref=e6]:
+    - generic [ref=e30]:
+      - generic [ref=e31]:
+        - button "AIOSS logo" [ref=e73]:
+          - img "AIOSS" [ref=e74]
+          - generic [ref=e75]:
+            - heading "AIOSS Image" [level=2] [ref=e76]
+            - paragraph [ref=e77]: 批量 API 图像生成器
+        - tablist [ref=e33]:
+          - tab "Agent" [selected] [ref=e34]
+          - tab "生图工作台" [ref=e36]
+          - tab "无限画布" [ref=e38]
+          - tab "我的素材" [ref=e40]
+          - tab "反推提示词" [ref=e42]
+          - tab "动图生成" [ref=e44]
+        - generic [ref=e78]:
+          - button "随机图片" [ref=e80]
+          - generic [ref=e81]:
+            - button "切换主题" [ref=e82]:
+              - generic [ref=e83]: 跟随系统
+            - button "隐藏侧栏" [ref=e84]
+            - button "退出宽屏" [ref=e85]
+            - button "设置" [ref=e86]
+          - generic [ref=e87]: 服务状态暂不可用
+      - tabpanel "Agent" [ref=e71]:
+        - generic [ref=e48]:
+          - generic [ref=e49]:
+            - generic [ref=e50]: Agent
+            - generic [ref=e54]:
+              - button "清理上下文" [disabled]
+              - button "此对话包含的图片" [disabled]
+              - button "清空重开" [disabled]
+          - generic [ref=e56]:
+            - paragraph [ref=e60]: 和我聊聊你想画什么，或上传图片让我帮你修改。
+            - paragraph [ref=e61]: 我会判断你的意图，并在生成前请你确认。
+          - generic [ref=e62]:
+            - generic [ref=e63]:
+              - textbox [ref=e65]
+              - button "优化提示词" [disabled]
+              - button "清空输入" [disabled]
+              - button "发送" [disabled]
+            - generic [ref=e66]:
+              - button "上传图片" [disabled]
+              - button "图片素材" [disabled]
+              - button "提示词素材" [disabled]
+              - button "存提示词" [disabled]
+              - button "意图识别 ON" [ref=e67]:
+                - text: 意图识别
+                - generic [ref=e68]: "ON"
+  - alert [ref=e72]

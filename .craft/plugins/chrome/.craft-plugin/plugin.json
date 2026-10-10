@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "chrome",
+  "version": "0.1.0",
+  "displayName": "Chrome",
+  "description": "Inspect and interact with existing Chrome tabs through DotCraft's first-party browser extension.",
+  "capabilities": ["interactive", "read", "write", "browser", "chrome", "javascript", "native-messaging"],
+  "skills": "./skills/",
+  "paths": {
+    "extensionId": "./scripts/extension-id.json",
+    "checkExtensionInstalled": "./scripts/check-extension-installed.js",
+    "checkNativeHostManifest": "./scripts/check-native-host-manifest.js",
+    "chromeIsRunning": "./scripts/chrome-is-running.js",
+    "installedBrowsers": "./scripts/installed-browsers.js",
+    "openChromeWindow": "./scripts/open-chrome-window.js",
+    "installNativeHostManifest": "./scripts/installManifest.mjs",
+    "nativeHost": "./scripts/native-host.mjs",
+    "extensionManifest": "./extension/manifest.json"
+  },
+  "interface": {
+    "displayName": "Chrome",
+    "shortDescription": "Work with your existing Chrome tabs",
+    "longDescription": "Chrome connects DotCraft to approved tabs in your existing browser for inspection and interaction while preserving control over navigation and cleanup.",
+    "developerName": "DotHarness",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Read", "Write", "Browser"],
+    "defaultPrompt": "Please inspect the signed-in page I already have open in Chrome.",
+    "composerIcon": "./assets/chrome-small.svg",
+    "logo": "./assets/chrome.svg",
+    "websiteUrl": "https://github.com/DotHarness/dotcraft",
+    "privacyPolicyUrl": "https://github.com/DotHarness/dotcraft",
+    "termsOfServiceUrl": "https://github.com/DotHarness/dotcraft"
+  }
+}

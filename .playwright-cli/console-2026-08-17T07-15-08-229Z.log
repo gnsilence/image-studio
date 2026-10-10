@@ -1,0 +1,11 @@
+[     301ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3001/api/nova/config:0
+[     309ms] [ERROR] WebSocket connection to 'ws://localhost:3001/api/nova/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://localhost:3001/_next/static/chunks/app/page-8b704d0ed85f9d8a.js:266
+[    1347ms] [ERROR] WebSocket connection to 'ws://localhost:3001/api/nova/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://localhost:3001/_next/static/chunks/app/page-8b704d0ed85f9d8a.js:266
+[    3879ms] [ERROR] WebSocket connection to 'ws://localhost:3001/api/nova/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://localhost:3001/_next/static/chunks/app/page-8b704d0ed85f9d8a.js:266
+[    8792ms] [ERROR] WebSocket connection to 'ws://localhost:3001/api/nova/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://localhost:3001/_next/static/chunks/app/page-8b704d0ed85f9d8a.js:266
+[   17163ms] [ERROR] WebSocket connection to 'ws://localhost:3001/api/nova/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://localhost:3001/_next/static/chunks/app/page-8b704d0ed85f9d8a.js:266
+[   17168ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3001/api/nova/queue-status:0
+[   47170ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3001/api/nova/queue-status:0
+[   77170ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3001/api/nova/queue-status:0
+[  107170ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3001/api/nova/queue-status:0
+[  139526ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3001/api/nova/queue-status:0

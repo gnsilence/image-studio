@@ -41,7 +41,7 @@ function Segmented<T extends string>({
         if (next && next !== value) onChange(next as T)
       }}
       className={cn(
-        "inline-flex items-center gap-0.5 rounded-lg border border-border bg-muted p-0.5",
+        "inline-flex items-center gap-0.5 rounded-lg border border-border bg-track p-0.5",
         className
       )}
     >
@@ -52,7 +52,7 @@ function Segmented<T extends string>({
           disabled={option.disabled}
           title={option.title}
           className={cn(
-            "inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-2.5 font-medium whitespace-nowrap text-muted-foreground transition-colors outline-none select-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 data-[pressed]:bg-card data-[pressed]:text-foreground data-[pressed]:shadow-sm [&_svg]:size-4 [&_svg]:shrink-0",
+            "inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-2.5 font-medium whitespace-nowrap text-muted-foreground transition-[color,background-color,box-shadow] outline-none select-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 data-[pressed]:bg-surface-strong data-[pressed]:text-foreground data-[pressed]:shadow-lifted [&_svg]:size-4 [&_svg]:shrink-0",
             size === "sm" ? "h-7 text-xs" : "h-8 text-sm"
           )}
         >

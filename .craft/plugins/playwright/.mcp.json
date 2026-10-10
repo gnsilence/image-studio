@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "transport": "stdio",
+      "command": "npx",
+      "arguments": ["-y", "@playwright/mcp@latest"]
+    }
+  }
+}

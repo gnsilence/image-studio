@@ -2,152 +2,324 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+/*
+ * `dark:` follows html[data-theme]; with no explicit theme it follows the OS.
+ * (The previous `.dark *` variant never matched: nothing in the app sets a `.dark` class.)
+ */
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
 
-/* Fresh glass palette: mint background, translucent surfaces, and one green accent. */
-:root {
-  --background: #eef7f1;
-  --foreground: #20332a;
-  --card: rgb(255 255 255 / 0.76);
-  --card-foreground: #20332a;
-  --popover: rgb(255 255 255 / 0.9);
-  --popover-foreground: #20332a;
-  --border: rgb(177 207 187 / 0.62);
-  --input: rgb(177 207 187 / 0.62);
-  --primary: #43b957;
-  --primary-foreground: #ffffff;
-  --secondary: rgb(229 242 232 / 0.82);
-  --secondary-foreground: #20332a;
-  --accent: #35ad4e;
-  --accent-foreground: #ffffff;
-  --muted: rgb(228 241 232 / 0.78);
-  --muted-foreground: #617469;
-  --placeholder: #91a398;
-  --destructive: #ef4444;
-  --ring: #43b957;
-  --chart-1: #43b957;
-  --chart-2: #78ca6e;
-  --chart-3: #35ad4e;
-  --chart-4: #a0d98b;
-  --chart-5: #2f8f45;
-  --sidebar: rgb(255 255 255 / 0.66);
-  --sidebar-foreground: #20332a;
-  --sidebar-primary: #43b957;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: rgb(219 244 218 / 0.8);
-  --sidebar-accent-foreground: #20332a;
-  --sidebar-border: rgb(177 207 187 / 0.52);
-  --sidebar-ring: #43b957;
-  --radius: 0.625rem;
-  --glass-border: rgb(255 255 255 / 0.74);
-  --glass-surface: linear-gradient(145deg, rgb(255 255 255 / 0.9), rgb(241 250 244 / 0.7));
-  --glass-surface-soft: linear-gradient(145deg, rgb(255 255 255 / 0.74), rgb(239 249 243 / 0.5));
-  --glass-shadow: 0 16px 40px rgb(53 100 66 / 0.1), inset 0 1px 0 rgb(255 255 255 / 0.82);
-  --success: #22c55e;
-  --success-foreground: #ffffff;
-  --error: #ef4444;
-  --error-foreground: #ffffff;
-  --warning: #f59e0b;
-  --warning-foreground: #ffffff;
-  --processing: #32a979;
-  --processing-foreground: #ffffff;
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme="light"]), :root:not([data-theme="light"]) *) {
+      @slot;
+    }
+  }
 }
 
-/* Dark glass surfaces */
-[data-theme="dark"] {
-  --background: #101a15;
-  --foreground: #edf7f0;
-  --card: rgb(25 40 30 / 0.78);
-  --card-foreground: #edf7f0;
-  --popover: rgb(28 45 34 / 0.92);
-  --popover-foreground: #edf7f0;
-  --border: rgb(154 204 166 / 0.24);
-  --input: rgb(154 204 166 / 0.24);
-  --primary: #72d37b;
-  --primary-foreground: #102015;
-  --secondary: rgb(40 61 46 / 0.82);
-  --secondary-foreground: #edf7f0;
-  --accent: #68c975;
-  --accent-foreground: #ffffff;
-  --muted: rgb(40 61 46 / 0.78);
-  --muted-foreground: #a9bdb0;
-  --placeholder: #7e9786;
-  --destructive: #ef4444;
-  --ring: #72d37b;
-  --chart-1: #72d37b;
-  --chart-2: #9bdb8e;
-  --chart-3: #4fac5c;
-  --chart-4: #b3e7a5;
-  --chart-5: #3e8f4b;
-  --sidebar: rgb(21 35 26 / 0.82);
-  --sidebar-foreground: #edf7f0;
-  --sidebar-primary: #72d37b;
-  --sidebar-primary-foreground: #102015;
-  --sidebar-accent: rgb(57 94 61 / 0.76);
-  --sidebar-accent-foreground: #edf7f0;
-  --sidebar-border: rgb(154 204 166 / 0.2);
-  --sidebar-ring: #72d37b;
-  --glass-border: rgb(224 255 229 / 0.14);
-  --glass-surface: linear-gradient(145deg, rgb(31 49 37 / 0.96), rgb(20 34 25 / 0.9));
-  --glass-surface-soft: linear-gradient(145deg, rgb(31 49 37 / 0.78), rgb(20 34 25 / 0.64));
-  --glass-shadow: 0 16px 40px rgb(0 0 0 / 0.2), inset 0 1px 0 rgb(224 255 229 / 0.1);
+/*
+ * Aurora Glass
+ * Large panels are translucent gradients over a pre-blurred, fixed backdrop: no live blur,
+ * so scrolling never re-blurs anything. Real backdrop-filter is reserved for small floating
+ * layers (.nova-float / .nova-float-sheet): menus, popovers, toasts and compact dialogs.
+ * Theme blocks only set primitive colors; composite tokens are built once further below.
+ */
+:root {
+  color-scheme: light;
+  --radius: 0.625rem;
+  --nova-font-sans: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --nova-font-mono: "Cascadia Code", "Cascadia Mono", "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  --font-sans: var(--nova-font-sans);
+  --font-mono: var(--nova-font-mono);
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --background: #edf6f1;
+  --foreground: #10261c;
+  --card: rgb(255 255 255 / 0.76);
+  --card-foreground: #10261c;
+  --popover: rgb(252 255 253 / 0.96);
+  --popover-foreground: #10261c;
+  --primary: #0d7f57;
+  --primary-hover: #0a6c4a;
+  --primary-foreground: #ffffff;
+  --secondary: rgb(13 127 87 / 0.1);
+  --secondary-foreground: #0b4a33;
+  --muted: rgb(220 236 227 / 0.72);
+  --muted-foreground: #4f6358;
+  --placeholder: #7d8f84;
+  --accent: rgb(13 127 87 / 0.1);
+  --accent-foreground: #0b5a3e;
+  --border: rgb(16 38 28 / 0.14);
+  --input: rgb(16 38 28 / 0.22);
+  --ring: #0d7f57;
+  --destructive: #dc2626;
+  --success: #16a34a;
+  --success-foreground: #ffffff;
+  --error: #dc2626;
+  --error-foreground: #ffffff;
+  --warning: #b45309;
+  --warning-foreground: #ffffff;
+  --processing: #0b7d70;
+  --processing-foreground: #ffffff;
+  --chart-1: #0d7f57;
+  --chart-2: #14b8a6;
+  --chart-3: #34d399;
+  --chart-4: #0ea5e9;
+  --chart-5: #a3e635;
+  --sidebar: rgb(255 255 255 / 0.7);
+  --sidebar-foreground: #10261c;
+  --sidebar-primary: #0d7f57;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgb(13 127 87 / 0.1);
+  --sidebar-accent-foreground: #0b4a33;
+  --sidebar-border: rgb(16 38 28 / 0.12);
+  --sidebar-ring: #0d7f57;
+
+  /* Glass primitives */
+  --shadow-tint: 18 58 40;
+  --glass-edge: rgb(255 255 255 / 0.66);
+  --glass-hairline: rgb(16 38 28 / 0.07);
+  --glass-highlight: rgb(255 255 255 / 0.85);
+  --glass-chrome-a: rgb(255 255 255 / 0.8);
+  --glass-chrome-b: rgb(244 251 247 / 0.62);
+  --glass-frame-a: rgb(255 255 255 / 0.62);
+  --glass-frame-b: rgb(240 249 244 / 0.42);
+  --glass-panel-a: rgb(255 255 255 / 0.86);
+  --glass-panel-b: rgb(246 252 248 / 0.7);
+  --glass-card-a: rgb(255 255 255 / 0.92);
+  --glass-card-b: rgb(248 252 250 / 0.8);
+  --glass-sheen-a: rgb(255 255 255 / 0.5);
+  --glass-float-bg: rgb(252 255 253 / 0.8);
+  --glass-sheet-bg: rgb(252 255 253 / 0.86);
+  --glass-solid: #f6faf8;
+
+  --surface: rgb(255 255 255 / 0.62);
+  --surface-hover: rgb(255 255 255 / 0.88);
+  --surface-strong: #ffffff;
+  --track: rgb(16 38 28 / 0.055);
+  --field: rgb(255 255 255 / 0.68);
+  --scrim: rgb(9 22 16 / 0.34);
+  --scrollbar-thumb: rgb(16 38 28 / 0.22);
+  --empty-veil: rgb(255 255 255 / 0.4);
+
+  /* Fixed backdrop (painted once on its own layer) */
+  --backdrop-base: #e6f2eb;
+  --backdrop-veil: rgb(246 251 248 / 0.12);
+  --aurora-1: rgb(52 211 153 / 0.3);
+  --aurora-2: rgb(56 189 248 / 0.2);
+  --aurora-3: rgb(253 224 71 / 0.16);
+  --aurora-4: rgb(45 212 191 / 0.2);
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .6 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.14'/%3E%3C/svg%3E");
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #0b1612;
+  --foreground: #e8f4ee;
+  --card: rgb(20 36 29 / 0.8);
+  --card-foreground: #e8f4ee;
+  --popover: rgb(18 33 27 / 0.96);
+  --popover-foreground: #e8f4ee;
+  --primary: #4fd69c;
+  --primary-hover: #6ee0ae;
+  --primary-foreground: #06251a;
+  --secondary: rgb(79 214 156 / 0.14);
+  --secondary-foreground: #c8f2dd;
+  --muted: rgb(255 255 255 / 0.07);
+  --muted-foreground: #a3b8ad;
+  --placeholder: #74897e;
+  --accent: rgb(79 214 156 / 0.14);
+  --accent-foreground: #c8f2dd;
+  --border: rgb(255 255 255 / 0.1);
+  --input: rgb(255 255 255 / 0.16);
+  --ring: #4fd69c;
+  --destructive: #f87171;
   --success: #22c55e;
   --success-foreground: #020617;
   --error: #ef4444;
   --error-foreground: #ffffff;
   --warning: #f59e0b;
   --warning-foreground: #020617;
-  --processing: #58c98b;
+  --processing: #2dd4bf;
   --processing-foreground: #0f172a;
+  --chart-1: #4fd69c;
+  --chart-2: #2dd4bf;
+  --chart-3: #86efac;
+  --chart-4: #38bdf8;
+  --chart-5: #bef264;
+  --sidebar: rgb(18 33 27 / 0.82);
+  --sidebar-foreground: #e8f4ee;
+  --sidebar-primary: #4fd69c;
+  --sidebar-primary-foreground: #06251a;
+  --sidebar-accent: rgb(79 214 156 / 0.14);
+  --sidebar-accent-foreground: #c8f2dd;
+  --sidebar-border: rgb(255 255 255 / 0.08);
+  --sidebar-ring: #4fd69c;
+
+  --shadow-tint: 0 0 0;
+  --glass-edge: rgb(255 255 255 / 0.09);
+  --glass-hairline: rgb(0 0 0 / 0.35);
+  --glass-highlight: rgb(255 255 255 / 0.06);
+  --glass-chrome-a: rgb(24 42 34 / 0.78);
+  --glass-chrome-b: rgb(14 28 22 / 0.66);
+  --glass-frame-a: rgb(22 40 32 / 0.6);
+  --glass-frame-b: rgb(12 24 19 / 0.46);
+  --glass-panel-a: rgb(24 43 35 / 0.82);
+  --glass-panel-b: rgb(15 29 23 / 0.72);
+  --glass-card-a: rgb(28 48 39 / 0.84);
+  --glass-card-b: rgb(18 34 27 / 0.76);
+  --glass-sheen-a: rgb(255 255 255 / 0.04);
+  --glass-float-bg: rgb(18 34 27 / 0.78);
+  --glass-sheet-bg: rgb(16 31 25 / 0.84);
+  --glass-solid: #13211b;
+
+  --surface: rgb(255 255 255 / 0.06);
+  --surface-hover: rgb(255 255 255 / 0.1);
+  --surface-strong: rgb(255 255 255 / 0.13);
+  --track: rgb(0 0 0 / 0.22);
+  --field: rgb(0 0 0 / 0.2);
+  --scrim: rgb(0 6 3 / 0.56);
+  --scrollbar-thumb: rgb(255 255 255 / 0.2);
+  --empty-veil: rgb(10 24 15 / 0.62);
+
+  --backdrop-base: #0b1612;
+  --backdrop-veil: rgb(8 18 14 / 0.9);
+  --aurora-1: rgb(16 185 129 / 0.22);
+  --aurora-2: rgb(14 165 233 / 0.14);
+  --aurora-3: rgb(250 204 21 / 0.05);
+  --aurora-4: rgb(20 184 166 / 0.16);
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .6 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.07'/%3E%3C/svg%3E");
 }
 
-/* System preference - dark */
+/* System dark: same values as :root[data-theme="dark"] (keep both blocks in sync). */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --background: #101a15;
-    --foreground: #edf7f0;
-    --card: rgb(25 40 30 / 0.78);
-    --card-foreground: #edf7f0;
-    --popover: rgb(28 45 34 / 0.92);
-    --popover-foreground: #edf7f0;
-    --border: rgb(154 204 166 / 0.24);
-    --input: rgb(154 204 166 / 0.24);
-    --primary: #72d37b;
-    --primary-foreground: #102015;
-    --secondary: rgb(40 61 46 / 0.82);
-    --secondary-foreground: #edf7f0;
-    --accent: #68c975;
-    --accent-foreground: #ffffff;
-    --muted: rgb(40 61 46 / 0.78);
-    --muted-foreground: #a9bdb0;
-    --placeholder: #7e9786;
-    --destructive: #ef4444;
-    --ring: #72d37b;
-    --chart-1: #72d37b;
-    --chart-2: #9bdb8e;
-    --chart-3: #4fac5c;
-    --chart-4: #b3e7a5;
-    --chart-5: #3e8f4b;
-    --sidebar: rgb(21 35 26 / 0.82);
-    --sidebar-foreground: #edf7f0;
-    --sidebar-primary: #72d37b;
-    --sidebar-primary-foreground: #102015;
-    --sidebar-accent: rgb(57 94 61 / 0.76);
-    --sidebar-accent-foreground: #edf7f0;
-    --sidebar-border: rgb(154 204 166 / 0.2);
-    --sidebar-ring: #72d37b;
-    --glass-border: rgb(224 255 229 / 0.14);
-    --glass-surface: linear-gradient(145deg, rgb(31 49 37 / 0.96), rgb(20 34 25 / 0.9));
-    --glass-surface-soft: linear-gradient(145deg, rgb(31 49 37 / 0.78), rgb(20 34 25 / 0.64));
-    --glass-shadow: 0 16px 40px rgb(0 0 0 / 0.2), inset 0 1px 0 rgb(224 255 229 / 0.1);
+    color-scheme: dark;
+    --background: #0b1612;
+    --foreground: #e8f4ee;
+    --card: rgb(20 36 29 / 0.8);
+    --card-foreground: #e8f4ee;
+    --popover: rgb(18 33 27 / 0.96);
+    --popover-foreground: #e8f4ee;
+    --primary: #4fd69c;
+    --primary-hover: #6ee0ae;
+    --primary-foreground: #06251a;
+    --secondary: rgb(79 214 156 / 0.14);
+    --secondary-foreground: #c8f2dd;
+    --muted: rgb(255 255 255 / 0.07);
+    --muted-foreground: #a3b8ad;
+    --placeholder: #74897e;
+    --accent: rgb(79 214 156 / 0.14);
+    --accent-foreground: #c8f2dd;
+    --border: rgb(255 255 255 / 0.1);
+    --input: rgb(255 255 255 / 0.16);
+    --ring: #4fd69c;
+    --destructive: #f87171;
     --success: #22c55e;
     --success-foreground: #020617;
     --error: #ef4444;
     --error-foreground: #ffffff;
     --warning: #f59e0b;
     --warning-foreground: #020617;
-    --processing: #58c98b;
+    --processing: #2dd4bf;
     --processing-foreground: #0f172a;
+    --chart-1: #4fd69c;
+    --chart-2: #2dd4bf;
+    --chart-3: #86efac;
+    --chart-4: #38bdf8;
+    --chart-5: #bef264;
+    --sidebar: rgb(18 33 27 / 0.82);
+    --sidebar-foreground: #e8f4ee;
+    --sidebar-primary: #4fd69c;
+    --sidebar-primary-foreground: #06251a;
+    --sidebar-accent: rgb(79 214 156 / 0.14);
+    --sidebar-accent-foreground: #c8f2dd;
+    --sidebar-border: rgb(255 255 255 / 0.08);
+    --sidebar-ring: #4fd69c;
+
+    --shadow-tint: 0 0 0;
+    --glass-edge: rgb(255 255 255 / 0.09);
+    --glass-hairline: rgb(0 0 0 / 0.35);
+    --glass-highlight: rgb(255 255 255 / 0.06);
+    --glass-chrome-a: rgb(24 42 34 / 0.78);
+    --glass-chrome-b: rgb(14 28 22 / 0.66);
+    --glass-frame-a: rgb(22 40 32 / 0.6);
+    --glass-frame-b: rgb(12 24 19 / 0.46);
+    --glass-panel-a: rgb(24 43 35 / 0.82);
+    --glass-panel-b: rgb(15 29 23 / 0.72);
+    --glass-card-a: rgb(28 48 39 / 0.84);
+    --glass-card-b: rgb(18 34 27 / 0.76);
+    --glass-sheen-a: rgb(255 255 255 / 0.04);
+    --glass-float-bg: rgb(18 34 27 / 0.78);
+    --glass-sheet-bg: rgb(16 31 25 / 0.84);
+    --glass-solid: #13211b;
+
+    --surface: rgb(255 255 255 / 0.06);
+    --surface-hover: rgb(255 255 255 / 0.1);
+    --surface-strong: rgb(255 255 255 / 0.13);
+    --track: rgb(0 0 0 / 0.22);
+    --field: rgb(0 0 0 / 0.2);
+    --scrim: rgb(0 6 3 / 0.56);
+    --scrollbar-thumb: rgb(255 255 255 / 0.2);
+    --empty-veil: rgb(10 24 15 / 0.62);
+
+    --backdrop-base: #0b1612;
+    --backdrop-veil: rgb(8 18 14 / 0.9);
+    --aurora-1: rgb(16 185 129 / 0.22);
+    --aurora-2: rgb(14 165 233 / 0.14);
+    --aurora-3: rgb(250 204 21 / 0.05);
+    --aurora-4: rgb(20 184 166 / 0.16);
+    --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .6 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.07'/%3E%3C/svg%3E");
+  }
+}
+
+/* Composite tokens: built once from the primitives above, so they follow the active theme. */
+:root {
+  --glass-chrome: linear-gradient(160deg, var(--glass-chrome-a), var(--glass-chrome-b));
+  --glass-frame: linear-gradient(160deg, var(--glass-frame-a), var(--glass-frame-b));
+  --glass-panel: linear-gradient(160deg, var(--glass-panel-a), var(--glass-panel-b));
+  --glass-card: linear-gradient(170deg, var(--glass-card-a), var(--glass-card-b));
+  --glass-sheen: linear-gradient(180deg, var(--glass-sheen-a), transparent);
+  --glass-float: var(--glass-float-bg);
+  --glass-sheet: var(--glass-sheet-bg);
+  --float-blur: 18px;
+  --sheet-blur: 24px;
+  --glass-shadow:
+    0 0 0 1px var(--glass-hairline),
+    inset 0 1px 0 var(--glass-highlight),
+    0 1px 2px rgb(var(--shadow-tint) / 0.05),
+    0 12px 32px -10px rgb(var(--shadow-tint) / 0.16);
+  --glass-shadow-hover:
+    0 0 0 1px var(--glass-hairline),
+    inset 0 1px 0 var(--glass-highlight),
+    0 2px 4px rgb(var(--shadow-tint) / 0.06),
+    0 18px 40px -12px rgb(var(--shadow-tint) / 0.24);
+  --nova-shadow-raised: inset 0 1px 0 var(--glass-highlight), 0 1px 2px rgb(var(--shadow-tint) / 0.06);
+  --nova-shadow-lifted:
+    inset 0 1px 0 var(--glass-highlight),
+    0 1px 2px rgb(var(--shadow-tint) / 0.08),
+    0 4px 12px -2px rgb(var(--shadow-tint) / 0.12);
+  --nova-shadow-glow:
+    inset 0 1px 0 rgb(255 255 255 / 0.22),
+    0 1px 2px rgb(var(--shadow-tint) / 0.14),
+    0 4px 14px -4px color-mix(in srgb, var(--primary) 55%, transparent);
+  --nova-shadow-float:
+    0 0 0 1px var(--glass-hairline),
+    inset 0 1px 0 var(--glass-highlight),
+    0 2px 6px rgb(var(--shadow-tint) / 0.08),
+    0 16px 36px -8px rgb(var(--shadow-tint) / 0.22);
+}
+
+/* Windows "Transparency effects: off" (and similar OS settings): every glass surface turns solid. */
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --glass-chrome: var(--glass-solid);
+    --glass-frame: var(--glass-solid);
+    --glass-panel: var(--glass-solid);
+    --glass-card: var(--glass-solid);
+    --glass-float: var(--glass-solid);
+    --glass-sheet: var(--glass-solid);
   }
 }
 
@@ -159,6 +331,7 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
@@ -192,6 +365,18 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  /* Glass control surfaces */
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-strong: var(--surface-strong);
+  --color-track: var(--track);
+  --color-field: var(--field);
+  --color-scrim: var(--scrim);
+  --color-glass-edge: var(--glass-edge);
+  --shadow-raised: var(--nova-shadow-raised);
+  --shadow-lifted: var(--nova-shadow-lifted);
+  --shadow-glow: var(--nova-shadow-glow);
+  --shadow-float: var(--nova-shadow-float);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -199,9 +384,10 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-geist-sans);
+  /* Geist was never loaded, so these pointed at undefined variables and font-mono fell back to sans. */
+  --font-sans: var(--nova-font-sans);
+  --font-mono: var(--nova-font-mono);
+  --font-heading: var(--nova-font-sans);
 }
 
 html,
@@ -216,45 +402,357 @@ html[data-wide-mode] {
 }
 
 body {
-  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  font-family: var(--nova-font-sans);
   background-color: var(--background);
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-/* A pre-blurred bitmap provides depth without scroll-time blur repaints. */
-.nova-app-shell {
-  background-color: #eef7f1;
-  background-image: url('/studio-nature-bg.webp');
-  background-position: center;
-  background-size: cover;
-}
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
 
-.nova-app-frame {
-  border-color: color-mix(in srgb, var(--glass-border) 82%, var(--border)) !important;
-  background: var(--glass-surface-soft) !important;
-  box-shadow: var(--glass-shadow);
-}
+  html {
+    font-family: var(--nova-font-sans);
+    -webkit-tap-highlight-color: transparent;
+  }
 
-[data-theme="dark"] .nova-app-shell {
-  background-color: #101a15;
-  background-blend-mode: multiply;
-}
+  body {
+    @apply bg-background text-foreground;
+  }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .nova-app-shell {
-    background-color: #101a15;
-    background-blend-mode: multiply;
+  ::selection {
+    background-color: color-mix(in srgb, var(--primary) 24%, transparent);
+  }
+
+  /* Thin themed scrollbars; .scrollbar-hide and inline scrollbarWidth: 'none' still win. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
   }
 }
 
-/* Image generation workbench */
-.studio-workbench {
-  --studio-surface: color-mix(in srgb, var(--card) 88%, var(--background));
-  --studio-subtle: color-mix(in srgb, var(--muted) 58%, transparent);
+/* Fixed backdrop: its own composited layer, painted once. Scrolling only moves content above it. */
+body::before {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  content: '';
+  background-color: var(--backdrop-base);
+  background-image:
+    var(--grain),
+    radial-gradient(52% 44% at 8% 4%, var(--aurora-1), transparent 70%),
+    radial-gradient(46% 40% at 96% 12%, var(--aurora-2), transparent 70%),
+    radial-gradient(52% 46% at 88% 100%, var(--aurora-3), transparent 72%),
+    radial-gradient(44% 42% at 2% 92%, var(--aurora-4), transparent 70%),
+    linear-gradient(var(--backdrop-veil), var(--backdrop-veil)),
+    url('/studio-nature-bg.webp');
+  background-position: 0 0, center, center, center, center, center, center;
+  background-repeat: repeat, no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, no-repeat;
+  background-size: 160px 160px, auto, auto, auto, auto, auto, cover;
 }
 
+/* Own compositor layer only when the page itself scrolls (normal mode), so scrolling never repaints it.
+   In wide mode the page never scrolls, so it paints into the root layer: one fewer full-screen layer per frame. */
+html:not([data-wide-mode]) body::before {
+  will-change: transform;
+}
+
+@layer components {
+  /* Floating glass: menus, popovers, toasts, small toolbars. Solid where backdrop-filter is unsupported. */
+  .nova-float {
+    border: 1px solid var(--glass-edge);
+    background-color: var(--popover);
+    color: var(--popover-foreground);
+    box-shadow: var(--nova-shadow-float);
+  }
+
+  /* Dialog sheet: full-screen and solid on phones (nothing behind it is visible), floating glass from sm up. */
+  .nova-float-sheet {
+    background-color: var(--popover);
+    color: var(--popover-foreground);
+  }
+
+  @media (min-width: 640px) {
+    .nova-float-sheet {
+      border: 1px solid var(--glass-edge);
+      box-shadow: var(--nova-shadow-float);
+    }
+  }
+
+  @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .nova-float {
+      background-color: var(--glass-float);
+      -webkit-backdrop-filter: blur(var(--float-blur)) saturate(1.6);
+      backdrop-filter: blur(var(--float-blur)) saturate(1.6);
+    }
+
+    @media (min-width: 640px) {
+      .nova-float-sheet {
+        background-color: var(--glass-sheet);
+        -webkit-backdrop-filter: blur(var(--sheet-blur)) saturate(1.5);
+        backdrop-filter: blur(var(--sheet-blur)) saturate(1.5);
+      }
+    }
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .nova-float,
+  .nova-float-sheet {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* ---------- Shell ---------- */
+.nova-app-shell {
+  background: transparent;
+}
+
+/* Normal mode: one floating glass card (mobile keeps the frame transparent via TSX). */
+@media (min-width: 640px) {
+  .nova-app-frame {
+    border-color: var(--glass-edge);
+    background: var(--glass-frame);
+    box-shadow: var(--glass-shadow);
+  }
+}
+
+/* Wide mode: sidebar and panels float directly on the backdrop. */
+.nova-app-frame.nova-app-frame-wide {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.nova-studio-panel,
+.nova-studio-history-panel,
+.nova-agent-workspace {
+  border-color: var(--glass-edge);
+  background: var(--glass-panel);
+  box-shadow: var(--glass-shadow);
+}
+
+/* Active-jobs panel keeps its processing tint on top of the glass. */
+section.nova-studio-panel {
+  border-color: color-mix(in srgb, var(--processing) 26%, var(--glass-edge));
+  background:
+    linear-gradient(color-mix(in srgb, var(--processing) 5%, transparent), color-mix(in srgb, var(--processing) 5%, transparent)),
+    var(--glass-panel);
+}
+
+.nova-studio-history-panel {
+  overflow: hidden;
+  border: 1px solid var(--glass-edge);
+  border-radius: 20px;
+}
+
+.nova-agent-workspace {
+  border-radius: 20px;
+}
+
+.nova-agent-toolbar {
+  border-color: var(--border);
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+  background: var(--glass-sheen);
+}
+
+.nova-agent-composer {
+  border-color: var(--border);
+  border-bottom-left-radius: inherit;
+  border-bottom-right-radius: inherit;
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+
+@media (min-width: 640px) {
+  .nova-gallery-panel {
+    border-color: var(--glass-edge);
+    background: var(--glass-panel);
+    box-shadow: var(--glass-shadow);
+  }
+}
+
+/* Settings is large and scrolls: a near-opaque static sheet, no live blur. */
+.nova-app-settings {
+  background: linear-gradient(180deg, var(--glass-card-a), var(--glass-card-b)), var(--popover);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+@media (min-width: 640px) {
+  .nova-app-settings {
+    border-color: var(--glass-edge);
+    border-radius: 20px;
+  }
+}
+
+@media (min-width: 960px) {
+  .nova-desktop-shell {
+    min-height: 100dvh;
+    gap: 0 !important;
+    padding: 0 !important;
+    background: transparent;
+    animation: nova-desktop-enter 220ms ease-out both;
+  }
+
+  .nova-app-frame.nova-desktop-frame {
+    overflow: hidden;
+    border-radius: 18px;
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .nova-desktop-inner {
+    padding: 14px !important;
+  }
+
+  .nova-app-sidebar {
+    width: 216px;
+    flex-shrink: 0;
+    padding: 6px 8px 10px;
+    border: 1px solid var(--glass-edge);
+    border-radius: 20px;
+    background: var(--glass-chrome);
+    box-shadow: var(--glass-shadow);
+  }
+
+  .nova-desktop-sidebar {
+    width: 216px;
+  }
+
+  .nova-app-sidebar > button:first-child {
+    margin-bottom: 4px;
+    padding: 8px 9px 10px;
+    border-radius: 12px;
+  }
+
+  .nova-app-sidebar [data-slot="tabs-list"] {
+    gap: 2px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .nova-app-sidebar [data-slot="tabs-trigger"] {
+    min-height: 40px;
+    gap: 10px;
+    padding: 8px 10px 8px 14px;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    color: color-mix(in srgb, var(--foreground) 64%, var(--muted-foreground));
+    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
+  }
+
+  .nova-app-sidebar [data-slot="tabs-trigger"]:hover {
+    background: var(--surface);
+    color: var(--foreground);
+  }
+
+  .nova-app-sidebar [data-slot="tabs-trigger"][data-active] {
+    border-color: var(--glass-edge);
+    background: var(--surface-strong);
+    color: var(--foreground);
+    box-shadow: var(--nova-shadow-lifted);
+  }
+
+  /* Small pill indicator instead of the old full-height inset bar. */
+  .nova-app-sidebar [data-slot="tabs-trigger"][data-active]::before {
+    position: absolute;
+    top: 50%;
+    left: 5px;
+    width: 3px;
+    height: 16px;
+    border-radius: 999px;
+    background: var(--primary);
+    content: '';
+    transform: translateY(-50%);
+  }
+
+  .nova-app-sidebar [data-slot="tabs-trigger"][data-active] svg {
+    color: var(--primary);
+  }
+
+  .nova-desktop-sidebar-tools {
+    margin-top: 4px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+
+  .nova-desktop-random button,
+  .nova-desktop-sidebar-tools button {
+    min-height: 34px;
+    border-color: transparent;
+    border-radius: 10px;
+    background: transparent;
+    box-shadow: none;
+    color: var(--muted-foreground);
+  }
+
+  .nova-desktop-random button:hover,
+  .nova-desktop-random button[aria-expanded="true"],
+  .nova-desktop-sidebar-tools button:hover,
+  .nova-desktop-sidebar-tools button[aria-expanded="true"] {
+    background: var(--surface);
+    color: var(--foreground);
+  }
+
+  .nova-desktop-status {
+    margin-top: 6px;
+    padding: 8px 12px 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .nova-desktop-status > div > span {
+    border-radius: 8px !important;
+    background: var(--surface) !important;
+  }
+
+  .nova-desktop-topnav [data-slot="tabs-list"] {
+    height: 52px;
+    border: 1px solid var(--glass-edge);
+    border-radius: 16px;
+    background: var(--glass-chrome);
+    box-shadow: var(--glass-shadow);
+  }
+
+  .nova-app-workspace {
+    border: 1px solid var(--glass-edge);
+    border-radius: 20px;
+    background: var(--glass-frame);
+    box-shadow: var(--glass-shadow);
+  }
+
+  /* Tabs whose content is already a set of glass panels drop the outer frame (no double glass). */
+  .nova-app-workspace.nova-image-workspace,
+  .nova-app-workspace.nova-workspace-bare {
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .nova-desktop-workspace {
+    min-width: 0;
+  }
+
+  .nova-desktop-shell .nova-agent-messages {
+    scrollbar-gutter: stable;
+  }
+
+  .nova-app-settings [data-slot="dialog-header"] {
+    border-bottom: 1px solid var(--border);
+    background: var(--glass-sheen);
+  }
+}
+
+/* ---------- Image generation workbench ---------- */
 .studio-workbench-head {
-  background: color-mix(in srgb, var(--muted) 22%, transparent);
+  background: var(--glass-sheen);
 }
 
 .studio-params-bar {
@@ -277,18 +775,24 @@ body {
 }
 
 .studio-params-bar [data-slot="button"] {
-  border-color: color-mix(in srgb, var(--border) 86%, transparent);
-  background: color-mix(in srgb, var(--background) 52%, transparent);
+  border-color: var(--border);
+  background: var(--surface);
 }
 
 .studio-params-bar [data-slot="button"]:hover {
   border-color: color-mix(in srgb, var(--primary) 32%, var(--border));
-  background: color-mix(in srgb, var(--primary) 8%, var(--background));
+  background: color-mix(in srgb, var(--primary) 8%, var(--surface-hover));
+}
+
+.studio-prompt-surface {
+  border-color: var(--input);
+  background: var(--field);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
 .studio-prompt-surface:focus-within {
-  border-color: color-mix(in srgb, var(--primary) 48%, var(--border));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 12%, transparent);
+  border-color: color-mix(in srgb, var(--primary) 50%, var(--input));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 14%, transparent);
 }
 
 .studio-reference-rail {
@@ -299,18 +803,23 @@ body {
   border-radius: 0.5rem;
 }
 
+/* ---------- Results ---------- */
 .studio-result-card {
+  border-color: var(--border);
+  background: var(--glass-card);
+  box-shadow: inset 0 1px 0 var(--glass-highlight), 0 1px 2px rgb(var(--shadow-tint) / 0.05);
   transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 
 .studio-result-card:hover {
-  border-color: color-mix(in srgb, var(--primary) 32%, var(--border));
-  box-shadow: 0 10px 24px color-mix(in srgb, var(--foreground) 7%, transparent);
-  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--primary) 34%, var(--border));
+  box-shadow: inset 0 1px 0 var(--glass-highlight), 0 12px 28px -12px rgb(var(--shadow-tint) / 0.3);
+  transform: translateY(-2px);
 }
 
 .studio-result-toolbar {
-  background: color-mix(in srgb, var(--muted) 20%, transparent);
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
 }
 
 .studio-result-toolbar [data-slot="button"] {
@@ -319,7 +828,13 @@ body {
 
 .studio-result-toolbar [data-slot="button"]:hover {
   color: var(--foreground);
-  background: color-mix(in srgb, var(--primary) 10%, var(--muted));
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface-hover));
+}
+
+.studio-waiting-card,
+.studio-failed-card {
+  background: var(--glass-card);
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
 }
 
 .studio-history-day-divider {
@@ -334,10 +849,6 @@ body {
 
 .studio-history-list-wide .studio-history-job {
   animation: none;
-}
-
-.studio-history-list-wide .studio-result-card {
-  background: color-mix(in srgb, var(--card) 88%, var(--background));
 }
 
 .studio-history-list-wide .studio-result-card:hover {
@@ -367,21 +878,16 @@ body {
 
 .studio-active-empty {
   margin: 0 -0.75rem -0.75rem;
-  background-image: url('/studio-nature-bg.webp');
-  background-position: left 72%;
-  background-size: cover;
-  box-shadow: inset 0 0 0 999px rgb(255 255 255 / 0.36);
-}
-
-[data-theme="dark"] .studio-active-empty {
-  box-shadow: inset 0 0 0 999px rgb(10 24 15 / 0.62);
+  background-image: linear-gradient(var(--empty-veil), var(--empty-veil)), url('/studio-nature-bg.webp');
+  background-position: center, left 72%;
+  background-size: auto, cover;
 }
 
 .studio-history-empty {
   min-height: 220px;
-  border: 1px dashed color-mix(in srgb, var(--border) 85%, transparent);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--muted) 18%, transparent);
+  border: 1px dashed var(--input);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
 }
 
 .studio-waiting-art::after {
@@ -392,6 +898,7 @@ body {
   animation: studio-loading-sweep 1.8s ease-in-out infinite;
 }
 
+/* ---------- Queue ---------- */
 .nova-queue-summary {
   min-width: 220px;
 }
@@ -405,10 +912,11 @@ body {
   min-width: 0;
   flex-direction: column;
   gap: 2px;
-  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-  border-radius: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
   padding: 7px 8px;
-  background: color-mix(in srgb, var(--muted) 35%, transparent);
+  background: var(--surface);
+  box-shadow: var(--nova-shadow-raised);
 }
 
 .nova-queue-metric span {
@@ -418,9 +926,10 @@ body {
 
 .nova-queue-metric strong {
   color: var(--foreground);
-  font-family: var(--font-mono), monospace;
+  font-family: var(--nova-font-mono);
   font-size: 13px;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .nova-queue-metric-alert strong {
@@ -459,226 +968,6 @@ body {
   }
 }
 
-/* Electron desktop polish: scoped to the runtime shell so Web/Docker keeps its layout. */
-@media (min-width: 960px) {
-  .nova-desktop-shell {
-    min-height: 100dvh;
-    gap: 0 !important;
-    padding: 0 !important;
-    background: transparent;
-    animation: nova-desktop-enter 220ms ease-out both;
-  }
-
-  .nova-desktop-frame {
-    overflow: hidden;
-    border-radius: 18px !important;
-    border-color: transparent !important;
-    background: transparent !important;
-    box-shadow: none !important;
-  }
-
-  .nova-desktop-inner {
-    padding: 14px !important;
-  }
-
-  .nova-app-sidebar {
-    width: 216px;
-    flex-shrink: 0;
-    border: 1px solid color-mix(in srgb, var(--glass-border) 86%, var(--sidebar-border));
-    border-radius: 16px;
-    background: var(--glass-surface);
-    box-shadow: var(--glass-shadow);
-  }
-
-  .nova-desktop-sidebar {
-    width: 216px;
-    padding: 2px 10px 0 2px;
-  }
-
-  .nova-app-sidebar > button:first-child {
-    margin-bottom: 4px;
-    padding: 8px 9px 10px;
-    border-radius: 8px;
-  }
-
-  .nova-app-sidebar [data-slot="tabs-list"] {
-    gap: 3px;
-    padding: 0;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-  }
-
-  .nova-app-sidebar [data-slot="tabs-trigger"] {
-    min-height: 40px;
-    gap: 10px;
-    padding: 8px 10px;
-    border: 1px solid transparent;
-    border-radius: 8px;
-    color: color-mix(in srgb, var(--foreground) 60%, var(--muted-foreground));
-    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
-  }
-
-  .nova-app-sidebar [data-slot="tabs-trigger"]:hover {
-    background: color-mix(in srgb, var(--muted) 72%, transparent);
-    color: var(--foreground);
-  }
-
-  .nova-app-sidebar [data-slot="tabs-trigger"][data-active] {
-    border-color: color-mix(in srgb, var(--primary) 24%, var(--border));
-    background: color-mix(in srgb, var(--primary) 10%, var(--card));
-    color: var(--foreground);
-    box-shadow: inset 3px 0 0 var(--primary);
-  }
-
-  .nova-app-sidebar [data-slot="tabs-trigger"][data-active] svg {
-    color: var(--primary);
-  }
-
-  .nova-desktop-sidebar-tools {
-    margin-top: 4px;
-    padding-top: 8px;
-    border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-  }
-
-  .nova-desktop-random button,
-  .nova-desktop-sidebar-tools button {
-    min-height: 34px;
-    border-color: transparent !important;
-    border-radius: 8px !important;
-    background: transparent !important;
-    color: var(--muted-foreground);
-  }
-
-  .nova-desktop-random button:hover,
-  .nova-desktop-sidebar-tools button:hover {
-    background: color-mix(in srgb, var(--muted) 72%, transparent) !important;
-    color: var(--foreground);
-  }
-
-  .nova-desktop-status {
-    margin-top: 6px;
-    padding-top: 8px;
-    border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-  }
-
-  .nova-desktop-status > div > span {
-    border-radius: 6px !important;
-    background: color-mix(in srgb, var(--muted) 64%, transparent) !important;
-  }
-
-  .nova-desktop-topnav [data-slot="tabs-list"] {
-    height: 52px;
-    border-radius: 12px;
-    background: color-mix(in srgb, var(--muted) 72%, transparent);
-  }
-
-  .nova-desktop-topnav [data-slot="tabs-trigger"] {
-    border-radius: 8px;
-  }
-
-  .nova-desktop-topnav [data-slot="tabs-trigger"][data-active] {
-    border-color: color-mix(in srgb, var(--primary) 20%, var(--border));
-    background: color-mix(in srgb, var(--primary) 8%, var(--card));
-  }
-
-  .nova-app-workspace {
-    border: 1px solid color-mix(in srgb, var(--glass-border) 74%, var(--border));
-    border-radius: 16px;
-    background: var(--glass-surface-soft);
-    box-shadow: var(--glass-shadow);
-  }
-
-  .nova-app-workspace.nova-image-workspace {
-    border-color: transparent;
-    background: transparent;
-    box-shadow: none;
-  }
-
-  .nova-studio-panel,
-  .nova-studio-history-panel {
-    border-color: color-mix(in srgb, var(--glass-border) 86%, var(--border));
-    background: var(--glass-surface);
-    box-shadow: var(--glass-shadow);
-  }
-
-  .nova-studio-history-panel {
-    overflow: hidden;
-    border: 1px solid color-mix(in srgb, var(--glass-border) 86%, var(--border));
-    border-radius: 16px;
-  }
-
-  .nova-desktop-workspace {
-    min-width: 0;
-  }
-
-  .nova-desktop-shell .nova-agent-workspace {
-    border-radius: 12px;
-    border-color: color-mix(in srgb, var(--border) 88%, var(--primary) 12%);
-    background: color-mix(in srgb, var(--card) 88%, var(--background) 12%);
-    box-shadow: 0 8px 28px color-mix(in srgb, var(--foreground) 6%, transparent);
-  }
-
-  .nova-desktop-shell .nova-agent-toolbar {
-    background: color-mix(in srgb, var(--muted) 34%, transparent);
-  }
-
-  .nova-desktop-shell .nova-agent-messages {
-    scrollbar-gutter: stable;
-  }
-
-  .nova-desktop-shell .nova-agent-composer {
-    background: color-mix(in srgb, var(--background) 26%, var(--card));
-  }
-
-  .nova-desktop-shell *,
-  .nova-desktop-settings * {
-    scrollbar-width: thin;
-    scrollbar-color: color-mix(in srgb, var(--muted-foreground) 54%, transparent) transparent;
-  }
-
-  .nova-desktop-shell *::-webkit-scrollbar,
-  .nova-desktop-settings *::-webkit-scrollbar {
-    width: 9px;
-    height: 9px;
-  }
-
-  .nova-desktop-shell *::-webkit-scrollbar-track,
-  .nova-desktop-settings *::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  .nova-desktop-shell *::-webkit-scrollbar-thumb,
-  .nova-desktop-settings *::-webkit-scrollbar-thumb {
-    border: 2px solid transparent;
-    border-radius: 8px;
-    background: color-mix(in srgb, var(--muted-foreground) 48%, transparent);
-    background-clip: padding-box;
-  }
-
-  .nova-desktop-shell *::-webkit-scrollbar-thumb:hover,
-  .nova-desktop-settings *::-webkit-scrollbar-thumb:hover {
-    background: color-mix(in srgb, var(--muted-foreground) 70%, transparent);
-    background-clip: padding-box;
-  }
-
-  .nova-app-settings {
-    border: 1px solid color-mix(in srgb, var(--border) 82%, var(--primary) 18%);
-    border-radius: 14px !important;
-    background: var(--glass-surface);
-    box-shadow: 0 24px 72px color-mix(in srgb, var(--foreground) 18%, transparent);
-  }
-
-  .nova-app-settings [data-slot="dialog-header"] {
-    border-bottom: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
-    background: color-mix(in srgb, var(--muted) 28%, transparent);
-  }
-
-  body:has(.nova-app-settings) [data-slot="dialog-overlay"] {
-    background: rgb(3 7 12 / 68%);
-  }
-}
-
 @media (min-width: 1280px) and (max-height: 820px) {
   .nova-image-workspace .studio-workbench-head {
     gap: 0.625rem;
@@ -694,6 +983,7 @@ body {
   }
 }
 
+/* ---------- Motion ---------- */
 @keyframes nova-desktop-enter {
   from {
     opacity: 0;
@@ -705,16 +995,42 @@ body {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .nova-desktop-shell {
-    animation: none;
-  }
+@keyframes nova-rise {
+  from { opacity: 0; transform: translateY(6px); }
+}
 
+@keyframes nova-toast-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+}
+
+/* Entrance only: `backwards` fill leaves no lasting transform or stacking context once finished. */
+.nova-app-shell:not(.nova-desktop-shell) .nova-app-sidebar {
+  animation: nova-rise 320ms var(--ease-out-soft) backwards;
+}
+
+.nova-app-shell:not(.nova-desktop-shell) .nova-app-workspace {
+  animation: nova-rise 360ms var(--ease-out-soft) 50ms backwards;
+}
+
+.nova-toast {
+  animation: nova-toast-in 220ms var(--ease-out-soft) backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nova-desktop-shell,
+  .nova-app-shell:not(.nova-desktop-shell) .nova-app-sidebar,
+  .nova-app-shell:not(.nova-desktop-shell) .nova-app-workspace,
+  .nova-toast,
   .studio-history-job,
   .studio-waiting-card,
   .studio-failed-card,
   .studio-waiting-art::after {
     animation: none;
+  }
+
+  .studio-result-card,
+  .studio-result-card:hover {
+    transform: none;
   }
 }
 
@@ -733,10 +1049,10 @@ body {
   animation: shimmer 1.5s infinite;
 }
 
-/* Custom scrollbar for virtual scroll container */
+/* Custom scrollbar for virtual scroll container (the old hsl(var(--hex)) values were invalid) */
 .virtual-scroll-container {
   scrollbar-width: thin;
-  scrollbar-color: hsl(var(--muted-foreground) / 0.3) hsl(var(--muted) / 0.2);
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
 .virtual-scroll-container::-webkit-scrollbar {
@@ -744,18 +1060,13 @@ body {
 }
 
 .virtual-scroll-container::-webkit-scrollbar-track {
-  background: hsl(var(--muted) / 0.2);
+  background: transparent;
   border-radius: 4px;
 }
 
 .virtual-scroll-container::-webkit-scrollbar-thumb {
-  background: hsl(var(--muted-foreground) / 0.3);
+  background: var(--scrollbar-thumb);
   border-radius: 4px;
-  transition: background 0.2s ease;
-}
-
-.virtual-scroll-container::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.5);
 }
 
 /* Hide scrollbar but keep functionality */
@@ -766,16 +1077,6 @@ body {
 
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
-}
-
-@layer base {
-  * {
-    @apply border-border outline-ring/50;
-  }
-
-  body {
-    @apply bg-background text-foreground;
-  }
 }
 
 /*

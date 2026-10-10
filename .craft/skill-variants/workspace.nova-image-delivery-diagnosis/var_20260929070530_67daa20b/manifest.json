@@ -1,0 +1,28 @@
+﻿{
+  "schemaVersion": 1,
+  "variantId": "var_20260929070530_67daa20b",
+  "source": {
+    "name": "nova-image-delivery-diagnosis",
+    "sourceKind": "workspace",
+    "path": "F:\\\u9879\u76EE\\nova-image-studio\\.craft\\skills\\nova-image-delivery-diagnosis\\SKILL.md",
+    "fingerprint": "sha256:cb626323591dc59c5fa048bfbfd7cc8776e7f337a3048e717909b09bb9b10253"
+  },
+  "target": {
+    "harness": "dotcraft",
+    "harnessVersion": "0.7.8.0",
+    "model": "claude-opus-5-5",
+    "os": "windows",
+    "shell": "powershell",
+    "toolProfileHash": "sha256:773bf3e852ee27c31827c2b1854bdc104500dc07ccb010989ecc701b967a6bb9",
+    "approvalPolicy": "Default",
+    "workspaceHash": "sha256:8c1c0c7830077405c06d3b28a1f37ba0843dc10802627f937ebbb5b6b3fd59d1"
+  },
+  "status": "current",
+  "createdAt": "2026-09-29T07:05:30.8987836+00:00",
+  "updatedAt": "2026-09-29T07:05:30.9043122+00:00",
+  "parentVariantId": null,
+  "provenance": {
+    "kind": "selfLearning"
+  },
+  "summary": "Workspace adaptation created by SkillManage."
+}

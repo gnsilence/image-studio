@@ -44,7 +44,7 @@ function Select<T extends string>({
       <SelectPrimitive.Trigger
         data-slot="select-trigger"
         className={cn(
-          "inline-flex w-full items-center justify-between gap-2 rounded-lg border border-input bg-transparent px-2.5 text-sm transition-colors outline-none select-none hover:bg-muted/50 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 data-[popup-open]:bg-muted/50 dark:bg-input/30",
+          "inline-flex w-full items-center justify-between gap-2 rounded-lg border border-input bg-field px-2.5 text-sm transition-[color,background-color,border-color,box-shadow] outline-none select-none hover:bg-surface-hover focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 disabled:pointer-events-none disabled:opacity-50 data-[popup-open]:border-ring data-[popup-open]:bg-surface-hover",
           size === "sm" ? "h-7" : "h-8",
           className
         )}
@@ -62,7 +62,7 @@ function Select<T extends string>({
         >
           <SelectPrimitive.Popup
             className={cn(
-              "max-h-[min(24rem,var(--available-height))] min-w-[var(--anchor-width)] overflow-y-auto rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-md outline-none",
+              "nova-float max-h-[min(24rem,var(--available-height))] min-w-[var(--anchor-width)] overflow-y-auto rounded-xl p-1 outline-none",
               contentClassName
             )}
           >
@@ -71,7 +71,7 @@ function Select<T extends string>({
                 key={option.value}
                 value={option.value}
                 disabled={option.disabled}
-                className="relative flex cursor-pointer items-center gap-2 rounded-md py-1.5 pr-8 pl-2.5 text-sm outline-none select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-muted"
+                className="relative flex cursor-pointer items-center gap-2 rounded-lg py-1.5 pr-8 pl-2.5 text-sm outline-none select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
               >
                 <SelectPrimitive.ItemText>{option.label}</SelectPrimitive.ItemText>
                 <SelectPrimitive.ItemIndicator className="absolute right-2 flex items-center text-primary">

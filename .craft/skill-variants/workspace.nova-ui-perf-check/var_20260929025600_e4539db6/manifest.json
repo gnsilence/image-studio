@@ -1,0 +1,28 @@
+﻿{
+  "schemaVersion": 1,
+  "variantId": "var_20260929025600_e4539db6",
+  "source": {
+    "name": "nova-ui-perf-check",
+    "sourceKind": "workspace",
+    "path": "F:\\\u9879\u76EE\\nova-image-studio\\.craft\\skills\\nova-ui-perf-check\\SKILL.md",
+    "fingerprint": "sha256:17b3fe6441c32d033dd0a7d648e24c29db76b2abb533932957d9f7747be70cfd"
+  },
+  "target": {
+    "harness": "dotcraft",
+    "harnessVersion": "0.7.8.0",
+    "model": "claude-opus-5-5",
+    "os": "windows",
+    "shell": "powershell",
+    "toolProfileHash": "sha256:773bf3e852ee27c31827c2b1854bdc104500dc07ccb010989ecc701b967a6bb9",
+    "approvalPolicy": "Default",
+    "workspaceHash": "sha256:8c1c0c7830077405c06d3b28a1f37ba0843dc10802627f937ebbb5b6b3fd59d1"
+  },
+  "status": "current",
+  "createdAt": "2026-09-29T02:56:00.3078855+00:00",
+  "updatedAt": "2026-09-29T02:56:00.3165608+00:00",
+  "parentVariantId": null,
+  "provenance": {
+    "kind": "selfLearning"
+  },
+  "summary": "Workspace adaptation created by SkillManage."
+}
