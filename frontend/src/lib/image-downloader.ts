@@ -165,7 +165,19 @@ export async function fetchImageAsBlob(
     const idleTimeout = createIdleTimeout(controller);
     try {
       idleTimeout.reset();
-      const response = await fetch(url, { signal: controller.signal });
+      let response: Response;
+      try {
+        response = await fetch(url, { signal: controller.signal });
+      } catch (error) {
+        const desktop = getDesktopBridge();
+        if (!desktop?.images || controller.signal.aborted || !/^https?:\/\//i.test(url)) throw error;
+        idleTimeout.clear();
+        const image = await desktop.images.fetch(url);
+        const bytes = new Uint8Array(image.data);
+        const blob = new Blob([bytes.buffer], { type: image.mimeType });
+        onProgress?.({ loadedBytes: blob.size, totalBytes: blob.size, percent: 100 });
+        return blob;
+      }
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       idleTimeout.reset();
       const blob = await readResponseAsBlob(response, progress => {

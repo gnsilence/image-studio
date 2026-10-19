@@ -6,11 +6,11 @@ import {
   isGptImageModel,
   type ModelId,
 } from '@/lib/gemini-config';
-import { getImageModelById, loadRegistry } from '@/lib/nova-models';
+import { getImageModelById, getImageModelOutputSizes, loadRegistry } from '@/lib/nova-models';
 import type { AspectRatio, OutputSize, RefImageData, StoredJob } from '@/lib/job-store';
 
-export type ParallelCount = 1 | 2 | 3 | 4;
-type FixedOutputSize = Exclude<OutputSize, 'auto'>;
+export type ParallelCount = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+type FixedOutputSize = Exclude<OutputSize, 'auto' | '1.5K'>;
 
 export type GptImageQuality = 'auto' | 'high' | 'medium' | 'low';
 export type GptImageStyle = 'auto' | 'vivid' | 'natural';
@@ -107,10 +107,44 @@ const GROK_IMAGE_ASPECT_RATIOS: { value: AspectRatio; label: string }[] = [
   { value: '21:9', label: '超宽屏' },
 ];
 
+const GROK_IMAGE2_ASPECT_RATIOS: { value: AspectRatio; label: string }[] = [
+  { value: 'auto', label: '自动' },
+  { value: '1:1', label: '正方形' },
+  { value: '2:3', label: '竖向' },
+  { value: '3:2', label: '横向' },
+  { value: '3:4', label: '竖向' },
+  { value: '4:3', label: '横向' },
+  { value: '9:16', label: '竖屏' },
+  { value: '16:9', label: '宽屏' },
+  { value: '9:19.5', label: '手机竖屏' },
+  { value: '19.5:9', label: '手机横屏' },
+  { value: '9:20', label: '手机竖屏' },
+  { value: '20:9', label: '手机横屏' },
+  { value: '1:2', label: '竖向' },
+  { value: '2:1', label: '横向' },
+  { value: '21:9', label: '超宽屏' },
+  { value: '5:2', label: '横幅' },
+];
+
 function isGrokImagePreset(presetId: string): boolean {
   return presetId === 'grok-imagine-image'
+    || presetId === 'grok-imagine-image-2.0'
     || presetId === 'grok-imagine-image-quality'
     || presetId === 'grok-imagine-image-edit';
+}
+
+export function isGrokImage2Model(model: string): boolean {
+  return getBuiltinPresetId(model) === 'grok-imagine-image-2.0';
+}
+
+export function getParallelCountOptions(model: string): ParallelCount[] {
+  return isGrokImage2Model(model) ? [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] : [1, 2, 3, 4];
+}
+
+export function normalizeParallelCount(value: number | undefined, model: string): ParallelCount {
+  const options = getParallelCountOptions(model);
+  const rounded = Math.round(Number(value) || 1);
+  return Math.min(options[options.length - 1], Math.max(1, rounded)) as ParallelCount;
 }
 
 export const CUSTOM_IMAGE_SIZE_LIMITS = {
@@ -195,7 +229,7 @@ function isGptImage2ProResolutionSupported(size?: string): boolean {
 }
 
 export function getGptImageResolution(outputSize: OutputSize, aspectRatio: AspectRatio): string | undefined {
-  if (outputSize === 'auto' || outputSize === '512' || aspectRatio === 'auto') return undefined;
+  if (outputSize === 'auto' || outputSize === '512' || outputSize === '1.5K' || aspectRatio === 'auto') return undefined;
 
   const [ratioWidth, ratioHeight] = aspectRatio.split(':').map(Number);
   if (!ratioWidth || !ratioHeight) return undefined;
@@ -285,6 +319,14 @@ export function getGptImageAdvancedParamsForModel(
     return DEFAULT_GPT_IMAGE_ADVANCED_PARAMS;
   }
 
+  if (isGrokImage2Model(model)) {
+    return {
+      quality: params?.quality === 'low' || params?.quality === 'medium' ? params.quality : 'auto',
+      style: 'auto',
+      background: 'auto',
+    };
+  }
+
   return {
     quality: normalizeGptImageQuality(params?.quality),
     style: normalizeGptImageStyle(params?.style),
@@ -294,6 +336,10 @@ export function getGptImageAdvancedParamsForModel(
 
 export function getSizeOptions(model: ModelId): { value: OutputSize; label: string }[] {
   const modelConfig = getModelConfig(model);
+  if (isGrokImage2Model(model)) {
+    const values: OutputSize[] = modelConfig ? getImageModelOutputSizes(modelConfig) : ['1K', '1.5K', '2K'];
+    return values.map(value => ({ value, label: value }));
+  }
   if (modelConfig) {
     if (isGrokImagePreset(modelConfig.builtinPreset)) {
       const values: OutputSize[] = modelConfig.maxOutputSize === '2K' || modelConfig.maxOutputSize === '4K'
@@ -363,7 +409,7 @@ export function getAspectRatioOptions(model: ModelId, outputSize: OutputSize): A
     return BANANA_PRO_ASPECT_RATIOS.map(ar => ({
       value: ar.value,
       label: ar.label,
-      resolution: ar.resolutions[outputSize] || ar.resolutions['1K'],
+      resolution: ar.resolutions[outputSize as FixedOutputSize] || ar.resolutions['1K'],
     }));
   }
   if (isGptImage2Preset(presetId)) {
@@ -372,6 +418,12 @@ export function getAspectRatioOptions(model: ModelId, outputSize: OutputSize): A
       label: ar.label,
       resolution: getGptImageResolution(outputSize, ar.value) || '',
     })).filter(option => isGptImage2ProResolutionSupported(option.resolution));
+  }
+  if (presetId === 'grok-imagine-image-2.0') {
+    return GROK_IMAGE2_ASPECT_RATIOS.map(ar => ({
+      ...ar,
+      resolution: ar.value === 'auto' ? '自动' : outputSize,
+    }));
   }
   if (isGrokImagePreset(presetId)) {
     return GROK_IMAGE_ASPECT_RATIOS.map(ar => ({
@@ -384,7 +436,7 @@ export function getAspectRatioOptions(model: ModelId, outputSize: OutputSize): A
     return BANANA2_ASPECT_RATIOS.map(ar => ({
       value: ar.value,
       label: ar.label,
-      resolution: ar.resolutions[outputSize] || ar.resolutions['1K'],
+      resolution: ar.resolutions[outputSize as FixedOutputSize] || ar.resolutions['1K'],
     }));
   }
 
@@ -430,6 +482,7 @@ export function normalizeModel(candidate?: string): ModelId {
 }
 
 export function getDefaultRetryLayout(model: ModelId): { outputSize: OutputSize; aspectRatio: AspectRatio } {
+  if (isGrokImage2Model(model)) return { outputSize: '1K', aspectRatio: 'auto' };
   return supportsAutoLayout(model)
     ? { outputSize: 'auto', aspectRatio: 'auto' }
     : { outputSize: '1K', aspectRatio: '1:1' };
@@ -437,6 +490,10 @@ export function getDefaultRetryLayout(model: ModelId): { outputSize: OutputSize;
 
 export function isRetryLayoutCompatible(model: ModelId, outputSize: OutputSize, aspectRatio: AspectRatio): boolean {
   const presetId = getBuiltinPresetId(model);
+  if (presetId === 'grok-imagine-image-2.0') {
+    return getValidOutputSizes(model).includes(outputSize)
+      && getAspectRatioOptions(model, outputSize).some(option => option.value === aspectRatio);
+  }
   if (outputSize === 'auto' || aspectRatio === 'auto') {
     return supportsAutoLayout(model) && outputSize === 'auto' && aspectRatio === 'auto';
   }
@@ -524,9 +581,7 @@ export function getCompatibleRetryData(job: StoredJob): RetryData {
     ? normalizeCustomImageSize(job.custom_size, getCustomSizeMaxSide(model))
     : undefined;
   const temperature = supportsTemperature && typeof job.temperature === 'number' ? job.temperature : 1;
-  const parallelCount: ParallelCount = [1, 2, 3, 4].includes(job.parallelCount as ParallelCount)
-    ? (job.parallelCount as ParallelCount)
-    : 1;
+  const parallelCount = normalizeParallelCount(job.parallelCount, model);
   const advancedParams = getGptImageAdvancedParamsForModel(model, {
     quality: job.gptImageQuality,
     style: job.gptImageStyle,
@@ -566,7 +621,7 @@ export interface AgentModelCatalogEntry {
   id: string;
   /** 用户可见的模型名称/别名 */
   name: string;
-  /** 最大输出分辨率: '512' | '1K' | '2K' | '4K' */
+  /** 最大输出分辨率: '512' | '1K' | '1.5K' | '2K' | '4K' */
   maxOutputSize: string;
 }
 
@@ -575,11 +630,11 @@ export interface AgentLayoutIntent {
   requestedAspectRatio?: string;
   /** Agent 智能推荐的比例（优先级 3），如 "2:3" */
   suggestedAspectRatio?: string;
-  /** 用户明确要求的清晰度档位，如 "4K"/"2K"/"1K"/"512"/"auto" */
+  /** 用户明确要求的清晰度档位，如 "4K"/"2K"/"1.5K"/"1K"/"512"/"auto" */
   requestedOutputSize?: string;
   /** 建议温度 0-2 */
   temperature?: number;
-  /** 建议并行数量 1-4 */
+  /** 建议生成数量，按模型能力限定 */
   parallelCount?: number;
 }
 
@@ -609,7 +664,7 @@ function clampNumber(value: number, min: number, max: number): number {
 
 // ===== Agent 模型自动选择 =====
 
-const OUTPUT_SIZE_RANK: Record<string, number> = { '512': 0, '1K': 1, '2K': 2, '4K': 3 };
+const OUTPUT_SIZE_RANK: Record<string, number> = { '512': 0, '1K': 1, '1.5K': 1.5, '2K': 2, '4K': 3 };
 
 function canModelSupportSize(maxOutputSize: string, requestedSize: string): boolean {
   return (OUTPUT_SIZE_RANK[maxOutputSize] ?? 0) >= (OUTPUT_SIZE_RANK[requestedSize] ?? 0);
@@ -696,7 +751,7 @@ export function resolveAgentLayout(
       gptImageQuality: DEFAULT_GPT_IMAGE_ADVANCED_PARAMS.quality,
       gptImageStyle: DEFAULT_GPT_IMAGE_ADVANCED_PARAMS.style,
       gptImageBackground: DEFAULT_GPT_IMAGE_ADVANCED_PARAMS.background,
-      parallelCount: normalizeParallelCount(intent.parallelCount),
+      parallelCount: normalizeParallelCount(intent.parallelCount, model),
     };
   }
 
@@ -742,12 +797,6 @@ export function resolveAgentLayout(
     gptImageQuality: DEFAULT_GPT_IMAGE_ADVANCED_PARAMS.quality,
     gptImageStyle: DEFAULT_GPT_IMAGE_ADVANCED_PARAMS.style,
     gptImageBackground: DEFAULT_GPT_IMAGE_ADVANCED_PARAMS.background,
-    parallelCount: normalizeParallelCount(intent.parallelCount),
+    parallelCount: normalizeParallelCount(intent.parallelCount, model),
   };
-}
-
-function normalizeParallelCount(value?: number): ParallelCount {
-  const rounded = Math.round(Number(value) || 1);
-  const clamped = clampNumber(rounded, 1, 4);
-  return clamped as ParallelCount;
 }

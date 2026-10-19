@@ -49,11 +49,13 @@ import {
   getAspectRatioOptions,
   getCustomSizeMaxSide,
   getGptImageAdvancedParamsForModel,
+  getParallelCountOptions,
   getSizeOptions,
   getSupportsTemperature,
   getValidOutputSizes,
   normalizeCustomImageSize,
   normalizeModel,
+  normalizeParallelCount,
   supportsCustomSize,
   supportsGptImageAdvancedParams,
   type GptImageAdvancedParams,
@@ -177,7 +179,7 @@ export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfi
     })
   );
   const [userParallelCount, setUserParallelCount] = useState<ParallelCount>(
-    [1, 2, 3, 4].includes(savedParams.parallelCount as ParallelCount) ? savedParams.parallelCount as ParallelCount : 1
+    normalizeParallelCount(savedParams.parallelCount, initialUserModel)
   );
   const [userCustomSize, setUserCustomSize] = useState<string | undefined>(initialUserCustomSize);
   const [customSizeDialogOpen, setCustomSizeDialogOpen] = useState(false);
@@ -218,6 +220,7 @@ export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfi
       : undefined;
 
     setUserModel(nextModel);
+    setUserParallelCount(prev => normalizeParallelCount(prev, nextModel));
     setUserOutputSize(nextOutputSize);
     setUserAspectRatio(nextAspectRatio as AspectRatio);
     setUserCustomSize(nextCustomSize);
@@ -1079,6 +1082,7 @@ export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfi
 
               {supportsAdvancedParams && (
                 <GptImageAdvancedParamsControl
+                  model={userModel}
                   value={userAdvancedParams}
                   onChange={setUserAdvancedParams}
                   variant="outline"
@@ -1095,7 +1099,7 @@ export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfi
                   <span className="text-[11px]">×{userParallelCount}</span>
                 </PopoverTrigger>
                 <PopoverContent className="w-36 p-1" align="start">
-                  {([1, 2, 3, 4] as ParallelCount[]).map(count => (
+                  {getParallelCountOptions(userModel).map(count => (
                     <button
                       key={count}
                       type="button"

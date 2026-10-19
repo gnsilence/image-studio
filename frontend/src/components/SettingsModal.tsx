@@ -278,8 +278,11 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
         next.maxOutputSize = preset.maxOutputSize;
         next.supportsAdvancedParams = preset.supportsAdvancedParams;
       }
+      if (next.builtinPreset === 'grok-imagine-image-2.0') {
+        next.maxRefImages = Math.min(5, next.maxRefImages);
+      }
       if (patch.protocol === 'google' || patch.protocol === 'grok') {
-        next.supportsAdvancedParams = false;
+        next.supportsAdvancedParams = patch.protocol === 'grok' && next.builtinPreset === 'grok-imagine-image-2.0';
       }
       return next;
     }));
@@ -729,6 +732,7 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
                       <Input
                         type="number"
                         min={0}
+                        max={selectedImageModel.builtinPreset === 'grok-imagine-image-2.0' ? 5 : undefined}
                         value={selectedImageModel.maxRefImages}
                         onChange={(event) => {
                           const next = Number(event.target.value);

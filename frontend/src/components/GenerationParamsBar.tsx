@@ -14,9 +14,11 @@ import {
   getCustomSizeMaxSide,
   getGptImageAdvancedParamsForModel,
   getOutputSizeLabel,
+  getParallelCountOptions,
   getSizeOptions,
   getSupportsTemperature,
   normalizeCustomImageSize,
+  normalizeParallelCount,
   supportsAutoLayout,
   supportsCustomSize,
   supportsGptImageAdvancedParams,
@@ -75,7 +77,7 @@ export function GenerationParamsBar({ value, onChange, size = 'xs', className }:
     const nextCustomSize = supportsCustomSize(newModel) ? normalizeCustomImageSize(value.customSize, getCustomSizeMaxSide(newModel)) : undefined;
     const aspectOptions = getAspectRatioOptions(newModel, nextOutputSize);
     const nextAspectRatio: AspectRatio = aspectOptions.find(a => a.value === value.aspectRatio) ? value.aspectRatio : (aspectOptions[0]?.value || '1:1');
-    onChange({ model: newModel, outputSize: nextOutputSize, customSize: nextCustomSize, aspectRatio: nextAspectRatio, gptImageAdvancedParams: nextGpt });
+    onChange({ model: newModel, outputSize: nextOutputSize, customSize: nextCustomSize, aspectRatio: nextAspectRatio, gptImageAdvancedParams: nextGpt, parallelCount: normalizeParallelCount(value.parallelCount, newModel) });
   };
 
   const handleSizeChange = (newSize: OutputSize) => {
@@ -194,12 +196,12 @@ export function GenerationParamsBar({ value, onChange, size = 'xs', className }:
       </Popover>
 
       <Popover open={parallelPopoverOpen} onOpenChange={setParallelPopoverOpen}>
-        <PopoverTrigger className={cn(buttonVariants({ variant: 'outline', size }), 'gap-1')} title="并行数量">
+        <PopoverTrigger className={cn(buttonVariants({ variant: 'outline', size }), 'gap-1')} title="生成数量">
           <Copy className="h-3 w-3" />
           <span className="text-[11px]">x{value.parallelCount}</span>
         </PopoverTrigger>
         <PopoverContent className="w-36 p-1" align="start">
-          {[1, 2, 3, 4].map((count) => (
+          {getParallelCountOptions(model).map((count) => (
             <button
               key={count}
               onClick={() => handleParallelCountChange(count as ParallelCount)}
@@ -213,7 +215,7 @@ export function GenerationParamsBar({ value, onChange, size = 'xs', className }:
       </Popover>
 
       {supportsAdvancedParams && (
-        <GptImageAdvancedParamsControl value={value.gptImageAdvancedParams} onChange={(next) => onChange({ gptImageAdvancedParams: next })} variant="outline" size={size} />
+        <GptImageAdvancedParamsControl model={model} value={value.gptImageAdvancedParams} onChange={(next) => onChange({ gptImageAdvancedParams: next })} variant="outline" size={size} />
       )}
 
       {supportsTemperature && (

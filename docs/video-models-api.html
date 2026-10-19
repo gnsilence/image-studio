@@ -1,0 +1,727 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>视频模型 · HTTP API 接入说明 · MY110</title>
+  <style>
+    :root{--bg:#1c1c1c;--panel:#222;--raised:#292929;--border:#393939;--text:#e9e9e7;--muted:#aaa9a5;--green:#a4c889;--purple:#c994e3;--blue:#a8c8e9;--orange:#dca56f;--red:#f0788a;--mono:"Cascadia Code","SFMono-Regular",Consolas,monospace;--sans:"Segoe UI Variable Text","PingFang SC","Microsoft YaHei",sans-serif}
+    *{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:100px}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.8 var(--sans)}a{color:inherit;text-decoration:none}button,input,select,textarea{font:inherit}button,select{cursor:pointer}button{color:inherit}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,summary:focus-visible{outline:2px solid var(--green);outline-offset:4px}::selection{background:#4b5b3f;color:#fff}code,pre,.mono{font-family:var(--mono)}p{margin:0 0 16px}code{overflow-wrap:anywhere}p code,td code,li code,summary code,.notice code{padding:3px 6px;border-radius:5px;background:#303030;font-size:.9em}
+    .topbar{height:70px;position:sticky;top:0;z-index:10;background:#1c1c1cf5;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 38px;gap:20px}.brand{display:flex;align-items:center;gap:12px;font-weight:650;letter-spacing:.02em}.mark{display:grid;place-items:center;width:30px;height:30px;border:1px solid #6b7e59;border-radius:8px;color:var(--green);font:18px var(--mono)}.toplinks{display:flex;align-items:center;gap:26px;color:var(--muted);font-size:13px}.toplinks a:hover{color:var(--text)}.offline{font-size:11px;letter-spacing:.1em;color:var(--green);display:flex;align-items:center;gap:8px}.dot{height:6px;width:6px;background:var(--green);border-radius:50%}
+    .layout{display:grid;grid-template-columns:208px minmax(0,1fr);gap:56px;max-width:1510px;margin:auto;padding:0 38px}.sidebar{position:sticky;top:106px;align-self:start;height:calc(100vh - 140px);padding-top:39px}.nav-label{font-size:10px;letter-spacing:.17em;color:#777;margin-bottom:13px}.sidebar nav{display:grid;gap:3px}.sidebar nav a{font-size:13px;padding:8px 13px;border-left:1px solid var(--border);color:var(--muted)}.sidebar nav a:hover,.sidebar nav a.active{color:var(--green);border-left-color:var(--green);background:#a4c88908}.sidebar-note{border-top:1px solid var(--border);padding-top:20px;margin-top:30px;font-size:11px;color:#85847f;line-height:1.9}.sidebar-note code{display:block;margin-top:8px;color:var(--muted);font-size:11px}
+    main{min-width:0;padding:50px 0 64px}.eyebrow{font:11px var(--mono);letter-spacing:.13em;color:var(--green);display:flex;align-items:center;gap:9px;margin-bottom:14px}h1{font-size:clamp(29px,3.2vw,43px);line-height:1.2;letter-spacing:-.035em;margin:0 0 15px;font-weight:650}h1 span{font-weight:350;color:#9b9b96}.intro{max-width:810px;color:var(--muted);font-size:14px}.meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:22px 0 29px}.badge{font:11px var(--mono);border:1px solid var(--border);background:#252525;color:#babbb5;border-radius:6px;padding:5px 9px}.badge.green{color:var(--green);border-color:#49563d;background:#a4c88909}.baseurl{display:flex;align-items:center;gap:12px;border:1px solid var(--border);border-radius:12px;padding:16px 19px;background:var(--panel);flex-wrap:wrap}.baseurl .label{font:10px var(--mono);color:#8f8e89;letter-spacing:.1em}.baseurl code{color:var(--green);font-size:14px}.baseurl .suffix{font-size:12px;color:var(--muted);margin-left:auto}
+    section{margin-top:44px}h2{display:flex;align-items:center;gap:10px;font-size:19px;font-weight:650;margin:0 0 17px;letter-spacing:-.02em}.section-icon{width:19px;height:19px;color:#90918a;flex:none}.section-heading{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:17px}.section-heading h2{margin:0}.section-id{font:10px var(--mono);letter-spacing:.12em;color:#73746f}.subtext{font-size:13px;color:var(--muted)}.muted{color:var(--muted)}.small{font-size:12px}.notice{padding:16px 19px;border:1px solid var(--border);border-radius:12px;background:var(--panel);font-size:13px;color:#c5c5bf;line-height:1.9}.notice.accent{border-left:3px solid #829c6b}.notice strong{color:var(--text);font-weight:600}.notice p:last-child{margin-bottom:0}.notice+.notice{margin-top:12px}
+    .example-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:13px;flex-wrap:wrap}.segmented{display:flex;padding:3px;gap:2px;border-radius:999px;background:#262626;max-width:100%;overflow:auto}.segmented button{border:1px solid transparent;background:none;padding:6px 15px;border-radius:999px;font-size:13px;white-space:nowrap;color:#aaa}.segmented button[aria-selected=true]{border-color:#50504e;background:#323232;color:#eee}.protocol{margin-left:8px;font-size:11px;color:#777}.editor{position:relative;border:1px solid var(--border);border-radius:15px;overflow:hidden;background:#202020}.editor-bar{display:flex;align-items:center;gap:11px;padding:11px 17px;border-bottom:1px solid #333;color:#9a9b94;font:11px var(--mono);min-height:47px}.method{color:var(--green);font-size:10px;font-weight:700}.endpoint{overflow-wrap:anywhere}.copy{margin-left:auto;padding:4px 9px;background:transparent;border:1px solid #454541;border-radius:6px;font:11px var(--sans);color:#b8b8b2;display:flex;align-items:center;gap:6px;white-space:nowrap}.copy:hover{background:#34342f;color:#eee}.copy svg{width:13px;height:13px}.code-scroll{overflow:auto;max-height:650px}pre{margin:0;padding:22px 23px;font-size:12.5px;line-height:1.85;tab-size:2;white-space:pre}pre code{overflow-wrap:normal}.token-string{color:var(--green)}.token-keyword{color:var(--purple)}.token-number{color:var(--orange)}.token-comment{color:#868b80}.example-foot{display:flex;align-items:center;justify-content:space-between;gap:15px;flex-wrap:wrap;margin-top:11px;color:#94958e;font-size:12px}.example-foot code{font-size:11px;color:#c6c6bd}.request-count{color:var(--green)}
+    details{border:1px solid var(--border);border-radius:12px;margin-top:17px;background:var(--panel)}summary{padding:14px 18px;font-size:13px;color:#cacac5;cursor:pointer;user-select:none}summary::marker{color:#85897c}.config-body{padding:4px 18px 18px}.form-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px 16px}.field{display:flex;flex-direction:column;gap:6px;font-size:12px;color:#b7b7b0}.field.wide{grid-column:1/-1}.field label{display:flex;justify-content:space-between;gap:8px}.field label span{font:10px var(--mono);color:#82867a}input,select,textarea{width:100%;background:#1b1b1b;border:1px solid #41413d;border-radius:7px;color:#ddd;padding:9px 10px;font-size:12px;line-height:1.6}textarea{resize:vertical;min-height:68px}select:disabled,input:disabled{opacity:.45;cursor:default}.form-note{margin:14px 0 0;font-size:12px;color:#91958a}.custom-size{display:flex;align-items:center;gap:8px}.validation{margin:10px 0 0;font-size:12px;color:var(--red)}[hidden]{display:none!important}
+    .table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:13px}table{width:100%;border-collapse:collapse;text-align:left;font-size:13px;line-height:1.8}th{padding:13px 15px;background:var(--raised);font-weight:600;color:#cecec9;white-space:nowrap}td{padding:15px;border-top:1px solid #343434;vertical-align:top;color:#b9b9b3}td:first-child{color:#e5e5df}.param{font:12px var(--mono);color:#ecece6}.required{display:inline-block;margin-left:6px;border:1px solid #74404b;border-radius:99px;padding:0 6px;font:10px/1.8 var(--sans);color:var(--red)}.type{display:inline-block;padding:2px 8px;border-radius:99px;background:#353736;color:var(--blue);font:11px/1.6 var(--mono);white-space:nowrap}.param-table td:first-child{width:19%;white-space:nowrap}.param-table td:nth-child(2){width:15%}.param-table td:nth-child(3){width:23%}.inline-enums{display:flex;gap:5px;flex-wrap:wrap}.inline-enums code{font-size:11px;white-space:nowrap}.table-note{font-size:12px;color:#999b90;margin:12px 0 0}.matrix{font-family:var(--mono);font-size:11px;min-width:630px}.matrix td,.matrix th{padding:11px 14px;white-space:nowrap}.matrix td.invalid{color:#6c6f67}.matrix .ratio{color:#deded5}.layout-tag{font:10px var(--sans);color:#898d80;margin-left:7px}.step-list{list-style:none;margin:0;padding:0;counter-reset:step}.step-list li{counter-increment:step;position:relative;padding:0 0 20px 36px;color:#b7b9b0;font-size:13px}.step-list li:before{content:counter(step,decimal-leading-zero);position:absolute;left:0;top:2px;color:var(--green);font:11px var(--mono)}.step-list strong{display:block;font-weight:600;color:#ddd;margin-bottom:3px}.step-list li:last-child{padding-bottom:0}.two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px}.two-col .notice{height:100%}.two-col h3{font-size:13px;color:#e3e3da;margin:0 0 9px}.rule-list{padding-left:18px;margin:7px 0}.rule-list li{padding:4px 0}.rule-list li::marker{color:#788c68}.mini-code{border:1px solid var(--border);border-radius:11px;background:#202020;overflow:auto}.mini-code pre{font-size:11.5px;padding:17px 19px}.response-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:15px}.response-grid .notice{margin:0}.response-grid ul{margin-bottom:0}.mapping td:first-child,.mapping td:nth-child(2){font-family:var(--mono);font-size:11px}.mapping td:first-child{width:27%}.mapping td:nth-child(2){width:28%;color:var(--green)}.code-heading{font:11px var(--mono);color:#93998b;padding:12px 18px 0}.source-details{background:transparent}.source-details p{padding:0 18px;font-size:12px;color:#969a8c}.source-details code{font-size:11px}.source-list{margin:0;padding:0 18px 18px;list-style:none;color:#b6b9ae;font-size:12px}.source-list li{padding:5px 0}.footer{display:flex;justify-content:space-between;gap:16px;border-top:1px solid var(--border);margin-top:40px;padding-top:20px;color:#777e6f;font:10px var(--mono);letter-spacing:.03em}.toast{position:fixed;bottom:25px;left:50%;transform:translateX(-50%);background:#32382c;color:#dbe7ce;border:1px solid #667457;padding:9px 17px;border-radius:8px;font-size:12px;z-index:20}
+    @media(min-width:1450px){.layout{gap:72px}main{padding-top:57px}pre{font-size:13px}.topbar{padding-inline:max(38px,calc((100vw - 1434px)/2))}}
+    @media(max-width:1050px){.layout{grid-template-columns:165px minmax(0,1fr);gap:30px;padding:0 25px}.topbar{padding:0 25px}.sidebar nav a{font-size:12px;padding-left:10px}.form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.two-col,.response-grid{grid-template-columns:1fr}.param-table{min-width:720px}.protocol{display:none}}
+    @media(max-width:760px){.layout{display:block;padding:0 18px}.sidebar{display:none}.topbar{height:60px;padding:0 18px}.brand{font-size:13px}.toplinks{gap:14px}.toplinks a{display:none}.offline{font-size:9px}main{padding-top:32px}h1{font-size:31px}h1 span{display:block;margin-top:7px;font-size:22px}.intro{font-size:13px}.baseurl{padding:13px 14px;gap:9px}.baseurl .suffix{width:100%;margin-left:0;font-size:11px}section{margin-top:34px}.section-id{display:none}.example-toolbar{gap:10px}.segmented button{padding:5px 11px;font-size:12px}.editor-bar{padding:10px 12px;font-size:10px}.copy{font-size:10px}pre{padding:17px 15px;font-size:11.5px}.form-grid{gap:12px}.field.wide{grid-column:1/-1}.notice{padding:14px 15px}.footer{flex-wrap:wrap}}
+    @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+    @media print{body{background:#fff;color:#222;font-size:11px}.topbar,.sidebar,.copy,.configurator,.toast,.toplinks{display:none}.layout{display:block;padding:0}main{padding:0}h1,h2,.param,td:first-child{color:#111}.intro,.subtext,.muted,td,.notice{color:#444}section{break-inside:avoid;margin-top:24px}.editor,.notice,.mini-code,details,.baseurl,.table-wrap{background:#fafafa;border-color:#ccc}th{background:#eee;color:#111}.editor-bar{border-color:#ccc}pre{white-space:pre-wrap;font-size:9px;max-height:none;color:#222}.code-scroll{max-height:none}.token-string{color:#42652c}.token-keyword{color:#743893}.token-comment{color:#777}.token-number{color:#9b5c24}.table-wrap{overflow:visible}.table-wrap table{min-width:0}td,th{padding:7px;border-color:#ddd}p code,td code,li code,.notice code{background:#eee}.baseurl code{color:#42652c}.matrix td.invalid{color:#999}.badge{background:#eee;color:#444}.response-grid,.two-col{display:block}.footer{color:#666}.source-details{display:none}a{color:inherit}}
+    .model-picker{display:flex;align-items:center;gap:12px;margin-bottom:14px}.model-picker label{font:11px var(--mono);color:var(--muted);white-space:nowrap}.model-picker select{max-width:460px;font-family:var(--mono)}.model-context{padding:11px 15px;background:#a4c88908;border:1px solid #424b3a;border-radius:9px;font-size:12px;color:#afb9a3;margin-bottom:17px}.contract-note{margin-top:17px}.catalog{min-width:880px}.catalog td:first-child{width:32%;font:11.5px/1.8 var(--mono)}.catalog td:nth-child(2){width:17%}.catalog td:nth-child(3){width:12%}.catalog td,.catalog th{padding:12px 14px}.pending{color:var(--orange)}.status-flow{display:flex;gap:0;margin-bottom:17px;border:1px solid var(--border);border-radius:12px;overflow:hidden}.status-flow div{flex:1;padding:16px;border-right:1px solid var(--border);font-size:12px;color:var(--muted)}.status-flow div:last-child{border:0}.status-flow strong{display:block;font:12px var(--mono);color:var(--green);margin-bottom:6px}.field-note{font-size:11px;color:#8b9184;margin:0}.source-list a{text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere}.code-scroll{max-height:520px}.notice h3{font-size:13px;margin:0 0 8px;color:var(--text)}.language-note{font-size:11px;color:#959b8c}
+    @media(max-width:760px){.model-picker{align-items:flex-start;flex-direction:column;gap:6px}.model-picker select{max-width:none}.status-flow{display:grid;grid-template-columns:1fr 1fr}.status-flow div:nth-child(2){border-right:0}.status-flow div:nth-child(-n+2){border-bottom:1px solid var(--border)}.form-grid{grid-template-columns:1fr}.segmented button{padding-inline:10px}.catalog{min-width:830px}}
+    @media print{.model-picker select{color:#222;background:white}.status-flow strong{color:#42652c}.model-context{color:#444;background:#fafafa}.pending{color:#9b5c24}}
+  </style>
+</head>
+<body>
+  <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" aria-hidden="true" style="position:absolute">
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5m8-10 5 5-5 5m-3-14-2 18"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></symbol>
+    <symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="5" width="13" height="14" rx="2"/><path d="m16 10 5-3v10l-5-3"/></symbol>
+  </svg>
+  <header class="topbar">
+    <a class="brand" href="#overview"><span class="mark">✳</span> MY110 <span class="muted" style="font-weight:400">/ 开发文档</span></a>
+    <div class="toplinks"><a href="#model-minimax">MiniMax-H3</a><a href="#model-v2">video-v2</a><a href="#model-v3">video-v3</a><span class="offline"><span class="dot"></span>HTTP API REFERENCE</span></div>
+  </header>
+  <div class="layout">
+    <aside class="sidebar" aria-label="文档导航">
+      <div class="nav-label">VIDEO GENERATION</div>
+      <nav>
+        <a href="#overview" class="active">概览与请求地址</a>
+        <a href="#examples">配置与调用示例</a>
+        <a href="#authentication">身份验证与端点</a>
+        <a href="#model-minimax">MiniMax-H3 参数</a>
+        <a href="#sizes">H3 尺寸与工作流</a>
+        <a href="#model-v2">video-v2 / fast 参数</a>
+        <a href="#model-v3">video-v3 参数</a>
+        <a href="#references">参考素材与编号</a>
+        <a href="#lifecycle">响应、轮询与下载</a>
+        <a href="#models">原模型列表对应</a>
+        <a href="#sources">常见问题与依据</a>
+      </nav>
+      <div class="sidebar-note">JSON 请求 · 公网素材 URL<br>创建任务 → 轮询 → 读取结果<br>密钥由调用方传入<code>https://api.my110.vip/v1</code></div>
+    </aside>
+    <main>
+      <div id="overview">
+        <div class="eyebrow"><span class="dot"></span> MINIMAX H3 / VIDEO V2 / VIDEO V3</div>
+        <h1>视频模型 <span>HTTP API 接入说明</span></h1>
+        <p class="intro">按照指定参考文档整理 MiniMax-H3、video-v2、video-v2-fast 与 video-v3 的实际请求结构，涵盖工作流、时长、画幅、尺寸、参考图、视频、音频和首尾帧。</p>
+        <div class="meta"><span class="badge green">4 MODEL CONTRACTS</span><span class="badge">JSON</span><span class="badge">URL REFERENCES</span><span class="badge">核对日期 2026-10-15</span></div>
+        <div class="baseurl"><span class="label">BASE URL</span><code>https://api.my110.vip/v1</code><span class="suffix">Authorization: Bearer &lt;API_KEY&gt;</span></div>
+        <p class="table-note">模型字段以本文底部链接的参考文档为依据；调用地址按要求使用 api.my110.vip。密钥由调用方提供，本页仅生成代码。</p>
+      </div>
+
+      <section id="examples">
+        <div class="section-heading"><h2><svg class="section-icon" fill="none" stroke="currentColor" stroke-width="1.6"><use href="#i-code"/></svg>配置与调用示例</h2><span class="section-id">01 / REQUEST</span></div>
+        <div class="model-picker"><label for="cfg-model">MODEL</label><select id="cfg-model" aria-describedby="model-context">
+          <optgroup label="参考文档明确列出的模型">
+            <option>MiniMax-H3</option><option>video-v2</option><option>video-v2-fast</option><option>video-v3</option>
+          </optgroup>
+          <optgroup label="原定价页其他条目 · 参数映射未在参考文档定义" disabled>
+            <option>video-v2-480P（按秒计费）</option><option>video-v2-720P（按秒计费）</option><option>video-v2-特价版</option>
+            <option>video-v3-480p</option><option>video-v3-480P（按条计费）</option><option>video-v3-720P（按条计费）</option><option>video-v3-特价版</option>
+          </optgroup>
+        </select></div>
+        <div id="model-context" class="model-context" aria-live="polite">MiniMax-H3：JSON；工作流根据图片与输出尺寸自动选择。</div>
+        <div class="example-toolbar">
+          <div class="segmented" role="tablist" aria-label="请求步骤">
+            <button type="button" role="tab" id="mode-create" aria-selected="true" aria-controls="request-panel" data-mode="create">文生视频</button>
+            <button type="button" role="tab" id="mode-reference" aria-selected="false" aria-controls="request-panel" data-mode="reference">参考素材</button>
+            <button type="button" role="tab" id="mode-frames" aria-selected="false" aria-controls="request-panel" data-mode="frames" hidden>首尾帧</button>
+            <button type="button" role="tab" id="mode-query" aria-selected="false" aria-controls="request-panel" data-mode="query">查询任务</button>
+            <button type="button" role="tab" id="mode-download" aria-selected="false" aria-controls="request-panel" data-mode="download">下载结果</button>
+          </div>
+          <div class="segmented" role="tablist" aria-label="示例语言">
+            <button type="button" role="tab" id="lang-curl" aria-selected="true" aria-controls="request-panel" data-lang="curl">cURL</button>
+            <button type="button" role="tab" id="lang-python" aria-selected="false" aria-controls="request-panel" data-lang="python">Python</button>
+            <button type="button" role="tab" id="lang-typescript" aria-selected="false" aria-controls="request-panel" data-lang="typescript">TypeScript</button>
+            <button type="button" role="tab" id="lang-javascript" aria-selected="false" aria-controls="request-panel" data-lang="javascript">JavaScript</button>
+          </div>
+        </div>
+        <div class="editor" id="request-panel" role="tabpanel" aria-labelledby="mode-create lang-curl">
+          <div class="editor-bar"><span class="method" id="example-method">POST</span><span class="endpoint" id="example-endpoint">https://api.my110.vip/v1/videos</span><button type="button" class="copy" id="copy-request"><svg fill="none" stroke="currentColor" stroke-width="1.6"><use href="#i-copy"/></svg><span>复制代码</span></button></div>
+          <div class="code-scroll"><pre><code id="request-code"></code></pre></div>
+        </div>
+        <div class="example-foot"><span id="example-help">cURL 使用 Bash / zsh，密钥读取环境变量 API_KEY。</span><span class="request-count" id="example-stage">workflow_id = text-to-video</span></div>
+        <details class="configurator" open>
+          <summary>配置请求参数 <span class="muted small">· 修改后自动生成代码，不发送请求</span></summary>
+          <div class="config-body">
+            <div id="generation-config" class="form-grid">
+              <div class="field wide"><label for="cfg-prompt">提示词 <span>prompt</span></label><textarea id="cfg-prompt">清晨的海边，一位旅人沿海岸缓缓前行，镜头平稳跟随，柔和自然光，电影质感。</textarea></div>
+              <div class="field"><label for="cfg-duration">生成时长 <span id="duration-param">seconds · integer</span></label><select id="cfg-duration"></select></div>
+              <div class="field"><label for="cfg-ratio">画幅比例 <span id="ratio-param">用于选择尺寸</span></label><select id="cfg-ratio"></select></div>
+              <div class="field" id="h3-size-field"><label for="cfg-h3-tier">输出尺寸档位 <span>size</span></label><select id="cfg-h3-tier"><option>480P</option><option selected>768P</option><option>1080P</option><option>2K</option><option>4K</option></select></div>
+              <div class="field" id="resolution-field" hidden><label for="cfg-resolution">清晰度 <span>resolution</span></label><select id="cfg-resolution"></select></div>
+              <div class="field" id="audio-field" hidden><label for="cfg-generate-audio">生成音频 <span>generate_audio</span></label><select id="cfg-generate-audio"><option value="true">true · 生成</option><option value="false">false · 不生成</option></select></div>
+              <div class="field wide" id="h3-workflow-field"><div class="notice small">自动选择 <code id="workflow-preview">text-to-video</code>；<span id="h3-size-preview">size = 1376x768</span>。2K / 4K 同时发送 aspect_ratio；固定像素尺寸省略该字段。</div></div>
+              <div class="field wide" id="images-field" hidden><label for="cfg-images">参考图片 URL <span>images · 每行一个</span></label><textarea id="cfg-images" spellcheck="false">https://cdn.example.com/person.png</textarea><p class="field-note">按数组顺序编号；可直接粘贴生图返回的公网 CDN 原始地址，每行一个。<a href="#image-result-url">查看生图地址接入说明</a>；示例 URL 需替换为真实地址。</p></div>
+              <div class="field wide" id="videos-field" hidden><label for="cfg-videos">参考视频 URL <span id="videos-param">reference_videos</span></label><textarea id="cfg-videos" spellcheck="false">https://cdn.example.com/motion.mp4</textarea></div>
+              <div class="field wide" id="audios-field" hidden><label for="cfg-audios">参考音频 URL <span id="audios-param">reference_audios</span></label><textarea id="cfg-audios" spellcheck="false">https://cdn.example.com/ambient.mp3</textarea></div>
+              <div class="field" id="start-frame-field" hidden><label for="cfg-start-frame">首帧 URL <span>start_frame_url</span></label><input id="cfg-start-frame" type="url" value="https://cdn.example.com/start.png"></div>
+              <div class="field" id="end-frame-field" hidden><label for="cfg-end-frame">尾帧 URL <span>end_frame_url</span></label><input id="cfg-end-frame" type="url" value="https://cdn.example.com/end.png"></div>
+              <div class="field" id="v3-size-field" hidden><label for="cfg-v3-size">像素尺寸 <span>size · 可省略</span></label><input id="cfg-v3-size" placeholder="留空省略，如 1280x720"></div>
+              <div class="field" id="seed-field" hidden><label for="cfg-seed">随机种子 <span>seed · 可省略</span></label><input id="cfg-seed" type="number" min="0" max="4294967295" step="1" placeholder="0–4294967295"></div>
+              <div class="field" id="grid-field" hidden><label for="cfg-grid">素材融合强度 <span>grid_strength · 可省略</span></label><input id="cfg-grid" type="number" min="0.01" max="0.5" step="0.01" placeholder="0.01–0.5"></div>
+              <div class="field" id="face-field" hidden><label for="cfg-face">校验透传选项 <span>bypass_face_check</span></label><select id="cfg-face"><option value="false">false</option><option value="true">true</option></select><p class="field-note">示例预设为 false；参考文档未指定服务端默认值。</p></div>
+            </div>
+            <div class="form-grid" id="task-config" hidden><div class="field wide"><label for="cfg-task-id">任务 ID <span>task_id → id</span></label><input id="cfg-task-id" value="task_example" autocomplete="off"><p class="field-note">从创建响应中优先取 task_id，没有时取 id；同时兼容 data 包装。</p></div></div>
+            <p id="config-error" class="validation" role="alert" hidden></p>
+            <p class="form-note">密钥保留为函数参数或环境变量。JSON 布尔值与整数保留真实类型，素材按每类 URL 去重并保持顺序。</p>
+          </div>
+        </details>
+        <noscript><p class="notice">启用 JavaScript 可生成四种语言的示例。下方提供完整参数表、固定 HTTP 示例和模型规则。</p></noscript>
+      </section>
+
+      <section id="authentication">
+        <div class="section-heading"><h2>身份验证与端点</h2><span class="section-id">02 / HTTP</span></div>
+        <div class="notice"><p>创建请求为 <code>application/json</code>，素材使用公网 URL。四个模型均使用下列资源路径，基础地址已包含 <code>/v1</code>。</p><p><code>Authorization: Bearer &lt;API_KEY&gt;</code><br><code>Content-Type: application/json</code><br><code>Accept: application/json</code></p></div>
+        <div class="table-wrap" style="margin-top:15px"><table><thead><tr><th>用途</th><th>HTTP</th><th>完整地址</th></tr></thead><tbody>
+          <tr><td>创建任务</td><td><span class="method">POST</span></td><td><code>https://api.my110.vip/v1/videos</code></td></tr>
+          <tr><td>查询状态</td><td><span class="method">GET</span></td><td><code>https://api.my110.vip/v1/videos/{task_id}</code></td></tr>
+          <tr><td>没有结果外链时获取内容</td><td><span class="method">GET</span></td><td><code>https://api.my110.vip/v1/videos/{task_id}/content</code></td></tr>
+        </tbody></table></div>
+        <div class="mini-code" style="margin-top:15px"><pre>POST /v1/videos HTTP/1.1
+Host: api.my110.vip
+Authorization: Bearer &lt;API_KEY&gt;
+Content-Type: application/json
+Accept: application/json
+
+{
+  "model": "MiniMax-H3",
+  "prompt": "海边旅人缓缓前行，镜头平稳跟随。",
+  "workflow_id": "text-to-video",
+  "seconds": 5,
+  "size": "1376x768"
+}</pre></div>
+      </section>
+
+      <section id="model-minimax">
+        <div class="section-heading"><h2>MiniMax-H3 请求参数</h2><span class="section-id">03 / MINIMAX H3</span></div>
+        <p class="subtext">工作流由有无参考图片及 size 决定。seconds 使用整数 4–15；图片、视频与音频分别放入不同的顶层数组。</p>
+        <div class="table-wrap"><table class="param-table"><thead><tr><th>参数</th><th>类型</th><th>必填 / 范围</th><th>使用方式</th></tr></thead><tbody>
+          <tr><td><code>model</code></td><td><span class="type">string</span></td><td>必填</td><td><code>MiniMax-H3</code></td></tr>
+          <tr><td><code>prompt</code></td><td><span class="type">string</span></td><td>必填，非空</td><td>说明画面与素材作用；素材编号按各自数组顺序解释。</td></tr>
+          <tr><td><code>workflow_id</code></td><td><span class="type">string</span></td><td>必填</td><td><code>text-to-video</code> / <code>multi-reference</code> / <code>cf-multi-reference</code>，匹配规则见下节。</td></tr>
+          <tr><td><code>seconds</code></td><td><span class="type">integer</span></td><td>必填，4–15</td><td>示例预设 5；不使用 duration。</td></tr>
+          <tr><td><code>size</code></td><td><span class="type">string</span></td><td>必填</td><td>采用尺寸表中的固定宽高值，或 <code>2K</code> / <code>4K</code>。</td></tr>
+          <tr><td><code>aspect_ratio</code></td><td><span class="type">string</span></td><td>2K / 4K 时必填</td><td>与所选画幅对应；固定宽高值省略本字段。</td></tr>
+          <tr><td><code>images</code></td><td><span class="type">string[]</span></td><td>最多 9 张</td><td>公网图片 URL 字符串数组；可直接使用 gpt-image-2.5-flare 返回的 CDN 地址，见<a href="#image-result-url">下方说明</a>。两种参考工作流至少含 1 张图，空数组省略。</td></tr>
+          <tr><td><code>reference_videos</code></td><td><span class="type">string[]</span></td><td>最多 3 段</td><td>公网视频 URL；使用参考视频时仍需至少 1 张图片。</td></tr>
+          <tr><td><code>reference_audios</code></td><td><span class="type">string[]</span></td><td>最多 3 段</td><td>公网音频 URL；使用参考音频时仍需至少 1 张图片。</td></tr>
+        </tbody></table></div>
+        <p class="table-note">H3 请求只发送对应字段：不附加 workflow_size、resolution、clarity、megapixels、mode、metadata.multiple、reference_video_audios、audio 或 prompt_enhance。非空素材数组才写入请求。</p>
+        <div class="notice accent" id="image-result-url" style="margin-top:15px">
+          <h3 style="margin:0 0 10px;font-size:14px">生图返回地址直接作为 H3 参考图</h3>
+          <p><a href="gpt-image-2.5-flare-api.html#response">gpt-image-2.5-flare 生图文档</a>使用 AIOSS 的异步生图对象存储接口：文生图 POST <code>https://aioss.cc/v1/images/generations/async</code>，参考图编辑 POST <code>https://aioss.cc/v1/images/edits/async</code>，并保留 <code>response_format: "url"</code>。取得可公开读取的存储图片地址后，可直接放入 H3 的 <code>images</code> 数组，无需先下载再上传，也无需与视频 API 使用同一域名。</p>
+          <ul class="rule-list">
+            <li><strong>先等待任务完成：</strong>生图提交返回 202 仅表示受理。保存 <code>task_id</code>（没有时取 <code>id</code>），使用提交时同一把密钥 GET <code>https://aioss.cc/v1/images/tasks/{task_id}</code>。<code>processing</code> 时继续查询，<code>failed</code> 时处理错误，<code>completed</code> 后再创建视频任务。</li>
+            <li><strong>取原始 URL：</strong>异步完成任务读取 <code>result.data[0].url</code>，或顶层快捷字段 <code>image_url</code>。如果沿用同步生图结果，仍可读取 <code>data[0].url</code> / <code>data[0].image_url</code>。<code>images</code> 的每一项都是地址字符串，不传任务 ID、整个响应对象或本地文件名。</li>
+            <li><strong>保证上游可读取：</strong>地址必须能被 H3 上游通过公网 HTTP / HTTPS GET 直接获取真实图片，不依赖 Cookie、Authorization 或特定 Referer。浏览器登录后能打开不代表上游可读取；浏览器跨域下载限制与上游读取是两回事。</li>
+            <li><strong>保留完整地址：</strong>CDN URL 的签名、查询参数应原样保留，不替换为视频 API 域名；有效期需要覆盖任务排队及素材读取过程。AIOSS 配置公开存储域名时返回对象直链，否则可能返回有时限的签名 URL。图片 URL 有效期与生图任务记录的 <code>expires_at</code> 分别判断，以站点实际配置为准。</li>
+            <li><strong>区分本地引用：</strong>若从项目任务结果中取得 <code>URL:https://…</code>，先去掉内部的 <code>URL:</code> 前缀。<code>IDB:</code>、<code>blob:</code>、<code>data:</code>、本地路径、相对路径和本机地址不能直接交给 H3；应取得原始公网 CDN URL。仅返回 <code>b64_json</code> 时，需先将图片保存到可公开读取的存储并取得 URL。</li>
+          </ul>
+        </div>
+        <div class="mini-code" style="margin-top:15px"><div class="code-heading">JavaScript · 生图完成任务 → H3 请求体</div><pre>// imageResult 是异步生图轮询的完成任务；同时兼容同步生图 JSON。
+if (imageResult.status &amp;&amp; imageResult.status !== "completed") {
+  throw new Error("请先等待生图任务成功完成，再创建视频任务");
+}
+const image = (imageResult.result || imageResult).data?.[0];
+const imageUrl = image?.url || image?.image_url || imageResult.image_url;
+if (!imageUrl) throw new Error('生图结果无 URL，请先取得公网图片地址');
+
+const videoBody = {
+  model: "MiniMax-H3",
+  prompt: "保持第1张参考图的主体外观，让主体自然运动。",
+  workflow_id: "multi-reference",
+  seconds: 5,
+  size: "1376x768",
+  images: [imageUrl]
+};
+// 将 videoBody 作为 JSON 提交至 https://api.my110.vip/v1/videos。</pre></div>
+        <p class="table-note">上例使用固定像素尺寸；如改为 2K / 4K，同时将 workflow_id 改为 cf-multi-reference 并传入 aspect_ratio。生图任务 completed 不等于存储外链可读取；应先用免密 GET 确认返回真实图片，若为 404 或 HTML 页面，先修正存储公开域名与路径配置，再创建 H3 任务。</p>
+      </section>
+
+      <section id="sizes">
+        <div class="section-heading"><h2>H3 尺寸与工作流</h2><span class="section-id">04 / SIZE & WORKFLOW</span></div>
+        <div class="table-wrap"><table><thead><tr><th>条件</th><th>workflow_id</th><th>字段配对</th></tr></thead><tbody>
+          <tr><td>无参考图片</td><td><code>text-to-video</code></td><td>固定像素值传 size；2K / 4K 另传 aspect_ratio</td></tr>
+          <tr><td>有图片，固定像素尺寸</td><td><code>multi-reference</code></td><td>传 images 和 size，省略 aspect_ratio</td></tr>
+          <tr><td>有图片，size 为 2K / 4K</td><td><code>cf-multi-reference</code></td><td>同时传 images、size 与 aspect_ratio</td></tr>
+        </tbody></table></div>
+        <p class="table-note">仅有视频或音频时，需补充图片后使用参考工作流。工作流不能只由视频或音频触发。</p>
+        <div class="table-wrap" style="margin-top:15px"><table class="matrix"><thead><tr><th>画幅</th><th>480P</th><th>768P</th><th>1080P</th><th>超分</th></tr></thead><tbody id="h3-size-table">
+          <tr><td>16:9</td><td>864x480</td><td>1376x768</td><td>1920x1088</td><td>2K / 4K + aspect_ratio</td></tr>
+          <tr><td>9:16</td><td>480x864</td><td>768x1376</td><td>1088x1920</td><td>2K / 4K + aspect_ratio</td></tr>
+          <tr><td>1:1</td><td>640x640</td><td>1024x1024</td><td>1440x1440</td><td>2K / 4K + aspect_ratio</td></tr>
+          <tr><td>2:3</td><td>544x800</td><td>832x1248</td><td>1184x1760</td><td>2K / 4K + aspect_ratio</td></tr>
+          <tr><td>3:2</td><td>800x544</td><td>1248x832</td><td>1760x1184</td><td>2K / 4K + aspect_ratio</td></tr>
+          <tr><td>3:4</td><td>576x736</td><td>896x1184</td><td>1248x1664</td><td>2K / 4K + aspect_ratio</td></tr>
+          <tr><td>4:3</td><td>736x576</td><td>1184x896</td><td>1664x1248</td><td>2K / 4K + aspect_ratio</td></tr>
+          <tr><td>21:9</td><td>992x416</td><td>1568x672</td><td>2208x960</td><td>2K / 4K + aspect_ratio</td></tr>
+        </tbody></table></div>
+        <div class="mini-code" style="margin-top:15px"><div class="code-heading">竖版 4K 参考图 · JSON</div><pre>{
+  "model": "MiniMax-H3",
+  "prompt": "保持第1张参考图的人物外观，镜头沿竖版构图缓慢推进。",
+  "workflow_id": "cf-multi-reference",
+  "seconds": 5,
+  "size": "4K",
+  "aspect_ratio": "9:16",
+  "images": ["https://cdn.example.com/person.png"]
+}</pre></div>
+      </section>
+
+      <section id="model-v2">
+        <div class="section-heading"><h2>video-v2 / video-v2-fast</h2><span class="section-id">05 / VIDEO V2</span></div>
+        <p class="subtext">两者请求体结构一致，切换时替换 model。参考文档页面的初始配置为 5 秒、21:9、480p，并开启音频生成。</p>
+        <div class="table-wrap"><table class="param-table"><thead><tr><th>参数</th><th>类型</th><th>必填 / 范围</th><th>使用方式</th></tr></thead><tbody>
+          <tr><td><code>model</code></td><td><span class="type">string</span></td><td>必填</td><td><code>video-v2</code> 或 <code>video-v2-fast</code></td></tr>
+          <tr><td><code>prompt</code></td><td><span class="type">string</span></td><td>必填，非空</td><td>通过 @ImageN / @VideoN / @AudioN 指定素材。</td></tr>
+          <tr><td><code>images</code></td><td><span class="type">string[]</span></td><td>最多 9 张</td><td>图片公网 URL；文生视频发送空数组。</td></tr>
+          <tr><td><code>videos</code></td><td><span class="type">string[]</span></td><td>最多 3 个</td><td>视频公网 URL；无素材发送空数组。</td></tr>
+          <tr><td><code>audios</code></td><td><span class="type">string[]</span></td><td>最多 3 个</td><td>音频公网 URL；无素材发送空数组。</td></tr>
+          <tr><td><code>aspect_ratio</code></td><td><span class="type">string</span></td><td>必填</td><td><code>21:9</code>、<code>16:9</code>、<code>9:16</code>、<code>4:3</code>、<code>1:1</code>、<code>3:4</code></td></tr>
+          <tr><td><code>duration</code></td><td><span class="type">integer</span></td><td>必填，5 / 10 / 15</td><td>使用 duration，不能照搬 H3 的 seconds。</td></tr>
+          <tr><td><code>resolution</code></td><td><span class="type">string</span></td><td>必填</td><td><code>480p</code> / <code>720p</code> / <code>1080p</code>，小写 p。</td></tr>
+          <tr><td><code>generate_audio</code></td><td><span class="type">boolean</span></td><td>必填</td><td>JSON 的 true / false，不使用字符串。</td></tr>
+        </tbody></table></div>
+        <p class="table-note">三个素材数组始终发送。中文引用标记在示例生成时转换为对应英文标记；各类素材独立从 1 编号。</p>
+      </section>
+
+      <section id="model-v3">
+        <div class="section-heading"><h2>video-v3 请求参数</h2><span class="section-id">06 / VIDEO V3</span></div>
+        <p class="subtext">使用顶层 prompt、images、videos、audios；时长为整数 4–29 秒，画幅字段是 ratio，清晰度固定为 720p。参考文档另列别名 seedance-2.5、seedance2.5、sd-2.5、sd2.5；本页默认使用 video-v3。</p>
+        <div class="table-wrap"><table class="param-table"><thead><tr><th>参数</th><th>类型</th><th>必填 / 范围</th><th>使用方式</th></tr></thead><tbody>
+          <tr><td><code>model</code></td><td><span class="type">string</span></td><td>必填</td><td><code>video-v3</code></td></tr>
+          <tr><td><code>prompt</code></td><td><span class="type">string</span></td><td>必填，非空</td><td>直接放在顶层，不构造 content[]。</td></tr>
+          <tr><td><code>duration</code></td><td><span class="type">integer</span></td><td>必填，4–29</td><td>示例预设 10 秒；该预设不表示服务端默认值。</td></tr>
+          <tr><td><code>ratio</code></td><td><span class="type">string</span></td><td>必填</td><td><code>16:9</code> / <code>1:1</code> / <code>9:16</code>，不使用 aspect_ratio。</td></tr>
+          <tr><td><code>resolution</code></td><td><span class="type">string</span></td><td>必填</td><td>固定 <code>720p</code>。</td></tr>
+          <tr><td><code>images</code></td><td><span class="type">string[]</span></td><td>可选，最多 30 张</td><td>图片公网 URL；不能与首帧或尾帧字段同时发送。</td></tr>
+          <tr><td><code>videos</code></td><td><span class="type">string[]</span></td><td>可选，最多 10 个</td><td>视频公网 URL；可与首尾帧组合。</td></tr>
+          <tr><td><code>audios</code></td><td><span class="type">string[]</span></td><td>可选，最多 10 个</td><td>音频公网 URL；可与首尾帧组合。</td></tr>
+          <tr><td><code>size</code></td><td><span class="type">string</span></td><td>可选</td><td>像素宽高，例如 <code>1280x720</code>。</td></tr>
+          <tr><td><code>start_frame_url</code></td><td><span class="type">string</span></td><td>可选</td><td>HTTP / HTTPS 首帧地址；提供后不发送 images。</td></tr>
+          <tr><td><code>end_frame_url</code></td><td><span class="type">string</span></td><td>可选</td><td>HTTP / HTTPS 尾帧地址；可只设置其中一帧。</td></tr>
+          <tr><td><code>generate_audio</code></td><td><span class="type">boolean</span></td><td>必填</td><td>是否生成音频。</td></tr>
+          <tr><td><code>seed</code></td><td><span class="type">integer</span></td><td>可选，0–4294967295</td><td>省略时由上游确定；0 为有效值。</td></tr>
+          <tr><td><code>bypass_face_check</code></td><td><span class="type">boolean</span></td><td>参考字段表标为必填</td><td>校验透传选项；本页示例显式发送 false，可在配置区选择。</td></tr>
+          <tr><td><code>grid_strength</code></td><td><span class="type">number</span></td><td>可选，0.01–0.5</td><td>素材融合强度。</td></tr>
+        </tbody></table></div>
+        <p class="table-note">原定价页中含 480p 的 v3 条目与本参考文档“v3 固定 720p”不同，不能把这些计费条目直接套入本协议。</p>
+      </section>
+
+      <section id="references">
+        <div class="section-heading"><h2>参考素材与编号</h2><span class="section-id">07 / REFERENCE MEDIA</span></div>
+        <div class="table-wrap"><table><thead><tr><th>模型</th><th>图片字段 / 数量</th><th>视频字段 / 数量</th><th>音频字段 / 数量</th></tr></thead><tbody>
+          <tr><td>MiniMax-H3</td><td><code>images</code> · 9</td><td><code>reference_videos</code> · 3</td><td><code>reference_audios</code> · 3</td></tr>
+          <tr><td>video-v2 / fast</td><td><code>images</code> · 9</td><td><code>videos</code> · 3</td><td><code>audios</code> · 3</td></tr>
+          <tr><td>video-v3</td><td><code>images</code> · 30</td><td><code>videos</code> · 10</td><td><code>audios</code> · 10</td></tr>
+        </tbody></table></div>
+        <div class="two-col" style="margin-top:15px">
+          <div class="notice"><h3>先取得公网 URL</h3><p>已有可公开读取的生图 CDN 地址可直接复用，详见<a href="#image-result-url">生图返回地址接入说明</a>。本地素材需先上传到业务存储或 CDN，再把无需登录即可读取的 HTTP / HTTPS 地址填入对应数组。视频可用 MP4 / WebM / MOV，音频可用 MP3 / WAV / M4A / AAC / OGG。</p><p>来源的临时上传服务是独立业务服务；其文件大小及保留时间不能作为 api.my110.vip 的上传限制。本页的生成接口使用 JSON URL 数组。</p></div>
+          <div class="notice"><h3>保持顺序与引用一致</h3><p>V2 的 <code>@Image1</code>、<code>@Video1</code>、<code>@Audio1</code> 分别指向各数组第 1 项；中文标记可转换为上述英文标记。</p><p>H3 用“第 1 张参考图”等文字说明数组对应关系。每类去重时保持原有顺序，并按去重后的数组编号。本页会在发现引用越界时提示修正。</p></div>
+        </div>
+        <p class="table-note">首尾帧模式只用于 v3：省略 images，仍可传入 videos 和 audios。H3 使用视频或音频参考时至少提供 1 张图片。</p>
+      </section>
+
+      <section id="lifecycle">
+        <div class="section-heading"><h2>响应、轮询与下载</h2><span class="section-id">08 / TASK LIFECYCLE</span></div>
+        <div class="status-flow"><div><strong>01 · CREATE</strong>POST 创建任务</div><div><strong>02 · KEEP ID</strong>保存 task_id 或 id</div><div><strong>03 · POLL</strong>每 4–5 秒查询</div><div><strong>04 · RESULT</strong>读取外链并保存</div></div>
+        <div class="response-grid">
+          <div class="mini-code"><div class="code-heading">创建响应 · 示意，可有 data 包装</div><pre>{
+  "task_id": "task_example",
+  "id": "task_example",
+  "object": "video",
+  "status": "queued",
+  "progress": 0
+}</pre></div>
+          <div class="mini-code"><div class="code-heading">成功响应 · 示意，外链以实际返回为准</div><pre>{
+  "status": "completed",
+  "progress": 100,
+  "result_url": "https://cdn.example.com/result.mp4",
+  "metadata": { "url": "..." }
+}</pre></div>
+        </div>
+        <ul class="step-list" style="margin-top:20px">
+          <li><strong>统一读取任务对象</strong>如果响应的 data 是对象，读取 data；否则直接读取顶层。创建后优先保存 task_id，没有时保存 id。</li>
+          <li><strong>识别生成状态</strong>将 status 转成小写，success / succeeded / completed 表示成功；failed 表示失败。排队与处理中继续查询，超时保留 ID 后稍后恢复。</li>
+          <li><strong>优先使用返回的成片链接</strong>按 result_url → video_url → url → metadata.url 读取。链接使用原始返回值，下载外链不附加 API 密钥；没有外链时再携带 Bearer 调用 /content。</li>
+          <li><strong>及时保存</strong>来源文档提示结果缓存最多保留 48 小时；目标站具体保留期以实际服务为准。完成后及时下载或转存。</li>
+        </ul>
+        <details><summary>Python 轮询示例 <span class="muted small">· 已有任务每 5 秒查询</span></summary><div class="mini-code" style="border:0;border-top:1px solid var(--border)"><pre><code id="poll-code">import time
+from urllib.parse import quote
+import requests
+
+
+def wait_for_video(api_key, task_id, timeout_seconds=900):
+    # 900 秒为调用方等待时间；到时保留任务 ID，可继续查询。
+    deadline = time.monotonic() + timeout_seconds
+    task_url = "https://api.my110.vip/v1/videos/" + quote(task_id, safe="")
+    while time.monotonic() &lt; deadline:
+        response = requests.get(
+            task_url,
+            headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
+            timeout=(15, 60),
+        )
+        response.raise_for_status()
+        raw = response.json()
+        task = raw["data"] if isinstance(raw.get("data"), dict) else raw
+        status = str(task.get("status", "")).lower()
+        if status in {"success", "succeeded", "completed"}:
+            return task
+        if status == "failed":
+            raise RuntimeError(task.get("error") or task)
+        remaining = deadline - time.monotonic()
+        if remaining &gt; 0:
+            time.sleep(min(5, remaining))
+    raise TimeoutError(f"请保存任务 ID 后继续查询：{task_id}")
+
+
+# task = wait_for_video(api_key, task_id)
+# video_url = (task.get("result_url") or task.get("video_url")
+#              or task.get("url") or (task.get("metadata") or {}).get("url"))</code></pre></div></details>
+      </section>
+
+      <section id="models">
+        <div class="section-heading"><h2>原模型列表对应</h2><span class="section-id">09 / MODEL NAMES</span></div>
+        <p class="subtext">保留前一份文档中的 11 个精确条目。新参考文档直接定义了其中 4 个；其余计费与特价条目的参数映射尚未给出，需由服务提供方说明后再生成请求。</p>
+        <div class="table-wrap"><table class="catalog"><thead><tr><th>model</th><th>参考文档对应情况</th><th>本页行为</th></tr></thead><tbody>
+          <tr><td>MiniMax-H3</td><td>明确列出</td><td>生成 H3 JSON 请求</td></tr>
+          <tr><td>video-v2</td><td>明确列出</td><td>生成 v2 JSON 请求</td></tr>
+          <tr><td>video-v2-fast</td><td>明确列出</td><td>与 v2 同结构</td></tr>
+          <tr><td>video-v3</td><td>明确列出</td><td>生成 v3 JSON 请求</td></tr>
+          <tr><td>video-v2-480P（按秒计费）</td><td>未定义该条目</td><td>保留名称，待确认映射</td></tr>
+          <tr><td>video-v2-720P（按秒计费）</td><td>未定义该条目</td><td>保留名称，待确认映射</td></tr>
+          <tr><td>video-v2-特价版</td><td>未定义该条目</td><td>保留名称，待确认映射</td></tr>
+          <tr><td>video-v3-480p</td><td>v3 仅定义 720p</td><td>保留名称，待确认独立协议</td></tr>
+          <tr><td>video-v3-480P（按条计费）</td><td>v3 仅定义 720p</td><td>保留名称，待确认独立协议</td></tr>
+          <tr><td>video-v3-720P（按条计费）</td><td>未定义该条目</td><td>保留名称，待确认映射</td></tr>
+          <tr><td>video-v3-特价版</td><td>未定义该条目</td><td>保留名称，待确认映射</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section id="sources">
+        <div class="section-heading"><h2>常见问题与依据</h2><span class="section-id">10 / NOTES & SOURCES</span></div>
+        <div class="table-wrap"><table><thead><tr><th>问题</th><th>检查项</th></tr></thead><tbody>
+          <tr><td>H3 请求参数错误</td><td>补齐 workflow_id、整数 seconds、正确 size；2K / 4K 搭配 aspect_ratio，固定像素值省略 aspect_ratio。</td></tr>
+          <tr><td>H3 视频 / 音频参考失败</td><td>字段是 reference_videos 与 reference_audios，且至少提供 1 张 images。</td></tr>
+          <tr><td>V2 / V3 参数混用</td><td>V2 使用 aspect_ratio，V3 使用 ratio；V3 为 4–29 秒、720p，使用顶层数组。</td></tr>
+          <tr><td>首尾帧请求失败</td><td>V3 的 start_frame_url / end_frame_url 与 images 互斥；视频与音频数组可保留。</td></tr>
+          <tr><td>401 / 403 / 模型不可用</td><td>确认 Bearer 密钥、账户模型权限及精确模型名。</td></tr>
+          <tr><td>任务未完成 / 请求超时</td><td>保留 task_id，继续查询；已有任务不要重复 POST 创建。</td></tr>
+          <tr><td>没有 result_url</td><td>依次尝试 video_url、url、metadata.url；成功但没有外链时使用同一任务的 /content。</td></tr>
+        </tbody></table></div>
+        <details class="source-details" open><summary>文档依据 <span class="muted small">· 2026-10-15 核对</span></summary><ul class="source-list">
+          <li><a href="https://image.kkone.vip/1/docs.html#model-minimax" target="_blank" rel="noopener noreferrer">指定参考文档 · MiniMax-H3 参数、工作流与尺寸</a></li>
+          <li><a href="https://image.kkone.vip/1/docs.html#model-video-v2" target="_blank" rel="noopener noreferrer">指定参考文档 · video-v2 / video-v2-fast</a></li>
+          <li><a href="https://image.kkone.vip/1/docs.html#model-v3" target="_blank" rel="noopener noreferrer">指定参考文档 · video-v3、首尾帧与扩展配置</a></li>
+          <li><a href="https://image.kkone.vip/1/docs.html#responses" target="_blank" rel="noopener noreferrer">指定参考文档 · 响应、轮询与结果地址</a></li>
+        </ul><p>仅按参考文档整理并进行本地示例验证；未携带真实密钥调用视频生成服务。</p></details>
+      </section>
+      <footer class="footer"><span>MY110 / VIDEO HTTP API</span><span>参数依据指定参考文档 · 2026-10-15</span></footer>
+    </main>
+  </div>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <script>
+    const BASE_URL = 'https://api.my110.vip/v1';
+    const state = { mode: 'create', language: 'curl', code: '' };
+    const $ = id => document.getElementById(id);
+    const H3_SIZES = Object.fromEntries([...$('h3-size-table').rows].map(row => {
+      const cells = [...row.cells].map(cell => cell.textContent);
+      return [cells[0], cells.slice(1, 4)];
+    }));
+    const PROFILES = {
+      'MiniMax-H3': { family: 'h3', durations: Array.from({ length: 12 }, (_, i) => i + 4), ratios: Object.keys(H3_SIZES), duration: 5, ratio: '16:9', limits: [9, 3, 3], note: 'MiniMax-H3：JSON；整数 seconds；workflow_id 自动匹配，参考视频与音频需要至少 1 张图片。' },
+      'video-v2': { family: 'v2', durations: [5, 10, 15], ratios: ['21:9', '16:9', '9:16', '4:3', '1:1', '3:4'], duration: 5, ratio: '21:9', limits: [9, 3, 3], note: 'video-v2：JSON；duration + aspect_ratio + resolution；始终发送 images / videos / audios 三个数组。' },
+      'video-v2-fast': { family: 'v2', durations: [5, 10, 15], ratios: ['21:9', '16:9', '9:16', '4:3', '1:1', '3:4'], duration: 5, ratio: '21:9', limits: [9, 3, 3], note: 'video-v2-fast：与 video-v2 同结构，替换 model；支持 9 图 / 3 视频 / 3 音频。' },
+      'video-v3': { family: 'v3', durations: Array.from({ length: 26 }, (_, i) => i + 4), ratios: ['16:9', '1:1', '9:16'], duration: 10, ratio: '16:9', limits: [30, 10, 10], note: 'video-v3：JSON；4–29 秒；ratio；固定 720p；30 图 / 10 视频 / 10 音频；首尾帧与 images 互斥。' },
+    };
+    function setOptions(id, values, selected) {
+      $(id).replaceChildren(...values.map(value => new Option(String(value), String(value))));
+      $(id).value = String(selected);
+    }
+    function refreshModel() {
+      const profile = PROFILES[$('cfg-model').value];
+      if (!profile) return;
+      setOptions('cfg-duration', profile.durations, profile.duration);
+      setOptions('cfg-ratio', profile.ratios, profile.ratio);
+      setOptions('cfg-resolution', profile.family === 'v3' ? ['720p'] : ['480p', '720p', '1080p'], profile.family === 'v3' ? '720p' : '480p');
+      $('cfg-resolution').disabled = profile.family === 'v3';
+      if (state.mode === 'frames' && profile.family !== 'v3') state.mode = 'reference';
+      render();
+    }
+    function parseUrls(id) {
+      return [...new Set($(id).value.split(/\r?\n/).map(value => value.trim()).filter(Boolean))];
+    }
+    function isPublicUrl(value) {
+      try { const url = new URL(value); return ['http:', 'https:'].includes(url.protocol) && !!url.hostname; }
+      catch { return false; }
+    }
+    function getConfig() {
+      const model = $('cfg-model').value, profile = PROFILES[model];
+      const config = {
+        model, profile, prompt: $('cfg-prompt').value.trim(), duration: Number($('cfg-duration').value),
+        ratio: $('cfg-ratio').value, tier: $('cfg-h3-tier').value, resolution: $('cfg-resolution').value,
+        generateAudio: $('cfg-generate-audio').value === 'true', face: $('cfg-face').value === 'true',
+        v3Size: $('cfg-v3-size').value.trim(), seed: $('cfg-seed').value.trim(), grid: $('cfg-grid').value.trim(),
+        images: state.mode === 'reference' ? parseUrls('cfg-images') : [],
+        videos: ['reference', 'frames'].includes(state.mode) ? parseUrls('cfg-videos') : [],
+        audios: ['reference', 'frames'].includes(state.mode) ? parseUrls('cfg-audios') : [],
+        startFrame: state.mode === 'frames' ? $('cfg-start-frame').value.trim() : '',
+        endFrame: state.mode === 'frames' ? $('cfg-end-frame').value.trim() : '',
+        taskId: $('cfg-task-id').value.trim(), error: '',
+      };
+      if (!profile) { config.error = '该条目的参数映射尚未定义，请选择参考文档列出的模型。'; return config; }
+      const highRes = ['2K', '4K'].includes(config.tier);
+      config.size = profile.family === 'h3' ? (highRes ? config.tier : H3_SIZES[config.ratio]?.[['480P', '768P', '1080P'].indexOf(config.tier)]) : config.v3Size;
+      config.workflow = config.images.length ? (highRes ? 'cf-multi-reference' : 'multi-reference') : 'text-to-video';
+      if (['query', 'download'].includes(state.mode)) {
+        if (!config.taskId) config.error = '请填写创建响应返回的 task_id 或 id。';
+        return config;
+      }
+      if (!config.prompt) config.error = '请填写提示词。';
+      else if (!profile.durations.includes(config.duration)) config.error = '时长不在该模型的文档范围内。';
+      else if (!profile.ratios.includes(config.ratio)) config.error = '请选择该模型支持的画幅。';
+      else if (profile.family === 'h3' && !config.size) config.error = '请选择尺寸表中对应的 H3 档位。';
+      else if (profile.family === 'h3' && (config.videos.length || config.audios.length) && !config.images.length)
+        config.error = 'MiniMax-H3 使用参考视频或音频时，需要同时提供至少 1 张参考图。';
+      else if (state.mode === 'reference' && !config.images.length && !config.videos.length && !config.audios.length)
+        config.error = '请提供至少一项参考素材，或切换到文生视频。';
+      else if (state.mode === 'frames' && !config.startFrame && !config.endFrame)
+        config.error = '首尾帧模式请至少提供一个首帧或尾帧 URL。';
+      else if (profile.family === 'v3' && config.v3Size && !/^[1-9]\d*x[1-9]\d*$/.test(config.v3Size))
+        config.error = 'v3 的可选 size 使用宽x高格式，如 1280x720。';
+      else if (profile.family === 'v3' && config.seed && (!/^\d+$/.test(config.seed) || !Number.isSafeInteger(Number(config.seed)) || Number(config.seed) > 4294967295))
+        config.error = 'seed 必须为 0–4294967295 的整数，或留空省略。';
+      else if (profile.family === 'v3' && config.grid && (!Number.isFinite(Number(config.grid)) || Number(config.grid) < 0.01 || Number(config.grid) > 0.5))
+        config.error = 'grid_strength 范围为 0.01–0.5，或留空省略。';
+      for (const [index, key] of ['images', 'videos', 'audios'].entries()) {
+        if (config.error) break;
+        if (config[key].length > profile.limits[index]) config.error = key + ' 超过该模型的素材数量限制：' + profile.limits[index] + '。';
+        else if (config[key].some(url => !isPublicUrl(url))) config.error = key + ' 中存在非 HTTP / HTTPS URL。';
+      }
+      if (!config.error && [config.startFrame, config.endFrame].filter(Boolean).some(url => !isPublicUrl(url)))
+        config.error = '首尾帧使用有效的 HTTP / HTTPS URL。';
+      const mention = /@(?:参考图|参考视频|参考音频|Image|Video|Audio)(\d+)/gi;
+      for (const match of config.prompt.matchAll(mention)) {
+        if (config.error) break;
+        const key = /参考图|Image/i.test(match[0]) ? 'images' : /参考视频|Video/i.test(match[0]) ? 'videos' : 'audios';
+        if (Number(match[1]) < 1 || Number(match[1]) > config[key].length)
+          config.error = match[0] + ' 的编号超过当前 ' + key + ' 数组，请核对去重后的素材顺序。';
+      }
+      return config;
+    }
+    function promptForRequest(config) {
+      if (config.profile.family === 'v2') {
+        return config.prompt.replace(/@参考图(\d+)/g, '@Image$1').replace(/@参考视频(\d+)/g, '@Video$1').replace(/@参考音频(\d+)/g, '@Audio$1');
+      }
+      if (config.profile.family === 'h3') {
+        return config.prompt.replace(/@(?:参考图|Image)(\d+)/gi, '第$1张参考图')
+          .replace(/@(?:参考视频|Video)(\d+)/gi, '第$1个参考视频').replace(/@(?:参考音频|Audio)(\d+)/gi, '第$1个参考音频');
+      }
+      return config.prompt;
+    }
+    function getBody(config) {
+      const body = { model: config.model, prompt: promptForRequest(config) }, family = config.profile.family;
+      if (family === 'h3') {
+        Object.assign(body, { workflow_id: config.workflow, seconds: config.duration, size: config.size });
+        if (['2K', '4K'].includes(config.size)) body.aspect_ratio = config.ratio;
+        if (config.images.length) body.images = config.images;
+        if (config.videos.length) body.reference_videos = config.videos;
+        if (config.audios.length) body.reference_audios = config.audios;
+      } else {
+        Object.assign(body, { duration: config.duration });
+        body[family === 'v2' ? 'aspect_ratio' : 'ratio'] = config.ratio;
+        body.resolution = family === 'v3' ? '720p' : config.resolution;
+        if (state.mode !== 'frames') body.images = config.images;
+        body.videos = config.videos; body.audios = config.audios;
+        body.generate_audio = config.generateAudio;
+        if (family === 'v3') {
+          body.bypass_face_check = config.face;
+          if (config.v3Size) body.size = config.v3Size;
+          if (config.startFrame) body.start_frame_url = config.startFrame;
+          if (config.endFrame) body.end_frame_url = config.endFrame;
+          if (config.seed !== '') body.seed = Number(config.seed);
+          if (config.grid !== '') body.grid_strength = Number(config.grid);
+        }
+      }
+      return body;
+    }
+    function shellQuote(value) { return "'" + String(value).replace(/'/g, "'\"'\"'") + "'"; }
+    function makeCurl(config, body) {
+      const taskUrl = BASE_URL + '/videos/' + encodeURIComponent(config.taskId);
+      if (state.mode === 'download') {
+        return [
+          '# Bash / zsh + jq · API_KEY 由环境变量提供',
+          'task_url=' + shellQuote(taskUrl),
+          'raw="$(curl --fail-with-body --silent --show-error \\',
+          '  --header "Authorization: Bearer ${API_KEY}" \\',
+          '  --header "Accept: application/json" "$task_url")" || exit 1',
+          'task="$(printf \'%s\' "$raw" | jq -c \'if (.data | type) == "object" then .data else . end\')" || exit 1',
+          'status="$(printf \'%s\' "$task" | jq -r \'.status | ascii_downcase\')"',
+          'case "$status" in',
+          '  success|succeeded|completed) ;;',
+          '  *) printf \'%s\\n\' "任务尚未成功：$status" >&2; exit 1 ;;',
+          'esac',
+          'video_url="$(printf \'%s\' "$task" | jq -r \'.result_url // .video_url // .url // .metadata.url // empty\')"',
+          'if [ -n "$video_url" ]; then',
+          '  # 公网成片外链不附加 API 密钥。',
+          '  curl --fail --location --output "./video.mp4" "$video_url"',
+          'else',
+          '  curl --fail --location \\',
+          '    --header "Authorization: Bearer ${API_KEY}" \\',
+          '    --output "./video.mp4" "$task_url/content"',
+          'fi',
+        ].join('\n');
+      }
+      const query = state.mode === 'query';
+      const lines = [
+        '# Bash / zsh · API_KEY 由环境变量提供',
+        'curl --fail-with-body \\',
+        '  --request ' + (query ? 'GET' : 'POST') + ' \\',
+        '  --url ' + shellQuote(query ? taskUrl : BASE_URL + '/videos') + ' \\',
+        '  --header "Authorization: Bearer ${API_KEY}" \\',
+        '  --header "Accept: application/json"' + (query ? '' : ' \\'),
+      ];
+      if (!query) lines.push('  --header "Content-Type: application/json" \\', '  --data-raw ' + shellQuote(JSON.stringify(body, null, 2)));
+      return lines.join('\n');
+    }
+    function pythonLiteral(value) {
+      if (typeof value === 'boolean') return value ? 'True' : 'False';
+      if (Array.isArray(value)) return '[' + value.map(pythonLiteral).join(', ') + ']';
+      return JSON.stringify(value);
+    }
+    function makePython(config, body) {
+      const query = state.mode === 'query', download = state.mode === 'download';
+      let code = '# Python 3.10+ · 安装 requests；api_key 由调用方传入\n';
+      if (query || download) code += 'from urllib.parse import quote\n';
+      if (download) code += 'from pathlib import Path\n';
+      code += 'import requests\n\n\n';
+      if (query || download) {
+        code += download ? 'def download_video(api_key, task_id, output_path="./video.mp4"):\n' : 'def get_video(api_key, task_id):\n';
+        code += '    task_url = "https://api.my110.vip/v1/videos/" + quote(task_id, safe="")\n';
+        code += '    headers = {"Authorization": f"Bearer {api_key}", "Accept": "application/json"}\n';
+        code += '    response = requests.get(task_url, headers=headers, timeout=(15, 60))\n';
+        code += '    response.raise_for_status()\n    raw = response.json()\n';
+        code += '    task = raw["data"] if isinstance(raw.get("data"), dict) else raw\n';
+        if (query) {
+          code += '    return task\n\n\n# task = get_video(api_key, ' + JSON.stringify(config.taskId) + ')\n# print(task.get("status"), task.get("progress"))';
+          return code;
+        }
+        code += '    if str(task.get("status", "")).lower() not in {"success", "succeeded", "completed"}:\n';
+        code += '        raise RuntimeError(f"任务尚未成功：{task.get(\'status\')}")\n';
+        code += '    video_url = (task.get("result_url") or task.get("video_url") or task.get("url")\n';
+        code += '                 or (task.get("metadata") or {}).get("url"))\n';
+        code += '    # 公网成片链接不附加 API 密钥；没有外链时用鉴权 content 路径。\n';
+        code += '    url = video_url or task_url + "/content"\n';
+        code += '    download_headers = {} if video_url else {"Authorization": f"Bearer {api_key}"}\n';
+        code += '    with requests.get(url, headers=download_headers, stream=True, timeout=(15, 180)) as media:\n';
+        code += '        media.raise_for_status()\n        with Path(output_path).open("wb") as output:\n';
+        code += '            for chunk in media.iter_content(chunk_size=1024 * 1024):\n';
+        code += '                if chunk:\n                    output.write(chunk)\n    return str(output_path)\n\n\n';
+        code += '# path = download_video(api_key, ' + JSON.stringify(config.taskId) + ')\n# print(path)';
+        return code;
+      }
+      code += 'def create_video(api_key, prompt=' + pythonLiteral(body.prompt) + '):\n    payload = {\n';
+      for (const [key, value] of Object.entries(body))
+        code += '        ' + JSON.stringify(key) + ': ' + (key === 'prompt' ? 'prompt' : pythonLiteral(value)) + ',\n';
+      code += '    }\n    response = requests.post(\n        "https://api.my110.vip/v1/videos",\n';
+      code += '        headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},\n';
+      code += '        json=payload, timeout=(15, 180),\n    )\n';
+      code += '    response.raise_for_status()\n    raw = response.json()\n';
+      code += '    task = raw["data"] if isinstance(raw.get("data"), dict) else raw\n';
+      code += '    task_id = task.get("task_id") or task.get("id")\n';
+      code += '    if not task_id:\n        raise RuntimeError(f"创建响应缺少任务 ID：{task}")\n';
+      code += '    return task_id, task\n\n\n# task_id, task = create_video(api_key)\n# 保存 task_id，轮询后读取视频链接。';
+      return code;
+    }
+    function makeFetch(config, body, ts) {
+      const query = state.mode === 'query', download = state.mode === 'download', type = ts ? ': string' : '';
+      let code = '// Fetch API · apiKey 由调用方传入\n';
+      if (query || download) {
+        code += 'export async function ' + (download ? 'downloadVideo' : 'getVideo') + '(apiKey' + type + ', taskId' + type + ') {\n';
+        code += '  const taskUrl = "https://api.my110.vip/v1/videos/" + encodeURIComponent(taskId);\n';
+        code += '  const response = await fetch(taskUrl, {\n    headers: { Authorization: "Bearer " + apiKey, Accept: "application/json" },\n  });\n';
+      } else {
+        code += 'export async function createVideo(apiKey' + type + ', prompt' + type + ' = ' + JSON.stringify(body.prompt) + ') {\n';
+        code += '  const payload = {\n';
+        for (const [key, value] of Object.entries(body))
+          code += '    ' + JSON.stringify(key) + ': ' + (key === 'prompt' ? 'prompt' : JSON.stringify(value)) + ',\n';
+        code += '  };\n  const response = await fetch("https://api.my110.vip/v1/videos", {\n    method: "POST",\n';
+        code += '    headers: {\n      Authorization: "Bearer " + apiKey,\n      Accept: "application/json",\n      "Content-Type": "application/json",\n';
+        code += '    },\n    body: JSON.stringify(payload),\n  });\n';
+      }
+      code += '  if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);\n';
+      code += '  const raw = await response.json();\n';
+      code += '  const task = raw.data && typeof raw.data === "object" && !Array.isArray(raw.data) ? raw.data : raw;\n';
+      if (query) code += '  return task;\n}\n\n// const task = await getVideo(apiKey, ' + JSON.stringify(config.taskId) + ');\n// console.log(task.status, task.progress);';
+      else if (download) {
+        code += '  if (!["success", "succeeded", "completed"].includes(String(task.status || "").toLowerCase())) {\n';
+        code += '    throw new Error(`任务尚未成功：${task.status}`);\n  }\n';
+        code += '  const videoUrl = task.result_url || task.video_url || task.url || task.metadata?.url;\n';
+        code += '  // 公网成片外链不附加 API 密钥。\n';
+        code += '  const media = videoUrl\n    ? await fetch(videoUrl)\n';
+        code += '    : await fetch(taskUrl + "/content", { headers: { Authorization: "Bearer " + apiKey } });\n';
+        code += '  if (!media.ok) throw new Error(`下载失败：HTTP ${media.status}`);\n';
+        code += '  return media.blob();\n}\n\n// const videoBlob = await downloadVideo(apiKey, ' + JSON.stringify(config.taskId) + ');\n// 将 videoBlob 交给业务代码保存或播放。';
+      } else {
+        code += '  const taskId = task.task_id || task.id;\n';
+        code += '  if (!taskId) throw new Error("创建响应缺少 task_id / id");\n';
+        code += '  return { taskId, task };\n}\n\n// const { taskId, task } = await createVideo(apiKey);\n// 保存 taskId，用同一密钥查询状态。';
+      }
+      return code;
+    }
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[char]));
+    }
+    function highlight(code) {
+      const pattern = /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|((?:\/\/|#)[^\n]*)|\b(const|let|export|async|await|function|return|if|else|throw|new|for|of|from|import|def|with|as|in|while|raise|True|False|or|not)\b|\b(\d+(?:\.\d+)?)\b/g;
+      let html = '', offset = 0;
+      for (const match of code.matchAll(pattern)) {
+        html += escapeHtml(code.slice(offset, match.index));
+        const kind = match[1] ? 'string' : match[2] ? 'comment' : match[3] ? 'keyword' : 'number';
+        html += '<span class="token-' + kind + '">' + escapeHtml(match[0]) + '</span>';
+        offset = match.index + match[0].length;
+      }
+      return html + escapeHtml(code.slice(offset));
+    }
+    function render() {
+      const config = getConfig(), family = config.profile?.family;
+      const generating = !['query', 'download'].includes(state.mode), frames = state.mode === 'frames';
+      $('generation-config').hidden = !generating; $('task-config').hidden = generating;
+      $('mode-frames').hidden = family !== 'v3';
+      $('h3-size-field').hidden = family !== 'h3'; $('h3-workflow-field').hidden = family !== 'h3';
+      $('resolution-field').hidden = family === 'h3'; $('audio-field').hidden = family === 'h3';
+      for (const id of ['v3-size-field', 'seed-field', 'grid-field', 'face-field']) $(id).hidden = family !== 'v3';
+      $('images-field').hidden = state.mode !== 'reference';
+      $('videos-field').hidden = $('audios-field').hidden = !['reference', 'frames'].includes(state.mode);
+      $('start-frame-field').hidden = $('end-frame-field').hidden = !frames;
+      $('duration-param').textContent = family === 'h3' ? 'seconds · integer' : 'duration · integer';
+      $('ratio-param').textContent = family === 'h3' ? '固定尺寸推导 / 超分时 aspect_ratio' : family === 'v3' ? 'ratio' : 'aspect_ratio';
+      $('videos-param').textContent = family === 'h3' ? 'reference_videos · 每行一个' : 'videos · 每行一个';
+      $('audios-param').textContent = family === 'h3' ? 'reference_audios · 每行一个' : 'audios · 每行一个';
+      $('workflow-preview').textContent = config.workflow || '';
+      $('h3-size-preview').textContent = 'size = ' + (config.size || '');
+      $('model-context').textContent = config.profile?.note || '该别名未定义请求结构。';
+      $('config-error').hidden = !config.error; $('config-error').textContent = config.error;
+      $('copy-request').disabled = !!config.error;
+      $('example-method').textContent = generating ? 'POST' : 'GET';
+      $('example-endpoint').textContent = state.mode === 'download' ? '优先 result_url → video_url → url → metadata.url；无外链时 /content'
+        : BASE_URL + '/videos' + (generating ? '' : '/' + (config.taskId ? encodeURIComponent(config.taskId) : '{task_id}'));
+      $('request-panel').setAttribute('aria-labelledby', 'mode-' + state.mode + ' lang-' + state.language);
+      for (const group of ['mode', 'lang']) {
+        document.querySelectorAll('[data-' + group + ']').forEach(button => {
+          const selected = button.dataset[group] === (group === 'mode' ? state.mode : state.language);
+          button.setAttribute('aria-selected', String(selected)); button.tabIndex = selected ? 0 : -1;
+        });
+      }
+      $('example-stage').textContent = !generating ? (state.mode === 'query' ? 'GET / QUERY' : 'GET / SAVE VIDEO')
+        : family === 'h3' ? 'workflow_id = ' + config.workflow : config.model + ' · application/json';
+      $('example-help').textContent = state.language === 'curl' ? (state.mode === 'download' ? 'Bash / zsh + jq；API_KEY 由环境变量传入。' : 'Bash / zsh；API_KEY 由环境变量传入。Windows 可用 Git Bash / WSL。')
+        : state.language === 'python' ? 'Python 3.10+，安装 requests；密钥为 api_key 参数。'
+        : 'Fetch API；密钥为 apiKey 参数，示例直接发送 JSON。';
+      if (config.error) { state.code = ''; $('request-code').textContent = '// ' + config.error; return; }
+      const body = getBody(config);
+      state.code = state.language === 'curl' ? makeCurl(config, body) : state.language === 'python' ? makePython(config, body)
+        : makeFetch(config, body, state.language === 'typescript');
+      $('request-code').innerHTML = highlight(state.code);
+    }
+    $('cfg-model').addEventListener('change', refreshModel);
+    document.querySelectorAll('.config-body input,.config-body textarea,.config-body select')
+      .forEach(input => input.addEventListener('input', render));
+    document.querySelectorAll('[data-mode]').forEach(button => button.addEventListener('click', () => {
+      state.mode = button.dataset.mode; render();
+    }));
+    document.querySelectorAll('[data-lang]').forEach(button => button.addEventListener('click', () => {
+      state.language = button.dataset.lang; render();
+    }));
+    document.querySelectorAll('[role="tablist"]').forEach(list => list.addEventListener('keydown', event => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      const tabs = [...list.querySelectorAll('[role="tab"]')].filter(button => !button.hidden);
+      const current = tabs.indexOf(document.activeElement);
+      if (current < 0) return;
+      event.preventDefault();
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1
+        : (current + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+      tabs[next].focus(); tabs[next].click();
+    }));
+    let toastTimer;
+    $('copy-request').addEventListener('click', async () => {
+      if (!state.code) return;
+      let copied = false;
+      try { await navigator.clipboard.writeText(state.code); copied = true; }
+      catch {
+        const textarea = document.createElement('textarea'); textarea.value = state.code;
+        textarea.style.cssText = 'position:fixed;top:0;left:-9999px'; document.body.append(textarea);
+        textarea.select(); copied = document.execCommand('copy'); textarea.remove();
+      }
+      $('toast').textContent = copied ? '已复制，密钥由调用方传入' : '请选中代码手动复制';
+      $('toast').hidden = false; clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { $('toast').hidden = true; }, 2200);
+    });
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver(entries => {
+        const visible = entries.filter(entry => entry.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (!visible.length) return;
+        document.querySelectorAll('.sidebar nav a').forEach(link => link.classList.toggle('active', link.hash === '#' + visible[0].target.id));
+      }, { rootMargin: '-85px 0px -65% 0px', threshold: 0 });
+      document.querySelectorAll('main > section,#overview').forEach(section => observer.observe(section));
+    }
+    $('poll-code').innerHTML = highlight($('poll-code').textContent);
+    refreshModel();
+  </script>
+</body>
+
+</html>

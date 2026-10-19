@@ -29,6 +29,7 @@ import {
   getValidOutputSizes,
   normalizeCustomImageSize,
   normalizeModel,
+  normalizeParallelCount,
   supportsCustomSize,
   supportsReferenceImages,
   type GptImageAdvancedParams,
@@ -205,9 +206,7 @@ export function ImageGenerationWorkbench({
         style: useInitial ? initialData?.gptImageStyle : saved.gptImageStyle,
         background: useInitial ? initialData?.gptImageBackground : saved.gptImageBackground,
       });
-      const nextParallelCount: ParallelCount = useInitial && initialData?.parallelCount && [1, 2, 3, 4].includes(initialData.parallelCount)
-        ? initialData.parallelCount
-        : (saved.parallelCount && [1, 2, 3, 4].includes(saved.parallelCount) ? saved.parallelCount : 1);
+      const nextParallelCount = normalizeParallelCount(useInitial ? initialData?.parallelCount ?? saved.parallelCount : saved.parallelCount, nextModel);
       const nextKeepPromptAfterSubmit = saved.keepPromptAfterSubmit === true;
 
       setModel(nextModel);

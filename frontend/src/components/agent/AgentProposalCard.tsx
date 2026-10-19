@@ -24,11 +24,13 @@ import {
   getCustomSizeMaxSide,
   getModelMaxRefImages,
   getOutputSizeLabel,
+  getParallelCountOptions,
   getSizeOptions,
   getSupportsTemperature,
   getValidOutputSizes,
   getGptImageAdvancedParamsForModel,
   normalizeCustomImageSize,
+  normalizeParallelCount,
   resolveAgentLayout,
   supportsGptImageAdvancedParams,
   supportsAutoLayout,
@@ -62,8 +64,6 @@ interface AgentProposalCardProps {
   onApprove: (prompt: string, selectedImageIds: string[], model: ModelId, params: AgentApproveParams) => void;
   onCancel: () => void;
 }
-
-const PARALLEL_OPTIONS: ParallelCount[] = [1, 2, 3, 4];
 
 export function AgentProposalCard({
   proposal,
@@ -197,7 +197,7 @@ export function AgentProposalCard({
           gptImageQuality: advanced.quality,
           gptImageStyle: advanced.style,
           gptImageBackground: advanced.background,
-          parallelCount: prev.parallelCount,
+          parallelCount: normalizeParallelCount(prev.parallelCount, next),
         };
       }
       const validRatios = getAspectRatioOptions(next, nextSize).map((o) => o.value);
@@ -213,7 +213,7 @@ export function AgentProposalCard({
         gptImageQuality: advanced.quality,
         gptImageStyle: advanced.style,
         gptImageBackground: advanced.background,
-        parallelCount: prev.parallelCount,
+        parallelCount: normalizeParallelCount(prev.parallelCount, next),
       };
     });
   };
@@ -526,6 +526,7 @@ export function AgentProposalCard({
 
         {supportsAdvancedParams && (
           <GptImageAdvancedParamsControl
+            model={imageModel}
             value={advancedParams}
             onChange={value => setLayout(prev => ({
               ...prev,
@@ -549,7 +550,7 @@ export function AgentProposalCard({
             <span className="text-[11px]">×{layout.parallelCount}</span>
           </PopoverTrigger>
           <PopoverContent className="w-36 p-1" align="start">
-            {PARALLEL_OPTIONS.map(count => (
+            {getParallelCountOptions(imageModel).map(count => (
               <button
                 key={count}
                 type="button"

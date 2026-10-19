@@ -2,6 +2,7 @@ import { nanoid } from "nanoid";
 
 import { resolveStoredImageRefs, revokeBlobUrls } from "@/lib/image-downloader";
 import type { StoredJob } from "@/lib/job-store";
+import { normalizeParallelCount } from "@/lib/model-capabilities";
 import { fitNodeSize } from "./utils/canvas-node-size";
 import { getNodeSpec } from "./constants";
 import { deleteStoredImages, uploadImage, type UploadedImage } from "./lib/image-storage";
@@ -140,7 +141,7 @@ function imageMetadata(stored: UploadedImage, role: "result" | "reference"): Can
 }
 
 function generationConfigFromJob(job: StoredJob): CanvasGenerationConfig {
-  const count = Math.min(4, Math.max(1, job.parallelCount || 1)) as CanvasGenerationConfig["count"];
+  const count = normalizeParallelCount(job.parallelCount, job.model);
   return {
     model: job.model,
     outputSize: job.output_size,

@@ -30,12 +30,14 @@ import {
   getAspectRatioOptions,
   getCustomSizeMaxSide,
   getOutputSizeLabel,
+  getParallelCountOptions,
   getSizeOptions,
   getValidOutputSizes,
   DEFAULT_GPT_IMAGE_ADVANCED_PARAMS,
   getGptImageAdvancedParamsForModel,
   normalizeCustomImageSize,
   normalizeModel,
+  normalizeParallelCount,
   supportsGptImageAdvancedParams,
   supportsAutoLayout,
   supportsCustomSize,
@@ -193,6 +195,7 @@ export function ImageToImageForm({
 
   const handleModelChange = (newModel: ModelId) => {
     setModel(newModel);
+    setParallelCount(prev => normalizeParallelCount(prev, newModel));
     setGptImageAdvancedParams(prev => getGptImageAdvancedParamsForModel(newModel, prev));
     const sizeOptions = getSizeOptions(newModel);
     const nextOutputSize = outputSize === 'auto' && supportsAutoLayout(newModel)
@@ -289,9 +292,7 @@ export function ImageToImageForm({
       style: useInitial ? initialData?.gptImageStyle : saved.gptImageStyle,
       background: useInitial ? initialData?.gptImageBackground : saved.gptImageBackground,
     });
-    const nextParallelCount: ParallelCount = useInitial && initialData?.parallelCount && [1, 2, 3, 4].includes(initialData.parallelCount)
-      ? initialData.parallelCount
-      : (saved.parallelCount && [1, 2, 3, 4].includes(saved.parallelCount) ? saved.parallelCount : 1);
+    const nextParallelCount = normalizeParallelCount(useInitial ? initialData?.parallelCount ?? saved.parallelCount : saved.parallelCount, nextModel);
 
     setModel(nextModel);
     setOutputSize(nextOutputSize);
@@ -837,7 +838,7 @@ export function ImageToImageForm({
               <span className="text-[11px]">x{parallelCount}</span>
             </PopoverTrigger>
             <PopoverContent className="w-36 p-1" align="start">
-              {[1, 2, 3, 4].map((count) => (
+              {getParallelCountOptions(model).map((count) => (
                 <button
                   key={count}
                   onClick={() => handleParallelCountChange(count as ParallelCount)}
@@ -855,6 +856,7 @@ export function ImageToImageForm({
 
           {supportsAdvancedParams && (
             <GptImageAdvancedParamsControl
+              model={model}
               value={gptImageAdvancedParams}
               onChange={setGptImageAdvancedParams}
               variant="outline"

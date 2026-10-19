@@ -9,6 +9,7 @@ import {
   GPT_IMAGE_BACKGROUND_OPTIONS,
   GPT_IMAGE_QUALITY_OPTIONS,
   GPT_IMAGE_STYLE_OPTIONS,
+  isGrokImage2Model,
   type GptImageAdvancedParams,
   type GptImageBackground,
   type GptImageQuality,
@@ -16,6 +17,7 @@ import {
 } from '@/lib/model-capabilities';
 
 interface GptImageAdvancedParamsControlProps {
+  model?: string;
   value: GptImageAdvancedParams;
   onChange: (value: GptImageAdvancedParams) => void;
   disabled?: boolean;
@@ -31,21 +33,27 @@ function isDefaultValue(value: GptImageAdvancedParams): boolean {
   );
 }
 
-function formatLabel(value: GptImageAdvancedParams): string {
+function formatLabel(value: GptImageAdvancedParams, qualityOnly: boolean): string {
   if (isDefaultValue(value)) return '图像参数';
   const quality = GPT_IMAGE_QUALITY_OPTIONS.find(option => option.value === value.quality)?.label || value.quality;
+  if (qualityOnly) return `质量：${quality}`;
   const style = GPT_IMAGE_STYLE_OPTIONS.find(option => option.value === value.style)?.label || value.style;
   const background = GPT_IMAGE_BACKGROUND_OPTIONS.find(option => option.value === value.background)?.label || value.background;
   return `${quality}/${style}/${background}`;
 }
 
 export function GptImageAdvancedParamsControl({
+  model,
   value,
   onChange,
   disabled = false,
   variant = 'ghost',
   size = 'xs',
 }: GptImageAdvancedParamsControlProps) {
+  const qualityOnly = isGrokImage2Model(model || '');
+  const qualityOptions = qualityOnly
+    ? GPT_IMAGE_QUALITY_OPTIONS.filter(option => option.value !== 'high')
+    : GPT_IMAGE_QUALITY_OPTIONS;
   const triggerClass = cn(
     buttonVariants({ variant, size }),
     'gap-1',
@@ -59,28 +67,32 @@ export function GptImageAdvancedParamsControl({
     <Popover>
       <PopoverTrigger className={triggerClass} disabled={disabled} title="图像参数">
         <SlidersHorizontal className="h-3 w-3" />
-        <span className="shrink-0 truncate text-[11px]">{formatLabel(value)}</span>
+        <span className="shrink-0 truncate text-[11px]">{formatLabel(value, qualityOnly)}</span>
       </PopoverTrigger>
       <PopoverContent className="w-72 p-2" align="start">
         <div className="space-y-3">
           <ParamGroup
             label="质量"
-            options={GPT_IMAGE_QUALITY_OPTIONS}
+            options={qualityOptions}
             value={value.quality}
             onSelect={updateQuality}
           />
-          <ParamGroup
-            label="风格"
-            options={GPT_IMAGE_STYLE_OPTIONS}
-            value={value.style}
-            onSelect={updateStyle}
-          />
-          <ParamGroup
-            label="背景"
-            options={GPT_IMAGE_BACKGROUND_OPTIONS}
-            value={value.background}
-            onSelect={updateBackground}
-          />
+          {!qualityOnly && (
+            <>
+              <ParamGroup
+                label="风格"
+                options={GPT_IMAGE_STYLE_OPTIONS}
+                value={value.style}
+                onSelect={updateStyle}
+              />
+              <ParamGroup
+                label="背景"
+                options={GPT_IMAGE_BACKGROUND_OPTIONS}
+                value={value.background}
+                onSelect={updateBackground}
+              />
+            </>
+          )}
           <Button
             type="button"
             variant="outline"

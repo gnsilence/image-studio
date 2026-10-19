@@ -7,8 +7,8 @@ import {
   type ImageModelConfig,
 } from '@/lib/nova-models';
 
-export type OutputSize = 'auto' | '512' | '1K' | '2K' | '4K';
-export type AspectRatio = 'auto' | '1:1' | '1:4' | '1:8' | '2:3' | '3:2' | '3:4' | '4:1' | '4:3' | '4:5' | '5:4' | '8:1' | '9:16' | '16:9' | '21:9';
+export type OutputSize = 'auto' | '512' | '1K' | '1.5K' | '2K' | '4K';
+export type AspectRatio = 'auto' | '1:1' | '1:2' | '2:1' | '1:4' | '1:8' | '2:3' | '3:2' | '3:4' | '4:1' | '4:3' | '4:5' | '5:4' | '5:2' | '8:1' | '9:16' | '16:9' | '9:19.5' | '19.5:9' | '9:20' | '20:9' | '21:9';
 export type ModelId = string;
 
 export interface ModelOption {

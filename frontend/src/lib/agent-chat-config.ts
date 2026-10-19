@@ -129,7 +129,7 @@ export const AGENT_SYSTEM_INSTRUCTIONS = `你是一个图像生成与编辑助�
 - suggested_aspect_ratio：无论用户是否说过，都给一个你认为最合适的比例（如肖像给 "2:3"、风景给 "16:9"、图标给 "1:1"）。当用户没明确指定、也没有可参考的上传图时作为兜底。
 - requested_output_size：只有当用户明确要求清晰度/分辨率档位时才填，取值 "512"/"1K"/"2K"/"4K"/"auto" 之一，否则给 null。
 - temperature：用户表达「更随机/更有创意」给偏高值（接近 2），「更精确/更稳定」给偏低值（接近 0），无明确倾向给 1 或 null。
-- parallel_count：用户要「多出几张/多个方案」时给 2-4，否则给 1 或 null。
+- parallel_count：用户要「多出几张/多个方案」时按需给出数量；Grok Imagine 2.0 支持 1-10，其余模型支持 1-4，否则给 1 或 null。
 - gpt_image_quality：当用户明确要求 GPT Image 2 的质量档位时填 "high"/"medium"/"low"，无明确需求给 "auto" 或 null。
 - gpt_image_style：当用户明确要求鲜明、夸张、强表现力时填 "vivid"；要求自然、写实时填 "natural"；无明确需求给 null。
 - gpt_image_background：用户明确要求透明背景、抠图、无背景时填 "transparent"；明确要求实底/不透明时填 "opaque"；否则给 "auto" 或 null。
@@ -184,7 +184,7 @@ export const PROPOSE_IMAGE_ACTION_TOOL = {
       },
       requested_output_size: {
         type: ['string', 'null'],
-        enum: ['512', '1K', '2K', '4K', 'auto', null],
+        enum: ['512', '1K', '1.5K', '2K', '4K', 'auto', null],
         description: '用户明确要求的清晰度档位，否则 null',
       },
       temperature: {
@@ -193,12 +193,12 @@ export const PROPOSE_IMAGE_ACTION_TOOL = {
       },
       parallel_count: {
         type: ['integer', 'null'],
-        description: '建议并行生成数量 1-4，无明确需求给 null',
+        description: '建议生成数量：Grok Imagine 2.0 为 1-10，其余模型为 1-4，无明确需求给 null',
       },
       gpt_image_quality: {
         type: ['string', 'null'],
         enum: ['auto', 'high', 'medium', 'low', null],
-        description: 'GPT Image 2 质量参数；无明确需求给 auto 或 null',
+        description: '图像质量参数；Grok Imagine 2.0 仅支持 auto、medium、low；无明确需求给 auto 或 null',
       },
       gpt_image_style: {
         type: ['string', 'null'],

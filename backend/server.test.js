@@ -50,6 +50,164 @@ async function waitForTaskDone(baseUrl, taskId, headers) {
   return task;
 }
 
+test('Grok Imagine 2.0 forwards official parameters and returns every batch result in one request', async (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nova-image-grok2-test-'));
+  const token = 'test-grok2-session-token';
+  const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lW2mWQAAAABJRU5ErkJggg==';
+  const requests = [];
+  let base64Response = false;
+  let rejectRequest = false;
+  const upstream = http.createServer((req, res) => {
+    let raw = '';
+    req.on('data', chunk => { raw += chunk; });
+    req.on('end', () => {
+      const body = JSON.parse(raw);
+      requests.push({ path: req.url, body });
+      res.writeHead(rejectRequest ? 400 : 200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(rejectRequest
+        ? { error: { message: 'quality unsupported by test upstream' } }
+        : { data: Array.from({ length: body.n }, (_, index) => (
+          base64Response ? { b64_json: pngBase64 } : { url: `https://images.example.com/grok2-${index}.png` }
+        )) }));
+    });
+  });
+  const upstreamAddress = await listen(upstream);
+  const child = fork(path.join(__dirname, 'server.js'), [], {
+    cwd: path.join(__dirname, '..'),
+    silent: true,
+    env: {
+      ...process.env,
+      NODE_ENV: 'production',
+      HOSTNAME: '127.0.0.1',
+      PORT: '0',
+      NOVA_TASK_DB: path.join(tempDir, 'tasks.sqlite'),
+      NOVA_IMAGE_DIR: path.join(tempDir, 'images'),
+      NOVA_DESKTOP_SESSION_TOKEN: token,
+    },
+  });
+
+  try {
+    const ready = await waitForMessage(child, 'ready');
+    const headers = { 'Content-Type': 'application/json', 'X-Nova-Desktop-Token': token };
+    const defaults = {
+      apiKey: 'test-grok2-key',
+      baseUrl: `http://127.0.0.1:${upstreamAddress.port}/v1/`,
+      protocol: 'grok',
+      mode: 'text-to-image',
+      prompt: 'test image',
+      outputSize: '1K',
+      aspectRatio: 'auto',
+      temperature: 1,
+      model: 'grok-imagine-image-2.0',
+      gptImageQuality: 'auto',
+      parallelCount: 1,
+      images: [],
+    };
+    const submit = body => fetch(`${ready.url}/api/nova/tasks`, {
+      method: 'POST', headers, body: JSON.stringify({ ...defaults, ...body }),
+    });
+    const cases = [
+      { name: 'text generation at 1.5K', count: 1, refs: 0, size: '1.5K', quality: 'low', ratio: '5:2' },
+      { name: 'single reference edit', count: 1, refs: 1, size: '2K', quality: 'medium', ratio: '9:19.5' },
+      { name: 'five references and ten outputs', count: 10, refs: 5, size: '2K', quality: 'auto', ratio: 'auto' },
+      { name: 'all Base64 batch outputs are stored', count: 3, refs: 0, size: '1K', quality: 'medium', ratio: '21:9', base64: true },
+    ];
+    for (const scenario of cases) {
+      await t.test(scenario.name, async () => {
+        base64Response = Boolean(scenario.base64);
+        const before = requests.length;
+        const response = await submit({
+          mode: scenario.refs ? 'image-to-image' : 'text-to-image',
+          images: Array.from({ length: scenario.refs }, () => ({ mimeType: 'image/png', data: pngBase64 })),
+          outputSize: scenario.size,
+          aspectRatio: scenario.ratio,
+          gptImageQuality: scenario.quality,
+          gptImageStyle: 'vivid',
+          gptImageBackground: 'transparent',
+          parallelCount: scenario.count,
+        });
+        assert.equal(response.status, 202);
+        const { taskId } = await response.json();
+        const task = await waitForTaskDone(ready.url, taskId, headers);
+        assert.equal(task.status, 'completed', task.error);
+        assert.equal(requests.length, before + 1);
+        const forwarded = requests[before];
+        assert.equal(forwarded.path, scenario.refs ? '/v1/images/edits' : '/v1/images/generations');
+        assert.deepEqual(forwarded.body, {
+          model: 'grok-imagine-image-2.0',
+          prompt: defaults.prompt,
+          n: scenario.count,
+          response_format: 'url',
+          resolution: scenario.size.toLowerCase(),
+          aspect_ratio: scenario.ratio,
+          quality: scenario.quality,
+          ...(scenario.refs === 1 ? { image: { type: 'image_url', url: `data:image/png;base64,${pngBase64}` } } : {}),
+          ...(scenario.refs > 1 ? { images: Array.from({ length: scenario.refs }, () => ({
+            type: 'image_url', url: `data:image/png;base64,${pngBase64}`,
+          })) } : {}),
+        });
+        assert.equal(task.result.images.length, scenario.count);
+        if (scenario.base64) {
+          for (const image of task.result.images) {
+            assert.ok(image.startsWith('URL:/api/nova/images/'));
+            const stored = await fetch(`${ready.url}${image.substring(4)}`, { headers });
+            assert.equal(stored.status, 200);
+            assert.deepEqual(Buffer.from(await stored.arrayBuffer()), Buffer.from(pngBase64, 'base64'));
+          }
+        } else {
+          assert.deepEqual(task.result.images, Array.from({ length: scenario.count }, (_, index) => `URL:https://images.example.com/grok2-${index}.png`));
+        }
+      });
+    }
+
+    await t.test('unsupported parameters are rejected before contacting the upstream', async () => {
+      const before = requests.length;
+      const invalidCases = [
+        { parallelCount: 11 },
+        { parallelCount: 5, model: 'grok-imagine-image-quality' },
+        { gptImageQuality: 'high' },
+        { outputSize: '4K' },
+        { aspectRatio: '4:5' },
+        { mode: 'image-to-image', images: [] },
+        { mode: 'image-to-image', images: Array.from({ length: 6 }, () => ({ mimeType: 'image/png', data: pngBase64 })) },
+      ];
+      for (const invalid of invalidCases) {
+        const response = await submit(invalid);
+        assert.equal(response.status, 400, JSON.stringify(invalid));
+      }
+      assert.equal(requests.length, before);
+    });
+
+    await t.test('upstream errors do not trigger another generation request', async () => {
+      rejectRequest = true;
+      const before = requests.length;
+      const response = await submit({});
+      assert.equal(response.status, 202);
+      const { taskId } = await response.json();
+      const task = await waitForTaskDone(ready.url, taskId, headers);
+      assert.equal(task.status, 'failed');
+      assert.match(task.error, /quality unsupported by test upstream/);
+      assert.equal(requests.length, before + 1);
+    });
+  } finally {
+    if (child.connected) {
+      const exitPromise = waitForExit(child);
+      child.send({ type: 'stop' });
+      await exitPromise;
+    } else if (!child.killed) {
+      child.kill('SIGKILL');
+    }
+    child.stdout?.destroy();
+    child.stderr?.destroy();
+    await closeServer(upstream);
+    try {
+      fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    } catch {
+      // Windows may retain the SQLite file handle briefly after child exit.
+    }
+  }
+});
+
 test('desktop server uses an ephemeral port, enforces its token, and stops cleanly', async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nova-backend-test-'));
   const token = 'test-desktop-session-token';

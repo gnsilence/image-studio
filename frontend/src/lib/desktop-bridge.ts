@@ -97,6 +97,9 @@ export interface NovaDesktopBridge {
     write(namespace: DesktopFileNamespace, id: string, data: Uint8Array, mimeType: string): Promise<Omit<DesktopStoredFile, 'data'>>;
     delete(namespace: DesktopFileNamespace, id: string): Promise<void>;
   };
+  images: {
+    fetch(url: string): Promise<{ data: Uint8Array; mimeType: string }>;
+  };
   s3: {
     getConfig(): Promise<S3PublicConfig>;
     saveConfig(input: { config: S3ConfigInput; credentials?: S3CredentialsInput }): Promise<S3PublicConfig>;

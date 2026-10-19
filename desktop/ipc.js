@@ -1,4 +1,5 @@
-const { dialog, ipcMain, shell } = require('electron');
+const { dialog, ipcMain, net, shell } = require('electron');
+const { fetchRemoteImage } = require('./image-download');
 
 const CHANNELS = [
   'desktop:records:get',
@@ -10,6 +11,7 @@ const CHANNELS = [
   'desktop:files:list',
   'desktop:files:write',
   'desktop:files:delete',
+  'desktop:images:fetch',
   'desktop:backup:export',
   'desktop:backup:import',
   'desktop:s3:config',
@@ -62,6 +64,7 @@ function registerDesktopIpc({ getStorage, backupService, s3Service, updater, dat
     getStorage().files.write(namespace, id, Buffer.from(data), mimeType)
   )));
   ipcMain.handle('desktop:files:delete', (_event, namespace, id) => asyncResult(() => getStorage().files.delete(namespace, id)));
+  ipcMain.handle('desktop:images:fetch', (_event, url) => asyncResult(() => fetchRemoteImage(url, net.fetch)));
 
   ipcMain.handle('desktop:backup:export', () => asyncResult(async () => {
     const target = await dialog.showSaveDialog(getWindow(), {

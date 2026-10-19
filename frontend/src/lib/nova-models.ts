@@ -9,7 +9,7 @@ import { runtimeStorage } from '@/lib/runtime-storage';
 import { getDesktopBridge } from '@/lib/desktop-bridge';
 
 export type ProviderProtocol = 'google' | 'openai' | 'grok';
-export type ImageOutputSize = '512' | '1K' | '2K' | '4K';
+export type ImageOutputSize = '512' | '1K' | '1.5K' | '2K' | '4K';
 export type BuiltinImagePresetId =
   | 'gemini-2.5-flash-image'
   | 'gemini-3-pro-image-preview'
@@ -20,6 +20,7 @@ export type BuiltinImagePresetId =
   | 'gpt-image-2.5-sunburst'
   | 'gpt-image-2'
   | 'grok-imagine-image'
+  | 'grok-imagine-image-2.0'
   | 'grok-imagine-image-quality'
   | 'grok-imagine-image-edit';
 
@@ -157,6 +158,16 @@ export const BUILTIN_IMAGE_PRESETS: Record<BuiltinImagePresetId, BuiltinImagePre
     maxOutputSize: '4K',
     supportsAdvancedParams: true,
   },
+  'grok-imagine-image-2.0': {
+    id: 'grok-imagine-image-2.0',
+    protocol: 'grok',
+    name: 'Grok Imagine 2.0',
+    modelId: 'grok-imagine-image-2.0',
+    baseUrl: FIXED_MODEL_BASE_URL,
+    maxRefImages: 5,
+    maxOutputSize: '2K',
+    supportsAdvancedParams: true,
+  },
   'grok-imagine-image': {
     id: 'grok-imagine-image',
     protocol: 'grok',
@@ -247,7 +258,7 @@ function isBuiltinImagePresetId(value: unknown): value is BuiltinImagePresetId {
 }
 
 function normalizeImageOutputSize(value: unknown, fallback: ImageOutputSize): ImageOutputSize {
-  return value === '512' || value === '1K' || value === '2K' || value === '4K'
+  return value === '512' || value === '1K' || value === '1.5K' || value === '2K' || value === '4K'
     ? value
     : fallback;
 }
@@ -277,10 +288,10 @@ function normalizeImageModelConfig(raw: Partial<ImageModelConfig>): ImageModelCo
     baseUrl: String(raw.baseUrl || preset.baseUrl || FIXED_MODEL_BASE_URL).trim(),
     builtinPreset: presetId,
     maxRefImages: Number.isFinite(raw.maxRefImages) && Number(raw.maxRefImages) >= 0
-      ? Math.max(0, Math.floor(Number(raw.maxRefImages)))
+      ? Math.min(presetId === 'grok-imagine-image-2.0' ? 5 : Number.POSITIVE_INFINITY, Math.max(0, Math.floor(Number(raw.maxRefImages))))
       : preset.maxRefImages,
     maxOutputSize: normalizeImageOutputSize(raw.maxOutputSize, preset.maxOutputSize),
-    supportsAdvancedParams: protocol === 'openai'
+    supportsAdvancedParams: protocol === 'openai' || (protocol === 'grok' && presetId === 'grok-imagine-image-2.0')
       ? (typeof raw.supportsAdvancedParams === 'boolean' ? raw.supportsAdvancedParams : preset.supportsAdvancedParams)
       : false,
   };
@@ -451,6 +462,10 @@ export function getCompleteTextModels(registry: NovaModelRegistry): TextModelCon
 }
 
 export function getImageModelOutputSizes(model: ImageModelConfig): ImageOutputSize[] {
+  if (model.builtinPreset === 'grok-imagine-image-2.0') {
+    if (model.maxOutputSize === '1K' || model.maxOutputSize === '512') return ['1K'];
+    return model.maxOutputSize === '1.5K' ? ['1K', '1.5K'] : ['1K', '1.5K', '2K'];
+  }
   switch (model.maxOutputSize) {
     case '4K':
       return model.builtinPreset === 'gemini-3.1-flash-image-preview'

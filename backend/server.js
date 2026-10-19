@@ -137,6 +137,12 @@ const VALID_PROTOCOLS = new Set(['google', 'openai', 'grok']);
 const GPT_IMAGE_QUALITIES = new Set(['auto', 'high', 'medium', 'low']);
 const GPT_IMAGE_STYLES = new Set(['auto', 'vivid', 'natural']);
 const GPT_IMAGE_BACKGROUNDS = new Set(['auto', 'transparent', 'opaque']);
+const GROK_IMAGE2_QUALITIES = new Set(['auto', 'medium', 'low']);
+const GROK_IMAGE2_RESOLUTIONS = new Set(['1k', '1.5k', '2k']);
+const GROK_IMAGE2_ASPECT_RATIOS = new Set([
+  'auto', '1:1', '2:3', '3:2', '3:4', '4:3', '9:16', '16:9',
+  '9:19.5', '19.5:9', '9:20', '20:9', '1:2', '2:1', '21:9', '5:2',
+]);
 const DEFAULT_GPT_IMAGE_ADVANCED_PARAMS = {
   quality: 'auto',
   style: 'auto',
@@ -829,6 +835,10 @@ function normalizeGptImageAdvancedParams(params = {}) {
   };
 }
 
+function isGrokImage2Request(request) {
+  return request.protocol === 'grok' && request.model === 'grok-imagine-image-2.0';
+}
+
 function validateCreatePayload(body) {
   if (!body || typeof body !== 'object') throw new Error('请求体不能为空');
   if (typeof body.apiKey !== 'string' || body.apiKey.trim().length === 0) throw new Error('缺少 API 密钥');
@@ -837,9 +847,17 @@ function validateCreatePayload(body) {
   if (body.mode !== 'text-to-image' && body.mode !== 'image-to-image') throw new Error('任务模式无效');
   if (typeof body.prompt !== 'string' || body.prompt.trim().length === 0) throw new Error('提示词不能为空');
   if (typeof body.model !== 'string' || body.model.trim().length === 0) throw new Error('模型名称不能为空');
-  if (!Number.isInteger(body.parallelCount) || body.parallelCount < 1 || body.parallelCount > 4) throw new Error('并发数量无效');
+  const maxCount = isGrokImage2Request(body) ? 10 : 4;
+  if (!Number.isInteger(body.parallelCount) || body.parallelCount < 1 || body.parallelCount > maxCount) throw new Error('并发数量无效');
 
   if (!Array.isArray(body.images)) body.images = [];
+  if (isGrokImage2Request(body)) {
+    validateEnumValue(body.gptImageQuality, GROK_IMAGE2_QUALITIES, 'quality');
+    validateEnumValue(body.outputSize?.toLowerCase(), GROK_IMAGE2_RESOLUTIONS, 'resolution');
+    validateEnumValue(body.aspectRatio, GROK_IMAGE2_ASPECT_RATIOS, 'aspect_ratio');
+    if (body.images.length > 5) throw new Error('Grok Imagine 2.0 最多支持 5 张参考图');
+    if (body.mode === 'image-to-image' && body.images.length === 0) throw new Error('图生图模式需要至少一张参考图');
+  }
   body.baseUrl = normalizeProtocolBaseUrl(body.protocol, body.baseUrl);
   if (!body.baseUrl) throw new Error('缺少 API 基础地址');
   // 图片模型参数由前端传递，后端规范化地址后调用对应上游。
@@ -882,7 +900,8 @@ function createTask(body, req) {
       INSERT INTO task_items (task_id, item_index, status, created_at)
       VALUES (?, ?, ?, ?)
     `);
-    for (let index = 0; index < body.parallelCount; index++) {
+    const itemCount = isGrokImage2Request(body) ? 1 : body.parallelCount;
+    for (let index = 0; index < itemCount; index++) {
       insertItem.run(taskId, index, TASK_STATUS.QUEUED, now);
     }
   });
@@ -1149,6 +1168,10 @@ function getImagePayloadValue(data, depth = 0) {
 }
 
 function extractImagePayload(data) {
+  if (Array.isArray(data?.data) && data.data.length > 1) {
+    const images = data.data.map(item => normalizeImagePayloadValue(getImagePayloadValue(item))).filter(Boolean);
+    if (images.length > 1) return `MULTI_IMAGE:${JSON.stringify(images)}`;
+  }
   const imageData = normalizeImagePayloadValue(getImagePayloadValue(data));
   if (!imageData) throw new Error('响应中无图片数据');
   return imageData;
@@ -1272,6 +1295,7 @@ async function requestGptImage(apiKey, request, resolvedSize, options = {}) {
 
 function getGrokResolution(outputSize) {
   if (outputSize === '2K' || outputSize === '2k') return '2k';
+  if (outputSize === '1.5K' || outputSize === '1.5k') return '1.5k';
   if (outputSize === '1K' || outputSize === '1k') return '1k';
   return undefined;
 }
@@ -1298,6 +1322,32 @@ function createGrokImageRequestInit(apiKey, request, options = {}) {
   const resolution = getGrokResolution(request.outputSize);
   const images = Array.isArray(request.images) ? request.images : [];
   const responseFormat = options.responseFormat || 'b64_json';
+
+  if (isGrokImage2Request(request)) {
+    const payload = {
+      model: request.model,
+      prompt,
+      n: request.parallelCount || 1,
+      response_format: responseFormat,
+      aspect_ratio: request.aspectRatio || 'auto',
+      resolution: resolution || '1k',
+      quality: request.gptImageQuality || 'auto',
+    };
+    if (request.mode === 'image-to-image') {
+      const references = images.map(toGrokImageDataUrl).filter(Boolean).map(url => ({ type: 'image_url', url }));
+      if (references.length !== images.length || references.length === 0) throw new Error('参考图数据无效');
+      if (references.length === 1) payload.image = references[0];
+      else payload.images = references;
+    }
+    return {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(payload),
+    };
+  }
 
   if (request.mode === 'image-to-image') {
     if (images.length === 0) {
@@ -1559,6 +1609,9 @@ async function generateNovaImage(apiKey, request, trace) {
     }
   }
   if (request.protocol === 'grok') {
+    if (isGrokImage2Request(request)) {
+      return requestGrokImage(apiKey, request, { baseUrl, trace, responseFormat: 'url' });
+    }
     try {
       return await requestGrokImage(apiKey, request, { baseUrl, trace, responseFormat: 'b64_json' });
     } catch (error) {
@@ -1678,10 +1731,12 @@ async function runSingleImage(apiKey, request, taskId, index, trace) {
     const image = await generateNovaImage(apiKey, request, trace);
     logTaskStage(trace, 'upstream_payload_parsed', {
       requestElapsedMs: Date.now() - trace.startedAt,
-      payloadType: image.startsWith('MULTI_URL:') ? 'multi-url' : image.startsWith('URL:') ? 'url' : 'base64',
+      payloadType: image.startsWith('MULTI_IMAGE:') ? 'multi-image' : image.startsWith('MULTI_URL:') ? 'multi-url' : image.startsWith('URL:') ? 'url' : 'base64',
       payloadCharacters: image.length,
     });
-    const expanded = image.startsWith('MULTI_URL:') ? image.substring(10).split('|||').map(url => `URL:${url}`) : [image];
+    const expanded = image.startsWith('MULTI_IMAGE:')
+      ? JSON.parse(image.substring(12))
+      : image.startsWith('MULTI_URL:') ? image.substring(10).split('|||').map(url => `URL:${url}`) : [image];
     const diskRefs = [];
     for (let subIdx = 0; subIdx < expanded.length; subIdx++) {
       const img = expanded[subIdx];
@@ -1737,15 +1792,16 @@ async function runTask(taskId) {
   broadcastTask(taskId);
   broadcastQueueStatus();
 
-  // 所有图片标记为 processing
-  for (let index = 0; index < request.parallelCount; index++) {
+  const itemCount = isGrokImage2Request(request) ? 1 : request.parallelCount;
+  // 所有上游请求标记为 processing
+  for (let index = 0; index < itemCount; index++) {
     db.prepare("UPDATE task_items SET status = 'processing', created_at = ? WHERE task_id = ? AND item_index = ?")
       .run(new Date().toISOString(), taskId, index);
   }
 
   // 真正并发生成所有图片
   const itemResults = await Promise.allSettled(
-    Array.from({ length: request.parallelCount }, (_, index) =>
+    Array.from({ length: itemCount }, (_, index) =>
       generateSingleImage(apiKey, request, taskId, index)
     )
   );

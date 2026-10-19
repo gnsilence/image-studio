@@ -1,0 +1,618 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>GPT Image 2.5 Flare · HTTP API 接入说明</title>
+  <style>
+    :root{--bg:#1c1c1c;--panel:#222;--raised:#292929;--border:#393939;--text:#e9e9e7;--muted:#aaa9a5;--green:#a4c889;--purple:#c994e3;--blue:#a8c8e9;--orange:#dca56f;--red:#f0788a;--mono:"Cascadia Code","SFMono-Regular",Consolas,monospace;--sans:"Segoe UI Variable Text","PingFang SC","Microsoft YaHei",sans-serif}
+    *{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:100px}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.8 var(--sans)}a{color:inherit;text-decoration:none}button,input,select,textarea{font:inherit}button,select{cursor:pointer}button{color:inherit}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,summary:focus-visible{outline:2px solid var(--green);outline-offset:4px}::selection{background:#4b5b3f;color:#fff}code,pre,.mono{font-family:var(--mono)}p{margin:0 0 16px}code{overflow-wrap:anywhere}p code,td code,li code,summary code,.notice code{padding:3px 6px;border-radius:5px;background:#303030;font-size:.9em}
+    .topbar{height:70px;position:sticky;top:0;z-index:10;background:#1c1c1cf5;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 38px;gap:20px}.brand{display:flex;align-items:center;gap:12px;font-weight:650;letter-spacing:.02em}.mark{display:grid;place-items:center;width:30px;height:30px;border:1px solid #6b7e59;border-radius:8px;color:var(--green);font:18px var(--mono)}.toplinks{display:flex;align-items:center;gap:26px;color:var(--muted);font-size:13px}.toplinks a:hover{color:var(--text)}.offline{font-size:11px;letter-spacing:.1em;color:var(--green);display:flex;align-items:center;gap:8px}.dot{height:6px;width:6px;background:var(--green);border-radius:50%}
+    .layout{display:grid;grid-template-columns:208px minmax(0,1fr);gap:56px;max-width:1510px;margin:auto;padding:0 38px}.sidebar{position:sticky;top:106px;align-self:start;height:calc(100vh - 140px);padding-top:39px}.nav-label{font-size:10px;letter-spacing:.17em;color:#777;margin-bottom:13px}.sidebar nav{display:grid;gap:3px}.sidebar nav a{font-size:13px;padding:8px 13px;border-left:1px solid var(--border);color:var(--muted)}.sidebar nav a:hover,.sidebar nav a.active{color:var(--green);border-left-color:var(--green);background:#a4c88908}.sidebar-note{border-top:1px solid var(--border);padding-top:20px;margin-top:30px;font-size:11px;color:#85847f;line-height:1.9}.sidebar-note code{display:block;margin-top:8px;color:var(--muted);font-size:11px}
+    main{min-width:0;padding:50px 0 64px}.eyebrow{font:11px var(--mono);letter-spacing:.13em;color:var(--green);display:flex;align-items:center;gap:9px;margin-bottom:14px}h1{font-size:clamp(29px,3.2vw,43px);line-height:1.2;letter-spacing:-.035em;margin:0 0 15px;font-weight:650}h1 span{font-weight:350;color:#9b9b96}.intro{max-width:810px;color:var(--muted);font-size:14px}.meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:22px 0 29px}.badge{font:11px var(--mono);border:1px solid var(--border);background:#252525;color:#babbb5;border-radius:6px;padding:5px 9px}.badge.green{color:var(--green);border-color:#49563d;background:#a4c88909}.baseurl{display:flex;align-items:center;gap:12px;border:1px solid var(--border);border-radius:12px;padding:16px 19px;background:var(--panel);flex-wrap:wrap}.baseurl .label{font:10px var(--mono);color:#8f8e89;letter-spacing:.1em}.baseurl code{color:var(--green);font-size:14px}.baseurl .suffix{font-size:12px;color:var(--muted);margin-left:auto}
+    section{margin-top:44px}h2{display:flex;align-items:center;gap:10px;font-size:19px;font-weight:650;margin:0 0 17px;letter-spacing:-.02em}.section-icon{width:19px;height:19px;color:#90918a;flex:none}.section-heading{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:17px}.section-heading h2{margin:0}.section-id{font:10px var(--mono);letter-spacing:.12em;color:#73746f}.subtext{font-size:13px;color:var(--muted)}.muted{color:var(--muted)}.small{font-size:12px}.notice{padding:16px 19px;border:1px solid var(--border);border-radius:12px;background:var(--panel);font-size:13px;color:#c5c5bf;line-height:1.9}.notice.accent{border-left:3px solid #829c6b}.notice strong{color:var(--text);font-weight:600}.notice p:last-child{margin-bottom:0}.notice+.notice{margin-top:12px}
+    .example-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:13px;flex-wrap:wrap}.segmented{display:flex;padding:3px;gap:2px;border-radius:999px;background:#262626;max-width:100%;overflow:auto}.segmented button{border:1px solid transparent;background:none;padding:6px 15px;border-radius:999px;font-size:13px;white-space:nowrap;color:#aaa}.segmented button[aria-selected=true]{border-color:#50504e;background:#323232;color:#eee}.protocol{margin-left:8px;font-size:11px;color:#777}.editor{position:relative;border:1px solid var(--border);border-radius:15px;overflow:hidden;background:#202020}.editor-bar{display:flex;align-items:center;gap:11px;padding:11px 17px;border-bottom:1px solid #333;color:#9a9b94;font:11px var(--mono);min-height:47px}.method{color:var(--green);font-size:10px;font-weight:700}.endpoint{overflow-wrap:anywhere}.copy{margin-left:auto;padding:4px 9px;background:transparent;border:1px solid #454541;border-radius:6px;font:11px var(--sans);color:#b8b8b2;display:flex;align-items:center;gap:6px;white-space:nowrap}.copy:hover{background:#34342f;color:#eee}.copy svg{width:13px;height:13px}.code-scroll{overflow:auto;max-height:650px}pre{margin:0;padding:22px 23px;font-size:12.5px;line-height:1.85;tab-size:2;white-space:pre}pre code{overflow-wrap:normal}.token-string{color:var(--green)}.token-keyword{color:var(--purple)}.token-number{color:var(--orange)}.token-comment{color:#868b80}.example-foot{display:flex;align-items:center;justify-content:space-between;gap:15px;flex-wrap:wrap;margin-top:11px;color:#94958e;font-size:12px}.example-foot code{font-size:11px;color:#c6c6bd}.request-count{color:var(--green)}
+    details{border:1px solid var(--border);border-radius:12px;margin-top:17px;background:var(--panel)}summary{padding:14px 18px;font-size:13px;color:#cacac5;cursor:pointer;user-select:none}summary::marker{color:#85897c}.config-body{padding:4px 18px 18px}.form-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px 16px}.field{display:flex;flex-direction:column;gap:6px;font-size:12px;color:#b7b7b0}.field.wide{grid-column:1/-1}.field label{display:flex;justify-content:space-between;gap:8px}.field label span{font:10px var(--mono);color:#82867a}input,select,textarea{width:100%;background:#1b1b1b;border:1px solid #41413d;border-radius:7px;color:#ddd;padding:9px 10px;font-size:12px;line-height:1.6}textarea{resize:vertical;min-height:68px}select:disabled,input:disabled{opacity:.45;cursor:default}.form-note{margin:14px 0 0;font-size:12px;color:#91958a}.custom-size{display:flex;align-items:center;gap:8px}.validation{margin:10px 0 0;font-size:12px;color:var(--red)}[hidden]{display:none!important}
+    .table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:13px}table{width:100%;border-collapse:collapse;text-align:left;font-size:13px;line-height:1.8}th{padding:13px 15px;background:var(--raised);font-weight:600;color:#cecec9;white-space:nowrap}td{padding:15px;border-top:1px solid #343434;vertical-align:top;color:#b9b9b3}td:first-child{color:#e5e5df}.param{font:12px var(--mono);color:#ecece6}.required{display:inline-block;margin-left:6px;border:1px solid #74404b;border-radius:99px;padding:0 6px;font:10px/1.8 var(--sans);color:var(--red)}.type{display:inline-block;padding:2px 8px;border-radius:99px;background:#353736;color:var(--blue);font:11px/1.6 var(--mono);white-space:nowrap}.param-table td:first-child{width:19%;white-space:nowrap}.param-table td:nth-child(2){width:15%}.param-table td:nth-child(3){width:23%}.inline-enums{display:flex;gap:5px;flex-wrap:wrap}.inline-enums code{font-size:11px;white-space:nowrap}.table-note{font-size:12px;color:#999b90;margin:12px 0 0}.matrix{font-family:var(--mono);font-size:11px;min-width:630px}.matrix td,.matrix th{padding:11px 14px;white-space:nowrap}.matrix td.invalid{color:#6c6f67}.matrix .ratio{color:#deded5}.layout-tag{font:10px var(--sans);color:#898d80;margin-left:7px}.step-list{list-style:none;margin:0;padding:0;counter-reset:step}.step-list li{counter-increment:step;position:relative;padding:0 0 20px 36px;color:#b7b9b0;font-size:13px}.step-list li:before{content:counter(step,decimal-leading-zero);position:absolute;left:0;top:2px;color:var(--green);font:11px var(--mono)}.step-list strong{display:block;font-weight:600;color:#ddd;margin-bottom:3px}.step-list li:last-child{padding-bottom:0}.two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px}.two-col .notice{height:100%}.two-col h3{font-size:13px;color:#e3e3da;margin:0 0 9px}.rule-list{padding-left:18px;margin:7px 0}.rule-list li{padding:4px 0}.rule-list li::marker{color:#788c68}.mini-code{border:1px solid var(--border);border-radius:11px;background:#202020;overflow:auto}.mini-code pre{font-size:11.5px;padding:17px 19px}.response-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:15px}.response-grid .notice{margin:0}.response-grid ul{margin-bottom:0}.mapping td:first-child,.mapping td:nth-child(2){font-family:var(--mono);font-size:11px}.mapping td:first-child{width:27%}.mapping td:nth-child(2){width:28%;color:var(--green)}.code-heading{font:11px var(--mono);color:#93998b;padding:12px 18px 0}.source-details{background:transparent}.source-details p{padding:0 18px;font-size:12px;color:#969a8c}.source-details code{font-size:11px}.source-list{margin:0;padding:0 18px 18px;list-style:none;color:#b6b9ae;font-size:12px}.source-list li{padding:5px 0}.footer{display:flex;justify-content:space-between;gap:16px;border-top:1px solid var(--border);margin-top:40px;padding-top:20px;color:#777e6f;font:10px var(--mono);letter-spacing:.03em}.toast{position:fixed;bottom:25px;left:50%;transform:translateX(-50%);background:#32382c;color:#dbe7ce;border:1px solid #667457;padding:9px 17px;border-radius:8px;font-size:12px;z-index:20}
+    @media(min-width:1450px){.layout{gap:72px}main{padding-top:57px}pre{font-size:13px}.topbar{padding-inline:max(38px,calc((100vw - 1434px)/2))}}
+    @media(max-width:1050px){.layout{grid-template-columns:165px minmax(0,1fr);gap:30px;padding:0 25px}.topbar{padding:0 25px}.sidebar nav a{font-size:12px;padding-left:10px}.form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.two-col,.response-grid{grid-template-columns:1fr}.param-table{min-width:720px}.protocol{display:none}}
+    @media(max-width:760px){.layout{display:block;padding:0 18px}.sidebar{display:none}.topbar{height:60px;padding:0 18px}.brand{font-size:13px}.toplinks{gap:14px}.toplinks a{display:none}.offline{font-size:9px}main{padding-top:32px}h1{font-size:31px}h1 span{display:block;margin-top:7px;font-size:22px}.intro{font-size:13px}.baseurl{padding:13px 14px;gap:9px}.baseurl .suffix{width:100%;margin-left:0;font-size:11px}section{margin-top:34px}.section-id{display:none}.example-toolbar{gap:10px}.segmented button{padding:5px 11px;font-size:12px}.editor-bar{padding:10px 12px;font-size:10px}.copy{font-size:10px}pre{padding:17px 15px;font-size:11.5px}.form-grid{gap:12px}.field.wide{grid-column:1/-1}.notice{padding:14px 15px}.footer{flex-wrap:wrap}}
+    @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+    @media print{body{background:#fff;color:#222;font-size:11px}.topbar,.sidebar,.copy,.configurator,.toast,.toplinks{display:none}.layout{display:block;padding:0}main{padding:0}h1,h2,.param,td:first-child{color:#111}.intro,.subtext,.muted,td,.notice{color:#444}section{break-inside:avoid;margin-top:24px}.editor,.notice,.mini-code,details,.baseurl,.table-wrap{background:#fafafa;border-color:#ccc}th{background:#eee;color:#111}.editor-bar{border-color:#ccc}pre{white-space:pre-wrap;font-size:9px;max-height:none;color:#222}.code-scroll{max-height:none}.token-string{color:#42652c}.token-keyword{color:#743893}.token-comment{color:#777}.token-number{color:#9b5c24}.table-wrap{overflow:visible}.table-wrap table{min-width:0}td,th{padding:7px;border-color:#ddd}p code,td code,li code,.notice code{background:#eee}.baseurl code{color:#42652c}.matrix td.invalid{color:#999}.badge{background:#eee;color:#444}.response-grid,.two-col{display:block}.footer{color:#666}.source-details{display:none}a{color:inherit}}
+  </style>
+</head>
+<body>
+  <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" aria-hidden="true" style="position:absolute">
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5m8-10 5 5-5 5m-3-14-2 18"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><path d="m14 10-9 9H2v-3l9-9m10-1a5 5 0 1 1-10 0 5 5 0 0 1 10 0Z"/><path d="M16 5h.01"/></symbol>
+    <symbol id="i-params" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/><path d="M8 2v6m8 1v6m-6 1v6"/></symbol>
+    <symbol id="i-size" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h10v6M7 15l10-6"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m3 16 5-5 6 6 3-3 4 4"/><circle cx="16" cy="8" r="1.5"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/><path d="M20 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="m10 13 4-4m-6 7-2 2a4 4 0 0 1-6-6l4-4a4 4 0 0 1 6 0m4-1 2-2a4 4 0 0 1 6 6l-4 4a4 4 0 0 1-6 0" transform="translate(1 1)"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></symbol>
+  </svg>
+  <header class="topbar">
+    <a class="brand" href="#overview"><span class="mark">✳</span> AIOSS <span class="muted" style="font-weight:400">/ 开发文档</span></a>
+    <div class="toplinks"><a href="#parameters">参数说明</a><a href="#examples">调用示例</a><span class="offline"><span class="dot"></span>HTTP API REFERENCE</span></div>
+  </header>
+  <div class="layout">
+    <aside class="sidebar" aria-label="文档导航">
+      <div class="nav-label">IMAGE GENERATION</div>
+      <nav>
+        <a href="#overview" class="active">概览</a>
+        <a href="#examples">调用示例</a>
+        <a href="#authentication">身份验证与端点</a>
+        <a href="#parameters">支持的请求参数</a>
+        <a href="#sizes">尺寸与比例</a>
+        <a href="#references">参考图设置</a>
+        <a href="#mapping">系统配置映射</a>
+        <a href="#response">异步轮询与存储地址</a>
+        <a href="#operations">多图与任务恢复</a>
+        <a href="#errors">常见问题</a>
+      </nav>
+      <div class="sidebar-note">固定模型 · 可传入密钥<br>文生图 / 多参考图编辑<code>gpt-image-2.5-flare</code></div>
+    </aside>
+    <main>
+      <div id="overview">
+        <div class="eyebrow"><span class="dot"></span> OPENAI-COMPATIBLE · IMAGES API</div>
+        <h1>GPT Image 2.5 Flare <span>接入说明</span></h1>
+        <p class="intro">通过 HTTP 异步提交图像生成与参考图编辑，轮询任务后取得对象存储图片 URL。本文保留工作台的尺寸、比例、质量、风格、背景及参考图参数，按 Sub2API 异步生图指南适配调用流程。</p>
+        <div class="meta"><span class="badge green">ASYNC · 202 → GET</span><span class="badge">gpt-image-2.5-flare</span><span class="badge">JSON / multipart</span><span class="badge">核对日期 2026-10-16</span></div>
+        <div class="baseurl"><span class="label">BASE URL</span><code>https://aioss.cc/v1</code><span class="suffix">Authorization: Bearer &lt;API_KEY&gt;</span></div>
+        <p class="table-note">AIOSS 已由站点开通异步生图对象存储；本页示例使用异步提交 → 同密钥轮询 → 读取存储 URL。2026-10-16 已实测文生图：提交返回 202，约 35 秒后任务 completed，原始返回地址包含 /annex/images/，免密下载返回 200，确认为 1024×1024 PNG 图片。参考图编辑及 H3 视频生成未实测。</p>
+      </div>
+
+      <section id="examples">
+        <div class="section-heading"><h2><svg class="section-icon" fill="none" stroke="currentColor" stroke-width="1.6"><use href="#i-code"/></svg>调用示例</h2><span class="section-id">01 / REQUEST</span></div>
+        <div class="example-toolbar">
+          <div style="display:flex;align-items:center;min-width:0">
+            <div class="segmented" role="tablist" aria-label="请求模式">
+              <button type="button" role="tab" id="mode-generation" aria-selected="true" aria-controls="request-panel" data-mode="generation">文生图</button>
+              <button type="button" role="tab" id="mode-edit" aria-selected="false" aria-controls="request-panel" data-mode="edit">参考图编辑</button>
+            </div>
+            <span class="protocol">openai</span>
+          </div>
+          <div class="segmented" role="tablist" aria-label="示例语言">
+            <button type="button" role="tab" id="lang-curl" aria-selected="false" aria-controls="request-panel" data-lang="curl">cURL</button>
+            <button type="button" role="tab" id="lang-python" aria-selected="false" aria-controls="request-panel" data-lang="python">Python</button>
+            <button type="button" role="tab" id="lang-typescript" aria-selected="false" aria-controls="request-panel" data-lang="typescript">TypeScript</button>
+            <button type="button" role="tab" id="lang-javascript" aria-selected="true" aria-controls="request-panel" data-lang="javascript">JavaScript</button>
+          </div>
+        </div>
+        <div class="editor" id="request-panel" role="tabpanel" aria-labelledby="mode-generation lang-javascript">
+          <div class="editor-bar"><span class="method">POST</span><span class="endpoint" id="example-endpoint">https://aioss.cc/v1/images/generations/async</span><button type="button" class="copy" id="copy-request"><svg fill="none" stroke="currentColor" stroke-width="1.6"><use href="#i-copy"/></svg><span>复制代码</span></button></div>
+          <div class="code-scroll"><pre><code id="request-code"></code></pre></div>
+        </div>
+        <div class="example-foot"><span id="example-help">密钥由函数参数 apiKey 传入；示例使用 Fetch API。</span><span class="request-count" id="example-size">size = 1024x1024</span></div>
+        <details class="configurator" open>
+          <summary>配置请求示例 <span class="muted small">· 修改后自动更新代码，仅在本地生成示例</span></summary>
+          <div class="config-body">
+            <div class="form-grid">
+              <div class="field wide"><label for="cfg-prompt">提示词 <span>prompt</span></label><textarea id="cfg-prompt">一只白色陶瓷花瓶，插着一枝盛开的白色玉兰，浅灰色背景，柔和自然光，写实产品摄影。</textarea></div>
+              <div class="field"><label for="cfg-layout">分辨率档位 <span>转换为 size</span></label><select id="cfg-layout"><option value="auto">自动 · 省略 size</option><option value="1K" selected>1K</option><option value="2K">2K</option><option value="4K">4K</option><option value="custom">自定义像素</option></select></div>
+              <div class="field" id="ratio-field"><label for="cfg-ratio">图片比例 <span>aspectRatio → size</span></label><select id="cfg-ratio"></select></div>
+              <div class="field" id="custom-field" hidden><label for="cfg-width">自定义宽 × 高 <span>px</span></label><div class="custom-size"><input id="cfg-width" type="number" min="16" max="3840" step="16" value="1536" aria-label="自定义宽度"><span>×</span><input id="cfg-height" type="number" min="16" max="3840" step="16" value="1024" aria-label="自定义高度"></div></div>
+              <div class="field"><label for="cfg-quality">生成质量 <span>quality</span></label><select id="cfg-quality"><option value="auto">auto · 自动</option><option value="high">high · 高</option><option value="medium">medium · 中</option><option value="low">low · 低</option></select></div>
+              <div class="field"><label for="cfg-style">图像风格 <span>style</span></label><select id="cfg-style"><option value="auto">auto · 省略 style</option><option value="vivid">vivid · 鲜明</option><option value="natural">natural · 自然</option></select></div>
+              <div class="field"><label for="cfg-background">背景设置 <span>background</span></label><select id="cfg-background"><option value="auto">auto · 自动</option><option value="transparent">transparent · 透明</option><option value="opaque">opaque · 不透明</option></select></div>
+              <div class="field" id="reference-field" hidden><label for="cfg-refs">参考图数量 <span>重复 image 字段</span></label><input id="cfg-refs" type="number" min="1" max="16" step="1" value="2"></div>
+            </div>
+            <p class="validation" id="config-error" role="alert" hidden></p>
+            <p class="form-note">模型固定；密钥由调用方传入。示例包含异步提交和轮询，完成后返回任务对象，从 <code>result.data[].url</code> 读取图片地址。初始示例为 1K / 1:1；自动尺寸和自动风格分别省略 size、style。</p>
+          </div>
+        </details>
+        <noscript><p class="notice">请启用 JavaScript 以显示可切换的代码示例；下方参数表与 HTTP 请求结构可直接阅读。</p></noscript>
+      </section>
+
+      <section id="authentication">
+        <div class="section-heading"><h2><svg class="section-icon" fill="none" stroke="currentColor" stroke-width="1.6"><use href="#i-key"/></svg>身份验证与端点</h2><span class="section-id">02 / AUTHENTICATION</span></div>
+        <div class="notice"><p>提交和查询均携带 <code>Authorization: Bearer &lt;API_KEY&gt;</code>，查询必须使用提交任务的同一把密钥。密钥作为调用方参数，不写入本文。</p><p>基础地址已经包含 <code>/v1</code>。文生图发送 JSON；参考图编辑使用 multipart/form-data，由 HTTP 库生成包含 boundary 的请求头。异步接口沿用原生图请求体；对象存储 bucket、凭据及 CDN 域名由站点配置，不放入客户端请求体。</p></div>
+        <div class="table-wrap" style="margin-top:15px"><table><thead><tr><th>用途</th><th>HTTP</th><th>完整请求地址</th><th>请求体</th></tr></thead><tbody>
+          <tr><td>异步文字生成图片</td><td><span class="method">POST</span></td><td><code>https://aioss.cc/v1/images/generations/async</code></td><td>JSON</td></tr>
+          <tr><td>异步单图 / 多图参考编辑</td><td><span class="method">POST</span></td><td><code>https://aioss.cc/v1/images/edits/async</code></td><td>multipart/form-data</td></tr>
+          <tr><td>查询异步任务</td><td><span class="method">GET</span></td><td><code>https://aioss.cc/v1/images/tasks/{task_id}</code></td><td>无；同一把密钥</td></tr>
+        </tbody></table></div>
+        <p class="table-note">提交成功返回 202 Accepted，包含 task_id / id、poll_url，以及 Location 和 Retry-After 响应头。poll_url 是带 /v1 的相对路径，若使用它应与 https://aioss.cc 解析，避免再次拼接 /v1。示例直接由任务 ID 构造查询地址。</p>
+        <div class="mini-code" style="margin-top:15px"><pre>POST /v1/images/generations/async HTTP/1.1
+Host: aioss.cc
+Authorization: Bearer &lt;API_KEY&gt;
+Content-Type: application/json
+
+{
+  "model": "gpt-image-2.5-flare",
+  "prompt": "一只白色陶瓷花瓶，柔和自然光，写实产品摄影。",
+  "size": "1024x1024",
+  "quality": "auto",
+  "background": "auto",
+  "output_format": "png",
+  "response_format": "url"
+}</pre></div>
+      </section>
+
+      <section id="parameters">
+        <div class="section-heading"><h2><svg class="section-icon" fill="none" stroke="currentColor" stroke-width="1.6"><use href="#i-params"/></svg>支持的请求参数</h2><span class="section-id">03 / PARAMETERS</span></div>
+        <p class="subtext">生图字段沿用当前项目，提交端点切换到 /async；不额外添加 async、S3 凭据或对象存储配置字段。multipart 中普通参数均以文本字段提交。</p>
+        <div class="table-wrap"><table class="param-table"><thead><tr><th>参数</th><th>类型</th><th>项目默认 / 范围</th><th>说明</th></tr></thead><tbody>
+          <tr><td><span class="param">model</span><span class="required">必填</span></td><td><span class="type">string</span></td><td><code>gpt-image-2.5-flare</code></td><td>固定模型名称，文生图与参考图编辑一致。</td></tr>
+          <tr><td><span class="param">prompt</span><span class="required">必填</span></td><td><span class="type">string</span></td><td>非空文本</td><td>描述画面、风格及参考图的使用方式。多参考图的角色和顺序通过提示词表达。</td></tr>
+          <tr><td><span class="param">size</span></td><td><span class="type">string</span></td><td><code>宽x高</code> / 省略</td><td>例如 <code>1536x1024</code>。由档位与比例计算，或由自定义尺寸生成。自动布局省略此字段。</td></tr>
+          <tr><td><span class="param">quality</span></td><td><span class="type">enum</span></td><td><div class="inline-enums"><code>auto</code><code>high</code><code>medium</code><code>low</code></div></td><td>默认 <code>auto</code>。工作台“高 / 中 / 低”分别映射为 high / medium / low。</td></tr>
+          <tr><td><span class="param">style</span></td><td><span class="type">enum</span></td><td><code>vivid</code> / <code>natural</code> / 省略</td><td>鲜明为 vivid，自然为 natural。工作台选择 auto 时不发送 <code>style</code>。</td></tr>
+          <tr><td><span class="param">background</span></td><td><span class="type">enum</span></td><td><div class="inline-enums"><code>auto</code><code>transparent</code><code>opaque</code></div></td><td>默认 auto；transparent 为透明背景，opaque 为不透明背景。当前链路固定 PNG 输出。</td></tr>
+          <tr><td><span class="param">output_format</span></td><td><span class="type">string</span></td><td><code>png</code></td><td>项目固定发送 png，文生图与参考图编辑均如此。</td></tr>
+          <tr><td><span class="param">response_format</span></td><td><span class="type">string</span></td><td><code>url</code></td><td>沿用 URL 输出偏好。异步任务完成后，Sub2API 将上游 URL / Base64 图片转存对象存储，返回 result.data[].url 并移除 b64_json。</td></tr>
+          <tr><td><span class="param">image</span><span class="required">编辑必填</span></td><td><span class="type">file × N</span></td><td>参考图编辑 1–16 张*</td><td>使用真实文件内容；多图重复提交同名 <code>image</code> 字段，按顺序追加。无需自行改为 <code>image[]</code>。</td></tr>
+          <tr><td><span class="param">n</span></td><td><span class="type">integer</span></td><td>编辑：<code>1</code><br>文生图：省略</td><td>参考图编辑固定发送 n=1；文生图代码没有显式发送 n。工作台一次生成多张通过多次独立请求实现。</td></tr>
+          <tr><td><span class="param">stream</span></td><td><span class="type">boolean</span></td><td>省略 / false</td><td>异步接口拒绝 stream=true；轮询只返回最终 JSON 结果。本文示例省略该字段。</td></tr>
+          <tr><td><span class="param">partial_images</span></td><td><span class="type">integer</span></td><td>省略</td><td>异步轮询不提供流式预览帧，不提交本字段。</td></tr>
+        </tbody></table></div>
+        <p class="table-note">* 16 张来自该模型的项目内置配置，可由项目模型设置调整；不表示已验证 AIOSS 对该模型的实际参考图上限。</p>
+      </section>
+
+      <section id="sizes">
+        <div class="section-heading"><h2><svg class="section-icon" fill="none" stroke="currentColor" stroke-width="1.6"><use href="#i-size"/></svg>尺寸与比例</h2><span class="section-id">04 / SIZE &amp; ASPECT RATIO</span></div>
+        <p class="subtext">直接 HTTP 请求只接收最终像素字符串 <code>size</code>。工作台的 <code>outputSize</code> 和 <code>aspectRatio</code> 在请求前完成换算。</p>
+        <div class="table-wrap"><table class="matrix"><thead><tr><th>比例</th><th>1K</th><th>2K</th><th>4K</th></tr></thead><tbody id="size-matrix">
+          <tr><td class="ratio">1:1</td><td>1024x1024</td><td>2048x2048</td><td class="invalid">不可选 · 总像素超限</td></tr>
+          <tr><td class="ratio">3:2</td><td>1536x1024</td><td>2048x1360</td><td class="invalid">不可选 · 总像素超限</td></tr>
+          <tr><td class="ratio">2:3</td><td>1024x1536</td><td>1360x2048</td><td class="invalid">不可选 · 总像素超限</td></tr>
+          <tr><td class="ratio">16:9</td><td>1824x1024</td><td>2048x1152</td><td>3840x2160</td></tr>
+          <tr><td class="ratio">9:16</td><td>1024x1824</td><td>1152x2048</td><td>2160x3840</td></tr>
+          <tr><td class="ratio">4:3</td><td>1360x1024</td><td>2048x1536</td><td class="invalid">不可选 · 总像素超限</td></tr>
+          <tr><td class="ratio">3:4</td><td>1024x1360</td><td>1536x2048</td><td class="invalid">不可选 · 总像素超限</td></tr>
+          <tr><td class="ratio">21:9</td><td>2384x1024</td><td>2048x880</td><td>3840x1648</td></tr>
+        </tbody></table></div>
+        <p class="table-note">像素按 16 的倍数四舍五入，因此实际宽高比可能略有偏差。4K 档按最长边 3840px 计算；方形 3840x3840 超过项目像素上限，不会出现在工作台可选组合中。</p>
+        <div class="two-col" style="margin-top:17px">
+          <div class="notice"><h3>自动布局</h3><p>选择自动时，工作台使用 <code>outputSize=auto</code>、<code>aspectRatio=auto</code>，并清除自定义尺寸；最终请求不发送 <code>size</code>。</p><p>希望严格指定输出尺寸时，使用表中的具体像素值。</p></div>
+          <div class="notice"><h3>自定义尺寸</h3><ul class="rule-list"><li>宽、高规整到 16 的倍数。</li><li>工作台最长边 ≤ 3840px。</li><li>长边 ÷ 短边 ≤ 3。</li><li>总像素介于 655,360 与 8,294,400，含边界。</li><li>合法自定义尺寸优先于档位与比例。</li></ul></div>
+        </div>
+        <details>
+          <summary>尺寸换算规则及当前实现差异</summary>
+          <div class="config-body subtext"><p>1K：正方形为 1024×1024，其他比例固定短边为 1024，长边按比例计算后取最近的 16 倍数。2K / 4K：固定长边为 2048 / 3840，短边按比例计算后取最近的 16 倍数。</p><p>当前前端自定义尺寸最大边长为 3840；后端 <code>resolveGptImageRequestSize</code> 对自定义尺寸的规整上限为 4096。本文配置器沿用前端 3840 的规则。后端对“档位 + 比例”换算结果没有执行同样的像素过滤，因此接入方应在计算后应用上表的工作台校验。</p><p style="margin-bottom:0">自定义输入先四舍五入到 16 倍数，再将每条边截到上限，然后校验比例和总像素；合法值覆盖预设尺寸，无效值在现有后端会退回预设尺寸。</p></div>
+        </details>
+      </section>
+
+      <section id="references">
+        <div class="section-heading"><h2><svg class="section-icon" fill="none" stroke="currentColor" stroke-width="1.6"><use href="#i-image"/></svg>参考图设置</h2><span class="section-id">05 / REFERENCE IMAGES</span></div>
+        <ol class="step-list">
+          <li><strong>添加参考图后切换到异步编辑端点</strong>本页无参考图调用 images/generations/async，有参考图调用 images/edits/async。参考图来源沿用工作台：上传、拖入、剪贴板粘贴，以及从本地或 S3 素材中读取。</li>
+          <li><strong>按顺序重复提交 image 文件字段</strong>1 张参考图提交 1 个 image，多张提交多个同名 image。示例采用 PNG 文件；替换为其他格式时，文件名、MIME 和字节内容应一致。素材 URL 在项目中先读取为文件内容，再作为文件上传。</li>
+          <li><strong>在 prompt 中说明每张图的作用</strong>例如：“图片1作为主体，保留花瓶的形状与材质；图片2作为环境参考，采用其光线与背景。”项目没有单独的参考强度、参考权重或角色字段。画布会在提示词前补充“参考图片编号：图片1、图片2……”以描述引用关系。</li>
+          <li><strong>输出尺寸独立设置</strong>非自动布局下，首次上传参考图时，工作台会根据第一张图寻找最近的可选比例；不会把该图原始宽高直接作为请求 size。自动布局时不执行此比例选择。最终输出由显式 size 或服务端自动布局决定。</li>
+        </ol>
+        <div class="mini-code" style="margin-top:18px"><div class="code-heading">multipart/form-data · 字段结构（由 HTTP 库生成 boundary）</div><pre>model           gpt-image-2.5-flare
+prompt          图片1作为主体，图片2作为环境参考，保留花瓶的形状与材质。
+n               1
+response_format url
+quality         auto
+background      auto
+output_format   png
+size            1536x1024
+image           [reference-1.png 的二进制文件内容]
+image           [reference-2.png 的二进制文件内容]</pre></div>
+        <details>
+          <summary>沿用当前项目的参考图预处理</summary>
+          <div class="config-body subtext"><p>以下为项目上传策略，不是 AIOSS 的服务限制。直接对接 HTTP 时，可在调用方按需要复用。</p>
+            <div class="table-wrap"><table><thead><tr><th>项目设置</th><th>当前行为</th></tr></thead><tbody>
+              <tr><td>数量</td><td>Flare 内置上限为 16 张，由模型配置的 <code>maxRefImages</code> 控制；素材库单次导入最多 5 张，可继续追加。</td></tr>
+              <tr><td>小文件</td><td>≤ 1.5 MiB 时直接使用原图，不压缩。</td></tr>
+              <tr><td>较大文件</td><td>&gt; 1.5 MiB 时尝试压缩：长边 ≤ 2560px、总像素 ≤ 5,000,000，保持原始比例。PNG / WebP 转为 WebP，质量 0.90；其他类型转为 JPEG，质量 0.86。</td></tr>
+              <tr><td>保留原图条件</td><td>压缩结果大小 ≥ 原文件的 98% 时保留原图；压缩失败时也可能使用原始内容或回退结果。上述缩放值属于压缩目标，并非每张最终参考图的硬性尺寸上限。</td></tr>
+              <tr><td>单图检查</td><td>工作台检查处理后的文件大小 ≤ 10 MiB（10 × 1024 × 1024 字节）。</td></tr>
+              <tr><td>项目后端请求体</td><td>项目本地任务接口还限制 JSON 请求体长度为 <code>10 × 1024 × 1024</code> 个字符，Base64 会增加体积；多图可能先达到此限制。直接调用 AIOSS 的 multipart 接口不经过这一层检查。</td></tr>
+              <tr><td>缓存与去重</td><td>按原文件 SHA-256 缓存处理结果；工作台按图片 ID 去重。缓存命中标记与压缩比例不作为 HTTP 参数提交。</td></tr>
+            </tbody></table></div>
+          </div>
+        </details>
+      </section>
+
+      <section id="mapping">
+        <div class="section-heading"><h2><svg class="section-icon" fill="none" stroke="currentColor" stroke-width="1.6"><use href="#i-link"/></svg>系统配置 → HTTP 参数</h2><span class="section-id">06 / FIELD MAPPING</span></div>
+        <p class="subtext">复用工作台配置时，在调用方完成以下转换。最终请求中使用右侧 HTTP 字段名称。</p>
+        <div class="table-wrap"><table class="mapping"><thead><tr><th>系统配置</th><th>HTTP 中的处理</th><th>映射规则</th></tr></thead><tbody>
+          <tr><td>apiKey</td><td>Authorization</td><td>请求头：<code>Bearer &lt;API_KEY&gt;</code>。</td></tr>
+          <tr><td>baseUrl</td><td>请求 URL 前缀</td><td>本文固定为 <code>https://aioss.cc/v1</code>，与端点只拼接一次 /v1。</td></tr>
+          <tr><td>model / modelId</td><td>model</td><td>固定为 <code>gpt-image-2.5-flare</code>，不使用模型配置的本地注册 ID。</td></tr>
+          <tr><td>prompt</td><td>prompt</td><td>提示词文本；图片引用、场景要求等都在此表达。</td></tr>
+          <tr><td>outputSize + aspectRatio</td><td>size</td><td>将档位与比例转换为像素字符串；自动布局省略。</td></tr>
+          <tr><td>customSize</td><td>size</td><td>合法自定义像素优先；实际请求没有 customSize 字段。</td></tr>
+          <tr><td>gptImageQuality</td><td>quality</td><td>auto / high / medium / low。</td></tr>
+          <tr><td>gptImageStyle</td><td>style 或省略</td><td>vivid / natural；auto 不提交。</td></tr>
+          <tr><td>gptImageBackground</td><td>background</td><td>auto / transparent / opaque；项目输出格式固定 png。</td></tr>
+          <tr><td>images[].data + mimeType</td><td>image（文件）</td><td>项目任务接口内部保存纯 Base64 与 MIME；调用 edits 前转为二进制文件，并重复 image 字段。</td></tr>
+          <tr><td>parallelCount</td><td>客户端发起 1–4 次请求</td><td>项目不会把它映射为单次请求的 n。每次编辑仍为 n=1。</td></tr>
+          <tr><td>mode</td><td>选择异步请求端点</td><td>text-to-image → images/generations/async；image-to-image → images/edits/async。</td></tr>
+          <tr><td>protocol</td><td>调用方路由设置</td><td>固定采用 OpenAI 兼容的 Images 协议，不作为请求体字段。</td></tr>
+          <tr><td>temperature</td><td>不提交</td><td>GPT Image 系列不显示温度控件；现有 OpenAI 图片请求不发送 temperature。</td></tr>
+          <tr><td>maxRefImages / maxOutputSize</td><td>调用方能力校验</td><td>控制工作台参考图数量与档位；不作为模型请求参数。Flare 内置值为 16 / 4K。</td></tr>
+          <tr><td>supportsAdvancedParams</td><td>调用方控件开关</td><td>控制质量、风格、背景控件显示；关闭时表单使用 auto 默认值，不等于后端完全停止发送这些字段。</td></tr>
+          <tr><td>keepPromptAfterSubmit</td><td>仅本地界面行为</td><td>是否在提交后保留输入框提示词，不影响 HTTP 生图请求。</td></tr>
+        </tbody></table></div>
+        <p class="table-note">当前主工作台有参考图时使用 edits。后端另保留 generations 中 <code>image: ["data:&lt;mime&gt;;base64,..."]</code> 的兼容分支，但主工作台的正常参考图流程不会使用该分支，本文示例按 multipart 编辑方式编写。</p>
+      </section>
+
+      <section id="response">
+        <div class="section-heading"><h2><svg class="section-icon" fill="none" stroke="currentColor" stroke-width="1.6"><use href="#i-check"/></svg>异步轮询与对象存储地址</h2><span class="section-id">07 / RESPONSE</span></div>
+        <p class="subtext">以下是协议示意，URL 与任务 ID 均需替换为实际返回值。提交获得 202 代表已受理；status=completed 才能读取生成结果。</p>
+        <div class="response-grid">
+          <div class="mini-code"><div class="code-heading">POST · 202 Accepted</div><pre>{
+  "id": "imgtask_example",
+  "task_id": "imgtask_example",
+  "object": "image.generation.task",
+  "status": "processing",
+  "poll_url": "/v1/images/tasks/imgtask_example"
+}</pre></div>
+          <div class="notice"><h3 style="margin:0 0 10px;font-size:14px">轮询顺序</h3><ol class="rule-list"><li>保存 <code>task_id</code>，没有时取 <code>id</code>。使用同一把密钥 GET 查询端点。</li><li><code>processing</code> 时继续查询；默认间隔 3 秒，可按 <code>Retry-After</code> 调整。</li><li><code>completed</code> 时读取 <code>result.data[].url</code>；顶层 <code>image_url</code> 是第一张图片的快捷字段。</li><li><code>failed</code> 时读取 <code>error.message</code> 与 <code>http_status</code>。查询 HTTP 200 本身不代表生成成功。</li></ol></div>
+        </div>
+        <div class="mini-code" style="margin-top:15px"><div class="code-heading">GET · 任务完成后的对象</div><pre>{
+  "id": "imgtask_example",
+  "task_id": "imgtask_example",
+  "object": "image.generation.task",
+  "status": "completed",
+  "http_status": 200,
+  "image_url": "https://cdn.example.com/images/imgtask_example-0.png",
+  "result": {
+    "created": 1792022400,
+    "data": [
+      { "url": "https://cdn.example.com/images/imgtask_example-0.png" }
+    ]
+  }
+}</pre></div>
+        <div class="notice accent" style="margin-top:15px"><h3 style="margin:0 0 10px;font-size:14px">存储配置与链接有效期</h3><p>对象存储配置由 AIOSS 服务端管理，客户端仅提交生图参数。服务端设置 <code>public_base_url</code> 时，结果为该域名下的对象直链；留空时返回带签名的临时 URL。签名有效期由 <code>presign_expiry_hours</code> 决定，官方配置示例为 24 小时，AIOSS 实际值以站点配置为准。</p><p>任务的 <code>expires_at</code> 表示任务记录到期时间，不能用它推算 CDN URL 的有效期。Sub2API 任务记录自最后一次状态更新起保留 24 小时；图片能保留多久还取决于对象存储的文件策略。</p><p>给 H3 提供参考图时，直接使用 <code>task.result.data[0].url</code> 或 <code>task.image_url</code>，保留完整签名参数，并确保 H3 上游能在排队、读取期间访问。详见<a href="video-models-api.html#image-result-url">视频参考图接入说明</a>。</p></div>
+        <div class="mini-code" style="margin-top:15px"><pre id="result-code">// Node.js · task 是轮询得到的完整任务对象。
+import { writeFile } from 'node:fs/promises';
+
+async function saveImage(task, filename = 'output.png') {
+  if (task.status !== 'completed') throw new Error('图片任务尚未成功完成');
+  const url = task.result?.data?.[0]?.url || task.image_url;
+  if (!url) throw new Error('任务结果无图片 URL');
+  // 下载对象存储 URL 时不附加生图 API 密钥。
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`下载失败: ${response.status}`);
+  await writeFile(filename, Buffer.from(await response.arrayBuffer()));
+  return filename;
+}</pre></div>
+        <p class="table-note">保存函数返回本地文件名；给 H3 传参仍需原始公网 URL。网页端请求 AIOSS 或下载图片时，跨域权限由对应服务决定；H3 服务端读取参考图还需单独满足公网可访问条件。</p>
+      </section>
+
+      <section id="operations">
+        <div class="section-heading"><h2><svg class="section-icon" fill="none" stroke="currentColor" stroke-width="1.6"><use href="#i-params"/></svg>多图与任务恢复</h2><span class="section-id">08 / EXECUTION</span></div>
+        <div class="two-col">
+          <div class="notice"><h3>一次生成 1–4 张</h3><p>沿用工作台的并行方式：创建 1–4 个独立异步任务，每个请求重复提交参数及参考图。分别保存任务 ID，并查询各自结果。</p><p>调用方控制提交并发与查询频率；不要因任务仍在 processing 就重复 POST。</p></div>
+          <div class="notice"><h3>保留 ID 后恢复查询</h3><p>Sub2API 单个任务最多执行 30 分钟。示例将调用方轮询等待时间设为 30 分钟；等待超时或查询网络中断时，保留任务 ID，之后使用同一把密钥恢复 GET 查询。</p><p>异步端点拒绝 stream=true。对象存储转存失败时任务会标记 failed，需读取具体错误后处理。</p></div>
+        </div>
+        <div class="mini-code" style="margin-top:15px"><pre>// 调用方参数 apiKey；generateImage 使用上方 JavaScript 示例。
+// 参考图模式时，按同样方式给每次调用传入 referenceFiles。
+const parallelCount = 3; // 与工作台一致：1–4
+const results = await Promise.allSettled(
+  Array.from({ length: parallelCount }, () => generateImage(apiKey, prompt))
+);
+
+// 已保存任务 ID 时可恢复查询，不必重新提交生图。
+// const task = await waitForImageTask(apiKey, savedTaskId);
+// Python：task = wait_for_image_task(api_key, saved_task_id)</pre></div>
+        <p class="table-note">提交超时不代表任务未创建，避免自动重发产生重复任务。本文示例仅生成调用代码；浏览器页面本身不提交生图请求。</p>
+      </section>
+
+      <section id="errors">
+        <div class="section-heading"><h2><svg class="section-icon" fill="none" stroke="currentColor" stroke-width="1.6"><use href="#i-code"/></svg>常见问题</h2><span class="section-id">09 / TROUBLESHOOTING</span></div>
+        <div class="table-wrap"><table><thead><tr><th>现象</th><th>检查与处理</th></tr></thead><tbody>
+          <tr><td>401 / 403</td><td>检查 Bearer 密钥、账户可用状态及该密钥对固定模型的访问权限；保留服务端具体错误消息。</td></tr>
+          <tr><td>400 或参数错误</td><td>检查模型名称、尺寸合法性和字段枚举。style 自动时应省略；项目质量使用 auto / high / medium / low。</td></tr>
+          <tr><td>参考图没有生效</td><td>使用 /images/edits/async，以 multipart 上传真实文件；多张图重复 image 字段；核对提示词中的图片编号和文件顺序。</td></tr>
+          <tr><td>413 / 文件体积过大</td><td>减少图片数量或大小。若经过项目任务接口，还需核对包含 Base64 的整体 JSON 体积；直接调用 AIOSS 时按其实际限制处理。</td></tr>
+          <tr><td>429 或繁忙响应</td><td>按服务端说明与 Retry-After（如有）控制重试间隔，降低调用方同时进行的请求数。</td></tr>
+          <tr><td>提交 /async 返回 404</td><td>检查路径和站点的异步存储配置是否完整，密钥所属平台须为 OpenAI 或 Grok；保留响应中的具体错误。开关已开启但 S3 配置不完整时，仍可能返回 async image tasks are not enabled。</td></tr>
+          <tr><td>查询任务返回 404</td><td>核对 task_id、提交时使用的同一把 API 密钥以及任务记录是否到期；同一用户的另一把密钥也不能查询该任务。</td></tr>
+          <tr><td>返回 HTML / 地址错误</td><td>检查完整地址，避免 /v1/v1。poll_url 已含 /v1，应与站点根地址解析；记录网关返回的状态和内容。</td></tr>
+          <tr><td>504 / 超时 / 网络中断</td><td>保留错误和请求记录，检查服务端状态后决定是否重试。超时并不说明服务端没有完成处理；重发可能产生新的生成任务。</td></tr>
+          <tr><td>202 响应中没有图片</td><td>202 仅表示受理，保存任务 ID 后轮询；status=completed 时读取 result.data[0].url，或顶层 image_url。</td></tr>
+          <tr><td>查询 HTTP 200，但图片生成失败</td><td>检查 status 是否为 failed，以及 error.message / http_status。生成或对象存储转存错误均需以任务对象判断。</td></tr>
+          <tr><td>异步请求提示不支持流式</td><td>省略 stream 和 partial_images，不向 /async 提交 stream=true。</td></tr>
+          <tr><td>任务 completed，但图片 URL 返回 404</td><td>核对站点 public_base_url 是否指向实际图片存储桶的公开域名，以及对象键前缀与 CDN / 反向代理的路径映射。任务完成不等于外链可公开读取；用无需密钥的 GET 确认返回真实图片后，再将地址交给 H3。</td></tr>
+          <tr><td>H3 无法读取生图地址</td><td>确认已等到 completed，使用原始对象存储 URL 并保留签名参数；核对公网读取权限与签名有效期，不使用本地文件或缓存引用。</td></tr>
+          <tr><td>其他参数</td><td>现有链路未发送 seed、negative_prompt、参考权重、strength、input_fidelity 或 mask。本文不为这些字段定义接入行为。</td></tr>
+        </tbody></table></div>
+        <details class="source-details">
+          <summary>参数核对依据</summary>
+          <p>生图参数依据当前项目源码，异步端点、轮询及对象存储行为依据 Sub2API 官方指南；地址与模型按本次接入要求填写。此处适配的是本文 HTTP 示例，项目运行时代码的调用行为仍以其源码为准；未读取或嵌入项目密钥。</p>
+          <ul class="source-list">
+            <li><a href="https://github.com/Wei-Shaw/sub2api/blob/main/docs/ASYNC_IMAGE_TASKS.md" target="_blank" rel="noopener noreferrer">Sub2API · Asynchronous Image Tasks</a> · 异步提交、同密钥查询、202 响应、任务状态与对象存储配置。</li>
+            <li><a href="https://github.com/Wei-Shaw/sub2api/blob/main/backend/internal/service/image_storage.go" target="_blank" rel="noopener noreferrer">Sub2API · image_storage.go</a> · 将上游图片转存并改写为 URL 结果。</li>
+            <li><code>backend/server.js</code> · getGptImageSize / resolveGptImageRequestSize / createGptImageRequestInit / requestGptImage：尺寸、字段、文件格式、请求端点与结果解析。</li>
+            <li><code>frontend/src/lib/model-capabilities.ts</code> · GPT_IMAGE_ASPECT_RATIOS / CUSTOM_IMAGE_SIZE_LIMITS / getAspectRatioOptions：比例、可选档位、像素过滤及枚举。</li>
+            <li><code>frontend/src/lib/nova-models.ts</code> · gpt-image-2.5-flare 内置配置：16 张参考图、4K、OpenAI 协议、图像高级参数开关。</li>
+            <li><code>frontend/src/components/ImageGenerationWorkbench.tsx</code> · 模式判断、首次参考图比例识别、素材导入与大小检查。</li>
+            <li><code>frontend/src/lib/upload-image-cache.ts</code> · 参考图处理、缓存、MIME 与压缩策略。</li>
+            <li><code>frontend/src/components/canvas/lib/image-reference-prompt.ts</code> · 多参考图编号提示词。</li>
+          </ul>
+        </details>
+      </section>
+      <footer class="footer"><span>AIOSS / IMAGES API · gpt-image-2.5-flare</span><span>2026-10-15 · 单文件 HTML · 无外部依赖</span></footer>
+    </main>
+  </div>
+  <div class="toast" id="toast" role="status" hidden></div>
+  <script>
+    'use strict';
+    const BASE_URL = 'https://aioss.cc/v1';
+    const MODEL = 'gpt-image-2.5-flare';
+    const RATIOS = [['1:1','正方形'],['3:2','横向'],['2:3','竖向'],['16:9','宽屏'],['9:16','竖屏'],['4:3','横向'],['3:4','竖向'],['21:9','超宽屏']];
+    const state = { mode: 'generation', language: 'javascript', code: '' };
+    const $ = id => document.getElementById(id);
+    const round16 = value => Math.max(16, Math.round(value / 16) * 16);
+    function getSize(tier, ratio) {
+      if (tier === 'auto') return undefined;
+      const [rw, rh] = ratio.split(':').map(Number);
+      if (rw === rh) { const side = tier === '1K' ? 1024 : tier === '2K' ? 2048 : 3840; return `${side}x${side}`; }
+      if (tier === '1K') return rw > rh ? `${round16(1024 * rw / rh)}x1024` : `1024x${round16(1024 * rh / rw)}`;
+      const long = tier === '2K' ? 2048 : 3840;
+      return rw > rh ? `${long}x${round16(long * rh / rw)}` : `${round16(long * rw / rh)}x${long}`;
+    }
+    function isValidSize(size) {
+      const [w, h] = size.split('x').map(Number);
+      return w > 0 && h > 0 && Math.max(w,h) <= 3840 && w % 16 === 0 && h % 16 === 0 && Math.max(w,h) / Math.min(w,h) <= 3 && w * h >= 655360 && w * h <= 8294400;
+    }
+    function getCustomSize() {
+      const w = Number($('cfg-width').value), h = Number($('cfg-height').value);
+      if (!Number.isFinite(w) || !Number.isFinite(h) || w < 0 || h < 0 || $('cfg-width').value === '' || $('cfg-height').value === '') return '';
+      const size = `${Math.min(round16(w),3840)}x${Math.min(round16(h),3840)}`;
+      return isValidSize(size) ? size : '';
+    }
+    function refreshRatios() {
+      const tier = $('cfg-layout').value, previous = $('cfg-ratio').value;
+      const choices = tier === 'auto' ? [['auto','自动']] : RATIOS.filter(([ratio]) => tier === 'custom' || isValidSize(getSize(tier,ratio)));
+      $('cfg-ratio').replaceChildren(...choices.map(([ratio,label]) => {
+        const option = document.createElement('option'); option.value = ratio;
+        option.textContent = `${ratio} · ${label}`; return option;
+      }));
+      $('cfg-ratio').value = choices.some(([ratio]) => ratio === previous) ? previous : choices[0][0];
+      $('cfg-ratio').disabled = tier === 'auto' || tier === 'custom';
+      $('ratio-field').hidden = tier === 'custom';
+      $('custom-field').hidden = tier !== 'custom';
+    }
+    function getConfig() {
+      const tier = $('cfg-layout').value;
+      const size = tier === 'custom' ? getCustomSize() : getSize(tier,$('cfg-ratio').value);
+      const refs = Number($('cfg-refs').value);
+      let error = '';
+      if (!$('cfg-prompt').value.trim()) error = '请填写非空提示词。';
+      else if (tier === 'custom' && !size) error = '尺寸无效：规整后长边须 ≤ 3840px、比例 ≤ 3:1、总像素介于 655,360 与 8,294,400。';
+      else if (state.mode === 'edit' && (!Number.isInteger(refs) || refs < 1 || refs > 16)) error = '参考图数量须为 1–16 的整数。';
+      return { size, refs, prompt: $('cfg-prompt').value.trim(), quality: $('cfg-quality').value, style: $('cfg-style').value, background: $('cfg-background').value, error };
+    }
+    function getBody(config) {
+      const body = { model: MODEL, prompt: config.prompt };
+      if (state.mode === 'edit') body.n = 1;
+      body.response_format = 'url';
+      body.quality = config.quality;
+      body.background = config.background;
+      body.output_format = 'png';
+      if (config.style !== 'auto') body.style = config.style;
+      if (config.size) body.size = config.size;
+      return body;
+    }
+    const quoteShell = value => "'" + String(value).replace(/'/g, "'\\''") + "'";
+    function makeCurl(config, body, url) {
+      const lines = ['# Bash · 依赖 curl、jq；先由调用环境设置 API_KEY', 'set -euo pipefail', '', `task=$(curl --fail-with-body -sS --connect-timeout 15 --max-time 180 -X POST '${url}' \\`, '  -H "Authorization: Bearer ${API_KEY}" \\'];
+      if (state.mode === 'generation') {
+        lines.push("  -H 'Content-Type: application/json' \\", `  --data-raw ${quoteShell(JSON.stringify(body,null,2))}`);
+      } else {
+        for (const [key,value] of Object.entries(body)) lines.push(`  --form-string ${quoteShell(`${key}=${value}`)} \\`);
+        for (let i = 1; i <= config.refs; i++) lines.push(`  -F 'image=@./reference-${i}.png;type=image/png'${i < config.refs ? ' \\' : ''}`);
+      }
+      lines.push(')', '', 'task_id=$(printf \'%s\' "$task" | jq -er \'.task_id // .id\')',
+        'printf \'已受理，请保存任务 ID：%s\\n\' "$task_id" >&2',
+        'deadline=$((SECONDS + 1800))', 'status=processing', '',
+        '# 默认每 3 秒查询；如服务返回其他 Retry-After，按该值调整。',
+        'while (( SECONDS < deadline )); do', '  sleep 3',
+        `  task=$(curl --fail-with-body -sS --connect-timeout 15 --max-time 30 "${BASE_URL}/images/tasks/\${task_id}" \\`,
+        '    -H "Authorization: Bearer ${API_KEY}")',
+        '  status=$(printf \'%s\' "$task" | jq -r \'.status\')',
+        '  if [[ "$status" == "completed" ]]; then',
+        '    printf \'%s\\n\' "$task" | jq .', '    break', '  fi',
+        '  if [[ "$status" == "failed" ]]; then',
+        '    printf \'%s\\n\' "$task" | jq . >&2', '    exit 1', '  fi', 'done', '',
+        'if [[ "$status" != "completed" ]]; then',
+        '  printf \'轮询等待超时，保留任务 ID 后恢复查询：%s\\n\' "$task_id" >&2',
+        '  exit 1', 'fi', '# 图片地址：完成任务的 .result.data[].url；或第一张图 .image_url。');
+      return lines.join('\n');
+    }
+    function makePython(config, body, url) {
+      const edit = state.mode === 'edit';
+      const data = JSON.stringify(body,null,2).split('\n').map(line => '    ' + line).join('\n').replace(/^    /,'');
+      const signature = edit ? 'def generate_image(api_key: str, prompt: str, image_paths: list[str]):' : 'def generate_image(api_key: str, prompt: str):';
+      let code = '# Python 3.10+ · 依赖：pip install requests\n';
+      if (edit) code += 'from contextlib import ExitStack\nfrom pathlib import Path\n';
+      code += 'import time\nfrom urllib.parse import quote\nimport requests\n\n\n' + signature + '\n';
+      code += '    payload = ' + data.replace(`"prompt": ${JSON.stringify(config.prompt)}`, '"prompt": prompt') + '\n';
+      code += '    headers = {"Authorization": f"Bearer {api_key}"}\n';
+      if (edit) {
+        code += '    # 示例使用 PNG；其他格式请同步调整文件 MIME。\n    with ExitStack() as stack:\n';
+        code += '        files = [\n            ("image", (Path(path).name, stack.enter_context(open(path, "rb")), "image/png"))\n            for path in image_paths\n        ]\n';
+        code += `        response = requests.post(\n            "${url}",\n            headers=headers, data=payload, files=files, timeout=(15, 180),\n        )\n`;
+      } else {
+        code += `    response = requests.post(\n        "${url}",\n        headers=headers, json=payload, timeout=(15, 180),\n    )\n`;
+      }
+      code += `    response.raise_for_status()
+    if response.status_code != 202:
+        raise RuntimeError(f"预期 202 Accepted，实际 HTTP {response.status_code}")
+    task = response.json()
+    task_id = task.get("task_id") or task.get("id")
+    if not task_id:
+        raise RuntimeError("受理响应中没有任务 ID")
+    # 在业务系统中持久化 task_id，便于网络中断后恢复查询。
+    print(f"请保存任务 ID：{task_id}")
+    retry_after = max(1, float(response.headers.get("Retry-After") or 3))
+    return wait_for_image_task(api_key, task_id, retry_after)
+
+
+def wait_for_image_task(api_key: str, task_id: str, retry_after: float = 3):
+    deadline = time.monotonic() + 1800
+    task_url = "${BASE_URL}/images/tasks/" + quote(task_id, safe="")
+    while time.monotonic() < deadline:
+        time.sleep(min(retry_after, max(0, deadline - time.monotonic())))
+        if time.monotonic() >= deadline:
+            break
+        response = requests.get(
+            task_url,
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=(15, 30),
+        )
+        response.raise_for_status()
+        task = response.json()
+        if task.get("status") == "completed":
+            return task
+        if task.get("status") == "failed":
+            raise RuntimeError(f"任务 {task_id} 失败：{task.get('error')}，http_status={task.get('http_status')}")
+        retry_after = max(1, float(response.headers.get("Retry-After") or 3))
+    raise TimeoutError(f"轮询等待超时，保留任务 ID 后恢复查询：{task_id}")
+
+
+`;
+      code += '# api_key 由调用方传入；以下文件须替换为实际路径。\n' + '# task = generate_image(api_key, ' + JSON.stringify(config.prompt);
+      if (edit) code += ', [' + Array.from({length:config.refs},(_,i) => `"./reference-${i+1}.png"`).join(', ') + ']';
+      return code + ')\n# print(task["result"]["data"])\n# 恢复查询：task = wait_for_image_task(api_key, saved_task_id)';
+    }
+    function makeFetch(config, body, url, typescript) {
+      const edit = state.mode === 'edit', ts = typescript;
+      const signature = `export async function generateImage(apiKey${ts ? ': string' : ''}, prompt${ts ? ': string' : ''}${edit ? `, referenceFiles${ts ? ': File[]' : ''}` : ''}) {`;
+      let code = '// 现代浏览器 / Node.js 22+ · Fetch、FormData、AbortSignal.timeout\n';
+      if (edit) code += '// referenceFiles 是调用方准备好的 File[]，保留文件名、真实 MIME 与顺序。\n';
+      code += signature + '\n';
+      if (edit) {
+        code += '  const form = new FormData();\n';
+        for (const [key,value] of Object.entries(body)) code += `  form.append(${JSON.stringify(key)}, ${key === 'prompt' ? 'prompt' : JSON.stringify(String(value))});\n`;
+        code += '  for (const file of referenceFiles) {\n    form.append("image", file, file.name);\n  }\n\n';
+        code += `  const response = await fetch("${url}", {\n    method: "POST",\n    headers: { Authorization: \`Bearer \${apiKey}\` },\n    body: form,\n    signal: AbortSignal.timeout(180000),\n  });\n`;
+      } else {
+        const payload = JSON.stringify(body,null,2).replace(`"prompt": ${JSON.stringify(config.prompt)}`, '"prompt": prompt');
+        code += '  const payload = ' + payload.split('\n').map((line,index) => index ? '  '+line : line).join('\n') + ';\n\n';
+        code += `  const response = await fetch("${url}", {\n    method: "POST",\n    headers: {\n      Authorization: \`Bearer \${apiKey}\`,\n      "Content-Type": "application/json",\n    },\n    body: JSON.stringify(payload),\n    signal: AbortSignal.timeout(180000),\n  });\n`;
+      }
+      code += `
+  if (!response.ok) {
+    throw new Error(\`HTTP \${response.status}: \${await response.text()}\`);
+  }
+  if (response.status !== 202) throw new Error("预期 202 Accepted");
+  const task = await response.json();
+  const taskId = task.task_id || task.id;
+  if (!taskId) throw new Error("受理响应中没有任务 ID");
+  // 在业务系统中持久化 taskId，便于网络中断后恢复查询。
+  console.log("请保存任务 ID：", taskId);
+  const retryAfter = Math.max(1, Number(response.headers.get("Retry-After")) || 3);
+  return waitForImageTask(apiKey, taskId, retryAfter);
+}
+
+export async function waitForImageTask(apiKey${ts ? ': string' : ''}, taskId${ts ? ': string' : ''}, retryAfter = 3) {
+  const deadline = Date.now() + 1800000;
+  const taskUrl = "${BASE_URL}/images/tasks/" + encodeURIComponent(taskId);
+  while (Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, Math.min(retryAfter * 1000, deadline - Date.now())));
+    if (Date.now() >= deadline) break;
+    const response = await fetch(taskUrl, {
+      headers: { Authorization: \`Bearer \${apiKey}\` },
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!response.ok) {
+      throw new Error(\`查询任务 \${taskId}：HTTP \${response.status}: \${await response.text()}\`);
+    }
+    const task = await response.json();
+    if (task.status === "completed") return task;
+    if (task.status === "failed") {
+      throw new Error(\`任务 \${taskId} 失败：\${task.error?.message || JSON.stringify(task.error)}，http_status=\${task.http_status}\`);
+    }
+    retryAfter = Math.max(1, Number(response.headers.get("Retry-After")) || 3);
+  }
+  throw new Error(\`轮询等待超时，保留任务 ID 后恢复查询：\${taskId}\`);
+}
+
+`;
+      code += '// apiKey 由调用方传入；示例提示词：\n// const prompt = ' + JSON.stringify(config.prompt) + ';\n';
+      if (edit) code += `// referenceFiles 传入 ${config.refs} 个实际 File 对象。\n`;
+      code += `// const task = await generateImage(apiKey, prompt${edit ? ', referenceFiles' : ''});\n// console.log(task.result.data);\n// 恢复查询：const task = await waitForImageTask(apiKey, savedTaskId);`;
+      return code;
+    }
+    function escapeHtml(value) { return String(value).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+    function highlight(code) {
+      const pattern = /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|((?:\/\/|#)[^\n]*)|\b(const|let|export|async|await|function|return|if|throw|new|for|of|from|import|def|with|as|in)\b|\b(\d+(?:\.\d+)?)\b/g;
+      let html = '', offset = 0;
+      for (const match of code.matchAll(pattern)) {
+        html += escapeHtml(code.slice(offset,match.index));
+        const type = match[1] ? 'string' : match[2] ? 'comment' : match[3] ? 'keyword' : 'number';
+        html += `<span class="token-${type}">${escapeHtml(match[0])}</span>`;
+        offset = match.index + match[0].length;
+      }
+      return html + escapeHtml(code.slice(offset));
+    }
+    function render() {
+      const config = getConfig(), error = $('config-error');
+      error.hidden = !config.error; error.textContent = config.error;
+      $('reference-field').hidden = state.mode !== 'edit';
+      const url = `${BASE_URL}/images/${state.mode === 'edit' ? 'edits' : 'generations'}/async`;
+      $('example-endpoint').textContent = url;
+      $('request-panel').setAttribute('aria-labelledby', `mode-${state.mode} lang-${state.language}`);
+      if (config.error) {
+        state.code = ''; $('request-code').textContent = '// ' + config.error;
+        $('copy-request').disabled = true; $('example-size').textContent = '请完善配置'; return;
+      }
+      const body = getBody(config);
+      state.code = state.language === 'curl' ? makeCurl(config,body,url)
+        : state.language === 'python' ? makePython(config,body,url)
+        : makeFetch(config,body,url,state.language === 'typescript');
+      $('request-code').innerHTML = highlight(state.code);
+      $('copy-request').disabled = false;
+      $('example-size').textContent = config.size ? `size = ${config.size}` : '自动布局 · 不发送 size';
+      $('example-help').textContent = state.language === 'curl' ? 'Bash + curl + jq；环境变量 API_KEY；提交后轮询，输出完成任务的 JSON。'
+        : state.language === 'python' ? 'Python 3.10+ / requests；提交后轮询，返回 completed 任务对象。'
+        : '现代浏览器 / Node.js 22+；提交后轮询，返回 completed 任务对象。';
+    }
+    document.querySelectorAll('[data-mode]').forEach(button => button.addEventListener('click', () => {
+      state.mode = button.dataset.mode;
+      document.querySelectorAll('[data-mode]').forEach(item => item.setAttribute('aria-selected', String(item === button)));
+      render();
+    }));
+    document.querySelectorAll('[data-lang]').forEach(button => button.addEventListener('click', () => {
+      state.language = button.dataset.lang;
+      document.querySelectorAll('[data-lang]').forEach(item => item.setAttribute('aria-selected', String(item === button)));
+      render();
+    }));
+    document.querySelectorAll('[role="tablist"]').forEach(list => list.addEventListener('keydown', event => {
+      if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
+      const tabs = [...list.querySelectorAll('[role="tab"]')], current = tabs.indexOf(document.activeElement);
+      if (current < 0) return;
+      event.preventDefault();
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length-1 : (current + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+      tabs[next].focus(); tabs[next].click();
+    }));
+    $('cfg-layout').addEventListener('change', () => { refreshRatios(); render(); });
+    document.querySelectorAll('.config-body input,.config-body textarea,.config-body select').forEach(input => {
+      if (input.id !== 'cfg-layout') input.addEventListener('input',render);
+    });
+    let toastTimer;
+    $('copy-request').addEventListener('click', async () => {
+      if (!state.code) return;
+      let copied = false;
+      try { await navigator.clipboard.writeText(state.code); copied = true; }
+      catch {
+        const temporary = document.createElement('textarea'); temporary.value = state.code;
+        temporary.style.cssText = 'position:fixed;top:0;left:-9999px'; document.body.append(temporary);
+        temporary.select(); copied = document.execCommand('copy'); temporary.remove();
+      }
+      $('toast').textContent = copied ? '代码已复制，密钥由调用方传入' : '请选中代码后手动复制';
+      $('toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('toast').hidden = true; },2200);
+    });
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver(entries => {
+        const visible = entries.filter(entry => entry.isIntersecting).sort((a,b) => a.boundingClientRect.top-b.boundingClientRect.top);
+        if (!visible.length) return;
+        document.querySelectorAll('.sidebar nav a').forEach(link => link.classList.toggle('active',link.hash === '#'+visible[0].target.id));
+      }, { rootMargin:'-85px 0px -65% 0px', threshold:0 });
+      document.querySelectorAll('main > section,#overview').forEach(section => observer.observe(section));
+    }
+    refreshRatios(); render();
+  </script>
+</body>
+</html>

@@ -189,7 +189,7 @@ export function AgentGenerationProgress({
 }: AgentGenerationProgressProps) {
   const [copiedText, setCopiedText] = useState<string | null>(null);
   const progressLabel = getProgressLabel(phase, Boolean(taskId));
-  const placeholderCount = Math.max(1, Math.min(4, Math.trunc(parallelCount) || 1));
+  const placeholderCount = Math.max(1, Math.min(10, Math.trunc(parallelCount) || 1));
   const sections: ParsedSection[] = [
     {
       label: '分析',

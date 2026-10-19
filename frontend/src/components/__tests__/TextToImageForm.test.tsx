@@ -9,6 +9,7 @@ describe('TextToImageForm', () => {
     const imageModels = [
       BUILTIN_IMAGE_PRESETS['gemini-3-pro-image-preview'],
       BUILTIN_IMAGE_PRESETS['gpt-image-2'],
+      BUILTIN_IMAGE_PRESETS['grok-imagine-image-2.0'],
     ].map(preset => ({ ...preset, apiKey: 'test-key', builtinPreset: preset.id }))
     localStorage.setItem('nova-model-registry', JSON.stringify({
       imageModels,
@@ -101,6 +102,40 @@ describe('TextToImageForm', () => {
     fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false })
 
     expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('shows only supported Grok 2.0 quality controls', async () => {
+    render(<TextToImageForm onSubmit={vi.fn()} initialData={{ model: 'grok-imagine-image-2.0' }} />)
+    fireEvent.click(await screen.findByTitle('图像参数'))
+    expect(await screen.findByText('质量', { selector: 'label' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^中$/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^低$/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^高$/ })).not.toBeInTheDocument()
+    expect(screen.queryByText('风格', { selector: 'label' })).not.toBeInTheDocument()
+    expect(screen.queryByText('背景', { selector: 'label' })).not.toBeInTheDocument()
+  })
+
+  it('restores and submits Grok 2.0 resolution, quality and ten outputs', async () => {
+    const onSubmit = vi.fn()
+    render(<TextToImageForm onSubmit={onSubmit} initialData={{
+      model: 'grok-imagine-image-2.0',
+      prompt: 'A landscape',
+      outputSize: '1.5K',
+      aspectRatio: 'auto',
+      gptImageQuality: 'medium',
+      parallelCount: 10,
+    }} />)
+    await screen.findByTitle('图像参数')
+    fireEvent.keyDown(screen.getByPlaceholderText('描述你想要生成的图像...'), { key: 'Enter', shiftKey: true })
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      model: 'grok-imagine-image-2.0',
+      outputSize: '1.5K',
+      aspectRatio: 'auto',
+      gptImageQuality: 'medium',
+      gptImageStyle: 'auto',
+      gptImageBackground: 'auto',
+      parallelCount: 10,
+    }))
   })
 
   it('shows configuration prompt when disabled prop is true', () => {

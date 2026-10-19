@@ -29,6 +29,9 @@ contextBridge.exposeInMainWorld('novaDesktop', Object.freeze({
     write: (namespace, id, data, mimeType) => invoke('desktop:files:write', namespace, id, data, mimeType),
     delete: (namespace, id) => invoke('desktop:files:delete', namespace, id),
   }),
+  images: Object.freeze({
+    fetch: url => invoke('desktop:images:fetch', url),
+  }),
   s3: Object.freeze({
     getConfig: () => invoke('desktop:s3:config'),
     saveConfig: input => invoke('desktop:s3:save-config', input),
