@@ -1,6 +1,6 @@
 'use client';
 
-import { getAssetBlob, getAssetThumbnailBlob, type ImageAsset } from '@/lib/asset-store';
+import { getAssetBlob, getAssetFileExtension, getAssetThumbnailBlob, type ImageAsset } from '@/lib/asset-store';
 import { blobToBytes, storedFileToBlob } from '@/lib/desktop-binary';
 import {
   getDesktopBridge,
@@ -82,7 +82,9 @@ export async function uploadFileToS3(prefix: string, file: Blob, fileName: strin
 export async function uploadLocalAssetToS3(prefix: string, asset: ImageAsset): Promise<S3ImageObject> {
   const blob = await getAssetBlob(asset.id);
   if (!blob) throw new Error('本地素材文件不存在');
-  return uploadFileToS3(prefix, blob, asset.name);
+  const baseName = asset.name.replace(/\.(png|jpe?g|webp|gif|svg|avif)$/i, '');
+  const fileName = `${baseName}.${getAssetFileExtension(blob.type || asset.mimeType)}`;
+  return uploadFileToS3(prefix, blob, fileName);
 }
 
 export async function createS3Folder(prefix: string, name: string): Promise<S3Folder> {

@@ -21,6 +21,28 @@ function mockCrossOriginImage() {
 }
 
 describe('remote image actions', () => {
+  it.each([
+    ['svg', 'image/svg+xml', '<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0h1v1z"/></svg>'],
+    ['gif', 'image/gif', 'GIF89a-original-animation'],
+  ])('downloads %s with its original bytes and matching extension', async (extension, mimeType, contents) => {
+    vi.stubGlobal('Blob', NodeBlob);
+    const createObjectURL = vi.fn<(blob: Blob) => string>().mockReturnValue('blob:original');
+    vi.stubGlobal('URL', { createObjectURL, revokeObjectURL: vi.fn() });
+    let downloadedName = '';
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      downloadedName = this.download;
+    });
+    await downloadImagePayload({
+      name: 'generated.png',
+      dataUrl: `data:${mimeType};base64,${btoa(contents)}`,
+      sourceKind: 'text-to-image',
+    });
+    expect(downloadedName).toBe(`generated.${extension}`);
+    const blob = createObjectURL.mock.calls[0][0] as Blob;
+    expect(blob.type).toBe(mimeType);
+    expect(await blob.text()).toBe(contents);
+  });
+
   it('下载既有历史图片时也使用桌面读取通道', async () => {
     const fetchImage = mockCrossOriginImage();
     const createObjectURL = vi.fn(() => 'blob:download');

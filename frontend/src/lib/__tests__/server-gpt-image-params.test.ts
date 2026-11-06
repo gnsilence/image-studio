@@ -29,7 +29,7 @@ describe('backend GPT Image advanced params forwarding', () => {
     expect(serverSource).toContain('background: advancedParams.background');
     expect(serverSource).toContain("output_format: 'png'");
     expect(serverSource).toContain("response_format: 'url'");
-    expect(serverSource).toContain("advancedParams.style === 'vivid' || advancedParams.style === 'natural' ? { style: advancedParams.style } : {}");
+    expect(serverSource).toContain("!is26 && (advancedParams.style === 'vivid' || advancedParams.style === 'natural') ? { style: advancedParams.style } : {}");
   });
 
   it('routes OpenAI image endpoint by mode rather than legacy model names', () => {

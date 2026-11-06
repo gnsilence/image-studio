@@ -135,6 +135,9 @@ const IMAGE_RESPONSE_FORMAT_UNSUPPORTED_PATTERN = /(?:(?:response_format|b64_jso
 // 开源版：不再硬编码模型列表，由前端通过 protocol 字段指定协议类型
 const VALID_PROTOCOLS = new Set(['google', 'openai', 'grok']);
 const GPT_IMAGE_QUALITIES = new Set(['auto', 'high', 'medium', 'low']);
+const GPT_IMAGE_EXTENDED_QUALITIES = new Set([...GPT_IMAGE_QUALITIES, 'xhigh', 'max']);
+const GPT_IMAGE_COMPLEXITIES = new Set(['low', 'medium', 'high']);
+const GPT_IMAGE_OUTPUT_FORMATS = new Set(['png', 'jpeg', 'webp', 'svg', 'gif']);
 const GPT_IMAGE_STYLES = new Set(['auto', 'vivid', 'natural']);
 const GPT_IMAGE_BACKGROUNDS = new Set(['auto', 'transparent', 'opaque']);
 const GROK_IMAGE2_QUALITIES = new Set(['auto', 'medium', 'low']);
@@ -213,6 +216,7 @@ const PROMPT_GALLERY_SOURCES = [
   },
 ];
 const taskRefImages = new Map();
+const taskMarkupImages = new Map();
 
 const app = IS_DEV ? next({ dev: IS_DEV, hostname: HOSTNAME, port: PORT, dir: path.join(__dirname, '..', 'frontend') }) : null;
 const handle = app ? app.getRequestHandler() : null;
@@ -332,6 +336,7 @@ function cleanupTaskRuntimeState(taskId) {
   }
   apiKeys.delete(taskId);
   taskRefImages.delete(taskId);
+  taskMarkupImages.delete(taskId);
   taskSources.delete(taskId);
 }
 
@@ -461,6 +466,8 @@ function ensureImageDir() {
 function getImageExtension(mimeType) {
   if (mimeType?.includes('jpeg') || mimeType?.includes('jpg')) return 'jpg';
   if (mimeType?.includes('webp')) return 'webp';
+  if (mimeType?.includes('gif')) return 'gif';
+  if (mimeType?.includes('svg')) return 'svg';
   return 'png';
 }
 
@@ -469,6 +476,8 @@ function detectImageMimeType(buffer, fallback = 'image/png') {
   if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'image/jpeg';
   if (buffer[0] === 0x89 && buffer.slice(1, 4).toString('ascii') === 'PNG') return 'image/png';
   if (buffer.slice(0, 4).toString('ascii') === 'RIFF' && buffer.slice(8, 12).toString('ascii') === 'WEBP') return 'image/webp';
+  if (/^GIF8[79]a$/.test(buffer.subarray(0, 6).toString('ascii'))) return 'image/gif';
+  if (/^(?:<\?xml[^>]*>\s*)?(?:<!--[\s\S]*?-->\s*)*<svg(?:\s|>)/i.test(buffer.toString('utf8').trimStart())) return 'image/svg+xml';
   return fallback;
 }
 
@@ -699,6 +708,7 @@ function getContentType(filePath) {
     '.jpg': 'image/jpeg',
     '.jpeg': 'image/jpeg',
     '.webp': 'image/webp',
+    '.gif': 'image/gif',
     '.svg': 'image/svg+xml',
     '.ico': 'image/x-icon',
     '.txt': 'text/plain; charset=utf-8',
@@ -824,7 +834,8 @@ function validateEnumValue(value, validValues, fieldName) {
 }
 
 function normalizeGptImageAdvancedParams(params = {}) {
-  const quality = validateEnumValue(params.gptImageQuality, GPT_IMAGE_QUALITIES, 'quality');
+  const extendedQuality = /^gpt-image-2\.[56]-(?:sunburst|flare)$/.test(params.model || '');
+  const quality = validateEnumValue(params.gptImageQuality, extendedQuality ? GPT_IMAGE_EXTENDED_QUALITIES : GPT_IMAGE_QUALITIES, 'quality');
   const style = validateEnumValue(params.gptImageStyle, GPT_IMAGE_STYLES, 'style');
   const background = validateEnumValue(params.gptImageBackground, GPT_IMAGE_BACKGROUNDS, 'background');
 
@@ -833,6 +844,89 @@ function normalizeGptImageAdvancedParams(params = {}) {
     style: style || DEFAULT_GPT_IMAGE_ADVANCED_PARAMS.style,
     background: background || DEFAULT_GPT_IMAGE_ADVANCED_PARAMS.background,
   };
+}
+
+function isGptImage26Request(request) {
+  return request.protocol === 'openai' && /^gpt-image-2\.6-(?:sunburst|flare)$/.test(request.model || '');
+}
+
+function getRasterImageMetadata(buffer) {
+  if (buffer.length >= 33 && buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
+    let offset = 8;
+    let metadata;
+    let hasImageData = false;
+    let hasEnd = false;
+    while (offset + 12 <= buffer.length) {
+      const length = buffer.readUInt32BE(offset);
+      if (offset + length + 12 > buffer.length) return undefined;
+      const type = buffer.toString('ascii', offset + 4, offset + 8);
+      if (!metadata) {
+        if (type !== 'IHDR' || length !== 13) return undefined;
+        metadata = {
+          width: buffer.readUInt32BE(offset + 8), height: buffer.readUInt32BE(offset + 12),
+          mimeType: 'image/png', hasAlpha: [4, 6].includes(buffer[offset + 17]),
+        };
+      } else if (type === 'tRNS' && length > 0) metadata.hasAlpha = true;
+      if (type === 'IDAT' && length > 0) hasImageData = true;
+      if (type === 'IEND' && length === 0) { hasEnd = true; break; }
+      offset += length + 12;
+    }
+    return hasImageData && hasEnd && metadata.width > 0 && metadata.height > 0 ? metadata : undefined;
+  }
+  if (buffer.length >= 30 && buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP') {
+    const type = buffer.toString('ascii', 12, 16);
+    if (type === 'VP8X') return { width: buffer.readUIntLE(24, 3) + 1, height: buffer.readUIntLE(27, 3) + 1 };
+    if (type === 'VP8 ' && buffer[23] === 0x9d && buffer[24] === 1 && buffer[25] === 0x2a) {
+      return { width: buffer.readUInt16LE(26) & 0x3fff, height: buffer.readUInt16LE(28) & 0x3fff };
+    }
+    if (type === 'VP8L' && buffer[20] === 0x2f) {
+      const bits = buffer.readUInt32LE(21);
+      return { width: (bits & 0x3fff) + 1, height: ((bits >>> 14) & 0x3fff) + 1 };
+    }
+  }
+  if (buffer.length >= 4 && buffer[0] === 0xff && buffer[1] === 0xd8) {
+    let offset = 2;
+    while (offset + 4 <= buffer.length && buffer[offset] === 0xff) {
+      const marker = buffer[offset + 1];
+      const length = buffer.readUInt16BE(offset + 2);
+      if (length < 2 || offset + 2 + length > buffer.length) return undefined;
+      if ([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf].includes(marker) && length >= 7) {
+        return { width: buffer.readUInt16BE(offset + 7), height: buffer.readUInt16BE(offset + 5) };
+      }
+      offset += 2 + length;
+    }
+  }
+  return undefined;
+}
+
+function validateGptImage26Payload(body) {
+  normalizeGptImageAdvancedParams(body);
+  body.gptImageComplexity = validateEnumValue(body.gptImageComplexity, GPT_IMAGE_COMPLEXITIES, 'complexity') || 'high';
+  body.gptImageOutputFormat = validateEnumValue(body.gptImageOutputFormat, GPT_IMAGE_OUTPUT_FORMATS, 'output_format') || 'png';
+  body.gptImageFrameCount ??= 9;
+  body.gptImageFrameDurationMs ??= 200;
+  if (!Number.isInteger(body.gptImageFrameCount) || body.gptImageFrameCount < 2 || body.gptImageFrameCount > 16) throw new Error('GIF 帧数须为 2–16');
+  if (!Number.isInteger(body.gptImageFrameDurationMs) || body.gptImageFrameDurationMs < 20 || body.gptImageFrameDurationMs > 2000) throw new Error('GIF 每帧时长须为 20–2000 毫秒');
+  if (body.mode === 'image-to-image' && body.images.length === 0) throw new Error('图生图模式需要至少一张参考图');
+  if (body.images.some(image => !image || !['image/png', 'image/jpeg', 'image/webp'].includes(image.mimeType))) throw new Error('参考图须为 PNG、JPEG 或 WebP');
+  if (body.gptImageOutputFormat === 'svg' && body.mode !== 'text-to-image') throw new Error('SVG 仅支持文生图');
+  if (body.gptImageOutputFormat === 'jpeg' && body.gptImageBackground === 'transparent') throw new Error('JPEG 不支持透明背景');
+  if (body.gptImageOutputFormat === 'gif' && body.gptImageBackground === 'transparent') throw new Error('GIF 不支持透明背景');
+  if (body.gptImageMarkup !== undefined && body.gptImageMarkup !== null) {
+    const markup = body.gptImageMarkup;
+    if (body.mode !== 'image-to-image') throw new Error('编辑标记仅支持图生图');
+    if (body.mask || body.gptImageMask) throw new Error('编辑标记不能与蒙版同时使用');
+    if (markup.mimeType !== 'image/png' || typeof markup.data !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(markup.data)) throw new Error('编辑标记须为透明 PNG');
+    const markupBytes = Buffer.from(markup.data, 'base64');
+    if (markupBytes.length > 50 * 1024 * 1024) throw new Error('编辑标记不能超过 50 MB');
+    const metadata = getRasterImageMetadata(markupBytes);
+    const firstImage = body.images[0];
+    const firstMetadata = typeof firstImage?.data === 'string' ? getRasterImageMetadata(Buffer.from(firstImage.data, 'base64')) : undefined;
+    if (!metadata || metadata.mimeType !== 'image/png' || !metadata.hasAlpha) throw new Error('编辑标记须为带透明通道的 PNG');
+    if (metadata.width * metadata.height > 16_777_216) throw new Error('编辑标记不能超过 16,777,216 像素');
+    if (!firstMetadata || firstMetadata.width !== metadata.width || firstMetadata.height !== metadata.height) throw new Error('编辑标记尺寸须与第一张参考图一致');
+    body.gptImageMarkup = { ...markup, width: metadata.width, height: metadata.height };
+  }
 }
 
 function isGrokImage2Request(request) {
@@ -851,7 +945,11 @@ function validateCreatePayload(body) {
   if (!Number.isInteger(body.parallelCount) || body.parallelCount < 1 || body.parallelCount > maxCount) throw new Error('并发数量无效');
 
   if (!Array.isArray(body.images)) body.images = [];
+  if (isGptImage26Request(body)) validateGptImage26Payload(body);
   if (isGrokImage2Request(body)) {
+    if (body.grokImageUseUrl !== undefined && typeof body.grokImageUseUrl !== 'boolean') {
+      throw new Error('URL 下载选项无效');
+    }
     validateEnumValue(body.gptImageQuality, GROK_IMAGE2_QUALITIES, 'quality');
     validateEnumValue(body.outputSize?.toLowerCase(), GROK_IMAGE2_RESOLUTIONS, 'resolution');
     validateEnumValue(body.aspectRatio, GROK_IMAGE2_ASPECT_RATIOS, 'aspect_ratio');
@@ -888,7 +986,17 @@ function createTask(body, req) {
     gptImageQuality: body.gptImageQuality,
     gptImageStyle: body.gptImageStyle,
     gptImageBackground: body.gptImageBackground,
+    ...(isGptImage26Request(body) ? {
+      gptImageComplexity: body.gptImageComplexity,
+      gptImageOutputFormat: body.gptImageOutputFormat,
+      gptImageFrameCount: body.gptImageFrameCount,
+      gptImageFrameDurationMs: body.gptImageFrameDurationMs,
+      ...(body.gptImageMarkup ? { gptImageMarkup: {
+        mimeType: 'image/png', width: body.gptImageMarkup.width, height: body.gptImageMarkup.height,
+      } } : {}),
+    } : {}),
     parallelCount: body.parallelCount,
+    grokImageUseUrl: isGrokImage2Request(body) && body.grokImageUseUrl === true,
     images: body.images.map(img => ({ mimeType: img.mimeType })),
   };
   const tx = db.transaction(() => {
@@ -909,6 +1017,7 @@ function createTask(body, req) {
 
   apiKeys.set(taskId, body.apiKey);
   taskRefImages.set(taskId, body.images);
+  if (isGptImage26Request(body) && body.gptImageMarkup) taskMarkupImages.set(taskId, body.gptImageMarkup);
   taskSources.set(taskId, source);
   // 递增 pending 计数
   if (source.ip) pendingCountByIp.set(source.ip, (pendingCountByIp.get(source.ip) || 0) + 1);
@@ -1004,6 +1113,7 @@ function getSupportedGptImageSize(model, outputSize, aspectRatio) {
 }
 
 function resolveGptImageRequestSize(request) {
+  if (isGptImage26Request(request) && request.gptImageOutputFormat === 'gif') return 'auto';
   const customSize = normalizeCustomImageSize(request.customSize, 4096);
   if (customSize) return customSize;
   return getSupportedGptImageSize(request.model, request.outputSize, request.aspectRatio);
@@ -1016,7 +1126,9 @@ function getGptImageRequestAdvancedParams(request) {
 function createGptImageRequestInit(apiKey, request, resolvedSize, options = {}) {
   const prompt = request.prompt;
   const advancedParams = getGptImageRequestAdvancedParams(request);
-  const stream = Boolean(options.stream);
+  const is26 = isGptImage26Request(request);
+  const outputFormat = is26 ? request.gptImageOutputFormat || 'png' : 'png';
+  const stream = Boolean(options.stream) && !['svg', 'gif'].includes(outputFormat);
   const partialImages = Math.min(3, Math.max(0, Number(options.partialImages) || 0));
 
   if (request.mode === 'image-to-image') {
@@ -1024,7 +1136,7 @@ function createGptImageRequestInit(apiKey, request, resolvedSize, options = {}) 
     formData.append('model', request.model);
     formData.append('prompt', prompt);
     formData.append('n', '1');
-    formData.append('response_format', 'url');
+    if (!is26) formData.append('response_format', 'url');
     if (stream) {
       formData.append('stream', 'true');
       if (partialImages > 0) formData.append('partial_images', String(partialImages));
@@ -1032,8 +1144,17 @@ function createGptImageRequestInit(apiKey, request, resolvedSize, options = {}) 
     if (advancedParams) {
       formData.append('quality', advancedParams.quality);
       formData.append('background', advancedParams.background);
-      formData.append('output_format', 'png');
-      if (advancedParams.style === 'vivid' || advancedParams.style === 'natural') {
+      if (is26) {
+        formData.append('output_format', outputFormat);
+        formData.append('complexity', request.gptImageComplexity || 'high');
+        if (outputFormat === 'gif') {
+          formData.append('frame_count', String(request.gptImageFrameCount || 9));
+          formData.append('frame_duration_ms', String(request.gptImageFrameDurationMs || 200));
+        }
+      } else {
+        formData.append('output_format', 'png');
+      }
+      if (!is26 && (advancedParams.style === 'vivid' || advancedParams.style === 'natural')) {
         formData.append('style', advancedParams.style);
       }
     }
@@ -1048,6 +1169,9 @@ function createGptImageRequestInit(apiKey, request, resolvedSize, options = {}) 
       const blob = new Blob([bytes], { type: mimeType });
       formData.append('image', blob, `image-${index}.${extension}`);
     });
+    if (is26 && request.gptImageMarkup?.data) {
+      formData.append('markup', new Blob([Buffer.from(request.gptImageMarkup.data, 'base64')], { type: 'image/png' }), 'markup.png');
+    }
 
     return {
       method: 'POST',
@@ -1061,14 +1185,18 @@ function createGptImageRequestInit(apiKey, request, resolvedSize, options = {}) 
   const payload = {
     prompt,
     model: request.model,
-    response_format: 'url',
+    ...(!is26 ? { response_format: 'url' } : { n: 1, complexity: request.gptImageComplexity || 'high' }),
     ...(stream ? { stream: true, ...(partialImages > 0 ? { partial_images: partialImages } : {}) } : {}),
     ...(resolvedSize ? { size: resolvedSize } : {}),
     ...(advancedParams ? {
       quality: advancedParams.quality,
       background: advancedParams.background,
-      output_format: 'png',
-      ...(advancedParams.style === 'vivid' || advancedParams.style === 'natural' ? { style: advancedParams.style } : {}),
+      ...(!is26 ? { output_format: 'png' } : { output_format: outputFormat }),
+      ...(!is26 && (advancedParams.style === 'vivid' || advancedParams.style === 'natural') ? { style: advancedParams.style } : {}),
+    } : {}),
+    ...(is26 && outputFormat === 'gif' ? {
+      frame_count: request.gptImageFrameCount || 9,
+      frame_duration_ms: request.gptImageFrameDurationMs || 200,
     } : {}),
     ...(request.images.length > 0 ? { image: request.images.map(img => `data:${img.mimeType};base64,${img.data}`) } : {}),
   };
@@ -1590,7 +1718,8 @@ async function generateNovaImage(apiKey, request, trace) {
   if (request.protocol === 'openai') {
     const resolvedSize = resolveGptImageRequestSize(request);
     const streamTarget = `${baseUrl}|${request.model}`;
-    if (!IMAGE_STREAM_ENABLED || streamUnsupportedTargets.has(streamTarget)) {
+    if (!IMAGE_STREAM_ENABLED || streamUnsupportedTargets.has(streamTarget)
+      || (isGptImage26Request(request) && ['svg', 'gif'].includes(request.gptImageOutputFormat))) {
       return requestGptImage(apiKey, request, resolvedSize, { baseUrl, trace });
     }
     try {
@@ -1610,7 +1739,11 @@ async function generateNovaImage(apiKey, request, trace) {
   }
   if (request.protocol === 'grok') {
     if (isGrokImage2Request(request)) {
-      return requestGrokImage(apiKey, request, { baseUrl, trace, responseFormat: 'url' });
+      return requestGrokImage(apiKey, request, {
+        baseUrl,
+        trace,
+        responseFormat: request.grokImageUseUrl ? 'url' : 'b64_json',
+      });
     }
     try {
       return await requestGrokImage(apiKey, request, { baseUrl, trace, responseFormat: 'b64_json' });
@@ -1747,7 +1880,9 @@ async function runSingleImage(apiKey, request, taskId, index, trace) {
         diskRefs.push(`URL:${remoteUrl}`);
       } else {
         const buffer = Buffer.from(img, 'base64');
-        const result = saveImageToDisk(taskId, index, subIdx, buffer, detectImageMimeType(buffer));
+        const fallbackMimeType = isGptImage26Request(request) && request.gptImageOutputFormat
+          ? `image/${request.gptImageOutputFormat === 'svg' ? 'svg+xml' : request.gptImageOutputFormat}` : 'image/png';
+        const result = saveImageToDisk(taskId, index, subIdx, buffer, detectImageMimeType(buffer, fallbackMimeType));
         logTaskStage(trace, 'result_saved', {
           subIndex: subIdx,
           source: 'base64',
@@ -1788,6 +1923,7 @@ async function runTask(taskId) {
   if (refImages && refImages.length > 0) {
     request.images = refImages;
   }
+  if (taskMarkupImages.has(taskId)) request.gptImageMarkup = taskMarkupImages.get(taskId);
   db.prepare("UPDATE tasks SET status = 'processing' WHERE id = ?").run(taskId);
   broadcastTask(taskId);
   broadcastQueueStatus();
@@ -2191,7 +2327,7 @@ async function handleApi(req, res, pathname) {
         // 常见情况：subIndex=0、扩展名 png/jpg/webp，直接拼路径命中，
         // 避免对整个 IMAGE_DIR 做同步 readdir 全目录扫描（随图片数线性变慢）。
         let filePath = null;
-        for (const ext of ['png', 'jpg', 'webp']) {
+        for (const ext of ['png', 'jpg', 'webp', 'gif', 'svg']) {
           const candidate = path.join(IMAGE_DIR, `${taskId}-${index}-0.${ext}`);
           if (fs.existsSync(candidate)) { filePath = candidate; break; }
         }
@@ -2212,6 +2348,8 @@ async function handleApi(req, res, pathname) {
           'Content-Type': getContentType(filePath),
           'Content-Length': stat.size,
           'Cache-Control': 'private, max-age=3600',
+          'X-Content-Type-Options': 'nosniff',
+          ...(path.extname(filePath) === '.svg' ? { 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox" } : {}),
         });
       } catch {
         sendJson(res, 404, { error: 'Not Found' });

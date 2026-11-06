@@ -11,6 +11,7 @@ function extensionFor(mimeType) {
   if (normalized.includes('png')) return '.png';
   if (normalized.includes('webp')) return '.webp';
   if (normalized.includes('gif')) return '.gif';
+  if (normalized.includes('svg')) return '.svg';
   if (normalized.includes('avif')) return '.avif';
   return '.bin';
 }

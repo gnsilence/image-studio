@@ -18,6 +18,8 @@ export type BuiltinImagePresetId =
   | 'gpt-image-2.5'
   | 'gpt-image-2.5-flare'
   | 'gpt-image-2.5-sunburst'
+  | 'gpt-image-2.6-flare'
+  | 'gpt-image-2.6-sunburst'
   | 'gpt-image-2'
   | 'grok-imagine-image'
   | 'grok-imagine-image-2.0'
@@ -153,6 +155,26 @@ export const BUILTIN_IMAGE_PRESETS: Record<BuiltinImagePresetId, BuiltinImagePre
     protocol: 'openai',
     name: 'GPT Image 2.5 Sunburst',
     modelId: 'gpt-image-2.5-sunburst',
+    baseUrl: FIXED_MODEL_BASE_URL,
+    maxRefImages: 16,
+    maxOutputSize: '4K',
+    supportsAdvancedParams: true,
+  },
+  'gpt-image-2.6-flare': {
+    id: 'gpt-image-2.6-flare',
+    protocol: 'openai',
+    name: 'GPT Image 2.6 Flare',
+    modelId: 'gpt-image-2.6-flare',
+    baseUrl: FIXED_MODEL_BASE_URL,
+    maxRefImages: 16,
+    maxOutputSize: '4K',
+    supportsAdvancedParams: true,
+  },
+  'gpt-image-2.6-sunburst': {
+    id: 'gpt-image-2.6-sunburst',
+    protocol: 'openai',
+    name: 'GPT Image 2.6 Sunburst',
+    modelId: 'gpt-image-2.6-sunburst',
     baseUrl: FIXED_MODEL_BASE_URL,
     maxRefImages: 16,
     maxOutputSize: '4K',

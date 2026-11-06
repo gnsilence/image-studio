@@ -12,6 +12,7 @@ import {
   getAspectRatioOptions,
   getCompatibleRetryData,
   getGptImageAdvancedParamsForModel,
+  getGptImageQualityOptions,
   getModelMaxRefImages,
   getParallelCountOptions,
   getSupportsTemperature,
@@ -19,6 +20,7 @@ import {
   isRetryLayoutCompatible,
   supportsAutoLayout,
   supportsGptImageAdvancedParams,
+  supportsGptImage26,
   normalizeParallelCount,
   resolveAgentLayout,
 } from '@/lib/model-capabilities';
@@ -60,6 +62,78 @@ beforeEach(() => {
 });
 
 describe('Nova model Base URL', () => {
+  it('offers both GPT Image 2.6 presets and limits new controls to compatible models', () => {
+    for (const presetId of ['gpt-image-2.6-flare', 'gpt-image-2.6-sunburst'] as const) {
+      expect(BUILTIN_IMAGE_PRESETS[presetId]).toMatchObject({
+        protocol: 'openai', modelId: presetId, maxRefImages: 16, maxOutputSize: '4K',
+      });
+      expect(supportsGptImage26(presetId)).toBe(true);
+      expect(getGptImageAdvancedParamsForModel(presetId, {})).toMatchObject({
+        complexity: 'high', outputFormat: 'png', frameCount: 9, frameDurationMs: 200,
+      });
+    }
+    expect(getGptImageQualityOptions('gpt-image-2').map(option => option.value)).not.toContain('max');
+    expect(getGptImageQualityOptions('gpt-image-2.5-sunburst').map(option => option.value)).toContain('max');
+    expect(getGptImageAdvancedParamsForModel('gpt-image-2', {
+      quality: 'xhigh', outputFormat: 'gif', complexity: 'low', frameCount: 16,
+    })).toEqual({ quality: 'auto', style: 'auto', background: 'auto' });
+    expect(getGptImageAdvancedParamsForModel('gpt-image-2.5-flare', { quality: 'xhigh' }).quality).toBe('xhigh');
+  });
+
+  it('normalizes native GIF timing and preserves its output settings when retrying', () => {
+    const next = structuredClone(registry);
+    next.imageModels[0] = {
+      ...next.imageModels[0], modelId: 'gpt-image-2.6-flare', builtinPreset: 'gpt-image-2.6-flare',
+    };
+    saveRegistry(next);
+    expect(getGptImageAdvancedParamsForModel('image-model', { frameCount: 99, frameDurationMs: 1 })).toMatchObject({
+      frameCount: 16, frameDurationMs: 20,
+    });
+    const job: StoredJob = {
+      id: 'native-gif', status: 'completed', mode: 'text-to-image', prompt: 'loop', model: 'image-model',
+      output_size: '4K', custom_size: '4096x4096', aspect_ratio: '1:1', temperature: 1,
+      gptImageOutputFormat: 'gif', gptImageComplexity: 'medium', gptImageFrameCount: 12,
+      gptImageFrameDurationMs: 100, gptImageQuality: 'max', created_at: '2026-11-05T00:00:00.000Z',
+    };
+    expect(getCompatibleRetryData(job)).toMatchObject({
+      outputSize: 'auto', aspectRatio: 'auto', customSize: undefined,
+      gptImageOutputFormat: 'gif', gptImageComplexity: 'medium', gptImageFrameCount: 12,
+      gptImageFrameDurationMs: 100, gptImageQuality: 'max',
+    });
+    const markup = { data: 'AA==', mimeType: 'image/png' as const };
+    expect(getCompatibleRetryData({ ...job, mode: 'image-to-image', gptImageOutputFormat: 'png', gptImageMarkup: markup }))
+      .toMatchObject({ gptImageMarkup: markup, gptImageOutputFormat: 'png' });
+    saveRegistry(registry);
+    expect(getCompatibleRetryData({ ...job, gptImageMarkup: markup })).not.toHaveProperty('gptImageOutputFormat');
+  });
+
+  it.each(['gpt-image-2.6-flare', 'gpt-image-2.6-sunburst'] as const)(
+    'restores reference-guided GIF history for %s while excluding SVG edits',
+    presetId => {
+      const next = structuredClone(registry);
+      next.imageModels[0] = {
+        ...next.imageModels[0], modelId: presetId, builtinPreset: presetId,
+      };
+      saveRegistry(next);
+      const refImages = [{
+        id: 'ref-1', name: 'reference.png', mimeType: 'image/png', dataUrl: 'data:image/png;base64,AA==',
+      }];
+      const job: StoredJob = {
+        id: 'reference-gif', status: 'completed', mode: 'image-to-image', prompt: 'animate this reference',
+        model: 'image-model', output_size: '4K', custom_size: '3840x2160', aspect_ratio: '16:9', temperature: 1,
+        gptImageOutputFormat: 'gif', gptImageComplexity: 'medium', gptImageFrameCount: 12,
+        gptImageFrameDurationMs: 120, gptImageQuality: 'max', refImages, created_at: '2026-11-06T00:00:00.000Z',
+      };
+
+      expect(getCompatibleRetryData(job)).toMatchObject({
+        mode: 'image-to-image', model: 'image-model', outputSize: 'auto', customSize: undefined, aspectRatio: 'auto',
+        gptImageOutputFormat: 'gif', gptImageComplexity: 'medium', gptImageFrameCount: 12,
+        gptImageFrameDurationMs: 120, gptImageQuality: 'max', refImages,
+      });
+      expect(getCompatibleRetryData({ ...job, gptImageOutputFormat: 'svg' }).gptImageOutputFormat).toBe('png');
+    },
+  );
+
   function configureGrok2() {
     const next = structuredClone(registry);
     const preset = BUILTIN_IMAGE_PRESETS['grok-imagine-image-2.0'];

@@ -192,7 +192,8 @@ function getDownloadName(payload: ImageActionPayload, blob: Blob): string {
   const rawName = payload.name?.trim() || payload.id || payload.assetId || payload.agentImageId || `nova-image-${Date.now()}`;
   const baseName = rawName.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, '-').slice(0, 80) || 'nova-image';
   const ext = getAssetFileExtension(blob.type || payload.mimeType || 'image/png');
-  return baseName.toLowerCase().endsWith(`.${ext}`) ? baseName : `${baseName}.${ext}`;
+  const nameWithoutExtension = baseName.replace(/\.(png|jpe?g|webp|gif|svg|avif)$/i, '');
+  return `${nameWithoutExtension}.${ext}`;
 }
 
 export async function downloadImagePayload(payload: ImageActionPayload): Promise<void> {

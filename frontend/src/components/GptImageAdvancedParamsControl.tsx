@@ -2,6 +2,7 @@
 
 import { Check, SlidersHorizontal } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import {
@@ -9,11 +10,15 @@ import {
   GPT_IMAGE_BACKGROUND_OPTIONS,
   GPT_IMAGE_QUALITY_OPTIONS,
   GPT_IMAGE_STYLE_OPTIONS,
+  getGptImageQualityOptions,
   isGrokImage2Model,
+  supportsGptImage26,
   type GptImageAdvancedParams,
   type GptImageBackground,
   type GptImageQuality,
   type GptImageStyle,
+  type GptImageComplexity,
+  type GptImageOutputFormat,
 } from '@/lib/model-capabilities';
 
 interface GptImageAdvancedParamsControlProps {
@@ -23,13 +28,17 @@ interface GptImageAdvancedParamsControlProps {
   disabled?: boolean;
   variant?: 'ghost' | 'outline';
   size?: 'xs' | 'sm';
+  mode?: 'text-to-image' | 'image-to-image';
+  enableExtendedFormats?: boolean;
 }
 
 function isDefaultValue(value: GptImageAdvancedParams): boolean {
   return (
     value.quality === DEFAULT_GPT_IMAGE_ADVANCED_PARAMS.quality &&
     value.style === DEFAULT_GPT_IMAGE_ADVANCED_PARAMS.style &&
-    value.background === DEFAULT_GPT_IMAGE_ADVANCED_PARAMS.background
+    value.background === DEFAULT_GPT_IMAGE_ADVANCED_PARAMS.background &&
+    (value.complexity ?? 'high') === 'high' &&
+    (value.outputFormat ?? 'png') === 'png'
   );
 }
 
@@ -49,11 +58,15 @@ export function GptImageAdvancedParamsControl({
   disabled = false,
   variant = 'ghost',
   size = 'xs',
+  mode = 'text-to-image',
+  enableExtendedFormats = false,
 }: GptImageAdvancedParamsControlProps) {
   const qualityOnly = isGrokImage2Model(model || '');
+  const isImage26 = supportsGptImage26(model || '');
+  const showExtendedParams = isImage26 && enableExtendedFormats;
   const qualityOptions = qualityOnly
-    ? GPT_IMAGE_QUALITY_OPTIONS.filter(option => option.value !== 'high')
-    : GPT_IMAGE_QUALITY_OPTIONS;
+    ? GPT_IMAGE_QUALITY_OPTIONS.filter(option => option.value === 'auto' || option.value === 'medium' || option.value === 'low')
+    : getGptImageQualityOptions(model || '');
   const triggerClass = cn(
     buttonVariants({ variant, size }),
     'gap-1',
@@ -62,14 +75,24 @@ export function GptImageAdvancedParamsControl({
   const updateQuality = (quality: GptImageQuality) => onChange({ ...value, quality });
   const updateStyle = (style: GptImageStyle) => onChange({ ...value, style });
   const updateBackground = (background: GptImageBackground) => onChange({ ...value, background });
+  const supportsTransparency = !isImage26 || (value.outputFormat !== 'jpeg' && value.outputFormat !== 'gif');
+  const outputFormats: { value: GptImageOutputFormat; label: string }[] = [
+    { value: 'png', label: 'PNG' },
+    { value: 'jpeg', label: 'JPEG' },
+    { value: 'webp', label: 'WebP' },
+    ...(mode === 'text-to-image' ? [
+      { value: 'svg' as const, label: 'SVG 矢量图' },
+    ] : []),
+    { value: 'gif', label: 'GIF 动画' },
+  ];
 
   return (
     <Popover>
       <PopoverTrigger className={triggerClass} disabled={disabled} title="图像参数">
         <SlidersHorizontal className="h-3 w-3" />
-        <span className="shrink-0 truncate text-[11px]">{formatLabel(value, qualityOnly)}</span>
+        <span className="shrink-0 truncate text-[11px]">{formatLabel(value, qualityOnly)}{showExtendedParams && value.outputFormat && value.outputFormat !== 'png' ? ` · ${value.outputFormat.toUpperCase()}` : ''}</span>
       </PopoverTrigger>
-      <PopoverContent className="w-72 p-2" align="start">
+      <PopoverContent className="max-h-[min(80vh,640px)] w-72 overflow-y-auto p-2" align="start">
         <div className="space-y-3">
           <ParamGroup
             label="质量"
@@ -79,18 +102,71 @@ export function GptImageAdvancedParamsControl({
           />
           {!qualityOnly && (
             <>
-              <ParamGroup
+              {!isImage26 && <ParamGroup
                 label="风格"
                 options={GPT_IMAGE_STYLE_OPTIONS}
                 value={value.style}
                 onSelect={updateStyle}
-              />
+              />}
               <ParamGroup
                 label="背景"
-                options={GPT_IMAGE_BACKGROUND_OPTIONS}
+                options={GPT_IMAGE_BACKGROUND_OPTIONS.filter(option => supportsTransparency || option.value !== 'transparent')}
                 value={value.background}
                 onSelect={updateBackground}
               />
+            </>
+          )}
+          {showExtendedParams && (
+            <>
+              <ParamGroup<GptImageComplexity>
+                label="复杂度"
+                options={[
+                  { value: 'low', label: '低' },
+                  { value: 'medium', label: '中' },
+                  { value: 'high', label: '高' },
+                ]}
+                value={value.complexity ?? 'high'}
+                onSelect={complexity => onChange({ ...value, complexity })}
+              />
+              <ParamGroup
+                label="输出格式"
+                options={outputFormats}
+                value={value.outputFormat ?? 'png'}
+                onSelect={outputFormat => onChange({
+                  ...value,
+                  outputFormat,
+                  background: (outputFormat === 'jpeg' || outputFormat === 'gif') && value.background === 'transparent' ? 'auto' : value.background,
+                })}
+              />
+              {value.outputFormat === 'gif' && (
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="space-y-1 text-xs text-muted-foreground">
+                    <span>GIF 帧数</span>
+                    <Input
+                      type="number"
+                      aria-label="GIF 帧数"
+                      min={2}
+                      max={16}
+                      step={1}
+                      value={value.frameCount ?? 9}
+                      onChange={event => onChange({ ...value, frameCount: Math.min(16, Math.max(2, Math.round(Number(event.target.value) || 9))) })}
+                    />
+                  </label>
+                  <label className="space-y-1 text-xs text-muted-foreground">
+                    <span>每帧时长（毫秒）</span>
+                    <Input
+                      type="number"
+                      aria-label="GIF 每帧时长"
+                      min={20}
+                      max={2000}
+                      step={10}
+                      value={value.frameDurationMs ?? 200}
+                      onChange={event => onChange({ ...value, frameDurationMs: Math.min(2000, Math.max(20, Math.round((Number(event.target.value) || 200) / 10) * 10)) })}
+                    />
+                  </label>
+                  <p className="col-span-2 text-[11px] text-muted-foreground">GIF 自动选择帧尺寸，提示词中可描述动作和循环方式。</p>
+                </div>
+              )}
             </>
           )}
           <Button
@@ -100,7 +176,7 @@ export function GptImageAdvancedParamsControl({
             className="w-full"
             onClick={() => onChange(DEFAULT_GPT_IMAGE_ADVANCED_PARAMS)}
           >
-            重置为自动
+            {showExtendedParams ? '重置参数' : '重置为自动'}
           </Button>
         </div>
       </PopoverContent>

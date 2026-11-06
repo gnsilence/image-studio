@@ -2,15 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowUp, CloudUpload, FileText, ImagePlus, Info, Layers3, Loader2, Save, SlidersHorizontal, Sparkles, X, Zap } from 'lucide-react';
+import { ArrowUp, CloudUpload, FileText, ImagePlus, Info, Layers3, Loader2, PenTool, Save, SlidersHorizontal, Sparkles, X, Zap } from 'lucide-react';
 import { AttachmentChips } from './AttachmentChips';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { MissingApiKeyDialog } from '@/components/MissingApiKeyDialog';
 import { QuickPromptDialog } from '@/components/QuickPromptDialog';
 import { PromptOptimizeDialog } from '@/components/PromptOptimizeDialog';
 import { AgentAssetPickerDialog, AgentTextAssetPickerDialog } from '@/components/agent/AgentAssetPickerDialog';
 import { GenerationParamsBar, type GenerationParamsValue } from '@/components/GenerationParamsBar';
+import { ImageAnnotationEditor } from '@/components/canvas/components/image-annotation-editor';
 import { ConfirmDialog } from '@/components/workspace/dialogs/ConfirmDialog';
 import { streamPromptOptimize, type StreamPromptOptimizeHandle } from '@/lib/prompt-optimize-client';
 import { loadJsonFromStorage, saveJsonToStorage } from '@/lib/settings-storage';
@@ -32,8 +34,13 @@ import {
   normalizeParallelCount,
   supportsCustomSize,
   supportsReferenceImages,
+  supportsGptImage26,
+  isGrokImage2Model,
   type GptImageAdvancedParams,
   type GptImageBackground,
+  type GptImageComplexity,
+  type GptImageMarkup,
+  type GptImageOutputFormat,
   type GptImageQuality,
   type GptImageStyle,
   type ParallelCount,
@@ -45,6 +52,8 @@ import type { AspectRatio, OutputSize, RefImageData } from '@/lib/job-store';
 import { IMAGE_GENERATION_WORKBENCH_SETTINGS_KEY, type ImageFormSettings } from '@/lib/form-settings';
 import type { ImageToImageSubmitInput, TextToImageSubmitInput } from '@/lib/workspace-task-service';
 import { cn } from '@/lib/utils';
+import { prepareGptImageMarkup } from '@/lib/gpt-image-markup';
+import { dataUrlToBlob } from '@/lib/desktop-binary';
 
 const WORKBENCH_SETTINGS_KEY = IMAGE_GENERATION_WORKBENCH_SETTINGS_KEY;
 const T2I_SETTINGS_KEY = 'nova-t2i-settings';
@@ -80,6 +89,11 @@ interface ImageGenerationWorkbenchProps {
     gptImageQuality?: GptImageQuality;
     gptImageStyle?: GptImageStyle;
     gptImageBackground?: GptImageBackground;
+    gptImageComplexity?: GptImageComplexity;
+    gptImageOutputFormat?: GptImageOutputFormat;
+    gptImageFrameCount?: number;
+    gptImageFrameDurationMs?: number;
+    gptImageMarkup?: GptImageMarkup;
     parallelCount?: ParallelCount;
     refImages?: RefImageData[];
   };
@@ -115,6 +129,8 @@ export function ImageGenerationWorkbench({
 }: ImageGenerationWorkbenchProps) {
   const [prompt, setPrompt] = useState('');
   const [pendingFiles, setPendingFiles] = useState<UploadedFile[]>([]);
+  const [markup, setMarkup] = useState<{ referenceId: string; value: GptImageMarkup; name: string } | null>(null);
+  const [annotationOpen, setAnnotationOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const formRef = useRef<HTMLDivElement>(null);
 
@@ -125,6 +141,7 @@ export function ImageGenerationWorkbench({
   const [temperature, setTemperature] = useState<number>(1);
   const [gptImageAdvancedParams, setGptImageAdvancedParams] = useState<GptImageAdvancedParams>(DEFAULT_GPT_IMAGE_ADVANCED_PARAMS);
   const [parallelCount, setParallelCount] = useState<ParallelCount>(1);
+  const [grokImageUseUrl, setGrokImageUseUrl] = useState(false);
   const [keepPromptAfterSubmit, setKeepPromptAfterSubmit] = useState(false);
   const [settingsReady, setSettingsReady] = useState(false);
 
@@ -148,12 +165,15 @@ export function ImageGenerationWorkbench({
   const refsSupported = maxImages > 0;
   const aspectRatioOptions = useMemo(() => getAspectRatioOptions(model, outputSize), [model, outputSize]);
   const currentMode: WorkbenchMode = pendingFiles.length > 0 ? 'image-to-image' : 'text-to-image';
+  const supports26 = supportsGptImage26(model);
+  const activeMarkup = supports26 && markup?.referenceId === pendingFiles[0]?.id ? markup : null;
   const autoLayoutLocked = outputSize === 'auto';
   const disabledMessage = '请先在设置中配置 Nova API 密钥，配置完成后即可开始生成图片。';
 
   const handleParamsChange = useCallback((patch: Partial<GenerationParamsValue>) => {
     if (patch.model !== undefined) {
       setModel(patch.model);
+      if (!supportsGptImage26(patch.model)) setMarkup(null);
       if (!supportsReferenceImages(patch.model)) {
         setPendingFiles((prev) => {
           if (prev.length > 0) {
@@ -169,8 +189,17 @@ export function ImageGenerationWorkbench({
     if (patch.aspectRatio !== undefined) setAspectRatio(patch.aspectRatio);
     if (patch.temperature !== undefined) setTemperature(patch.temperature);
     if (patch.parallelCount !== undefined) setParallelCount(patch.parallelCount);
-    if (patch.gptImageAdvancedParams !== undefined) setGptImageAdvancedParams(patch.gptImageAdvancedParams);
-  }, []);
+    if (patch.gptImageAdvancedParams !== undefined) {
+      const next = getGptImageAdvancedParamsForModel(patch.model ?? model, patch.gptImageAdvancedParams);
+      if (pendingFiles.length > 0 && next.outputFormat === 'svg') next.outputFormat = 'png';
+      setGptImageAdvancedParams(next);
+      if (next.outputFormat === 'gif') {
+        setOutputSize('auto');
+        setAspectRatio('auto');
+        setCustomSize(undefined);
+      }
+    }
+  }, [model, pendingFiles.length]);
 
   useEffect(() => {
     if (!textareaRef.current) return;
@@ -205,17 +234,24 @@ export function ImageGenerationWorkbench({
         quality: useInitial ? initialData?.gptImageQuality : saved.gptImageQuality,
         style: useInitial ? initialData?.gptImageStyle : saved.gptImageStyle,
         background: useInitial ? initialData?.gptImageBackground : saved.gptImageBackground,
+        complexity: useInitial ? initialData?.gptImageComplexity : saved.gptImageComplexity,
+        outputFormat: useInitial ? initialData?.gptImageOutputFormat : saved.gptImageOutputFormat,
+        frameCount: useInitial ? initialData?.gptImageFrameCount : saved.gptImageFrameCount,
+        frameDurationMs: useInitial ? initialData?.gptImageFrameDurationMs : saved.gptImageFrameDurationMs,
       });
       const nextParallelCount = normalizeParallelCount(useInitial ? initialData?.parallelCount ?? saved.parallelCount : saved.parallelCount, nextModel);
+      const nextGrokImageUseUrl = saved.grokImageUseUrl === true;
       const nextKeepPromptAfterSubmit = saved.keepPromptAfterSubmit === true;
 
       setModel(nextModel);
-      setOutputSize(nextOutputSize);
-      setCustomSize(nextCustomSize);
-      setAspectRatio(nextAspectRatio);
+      const isGif = nextAdvancedParams.outputFormat === 'gif';
+      setOutputSize(isGif ? 'auto' : nextOutputSize);
+      setCustomSize(isGif ? undefined : nextCustomSize);
+      setAspectRatio(isGif ? 'auto' : nextAspectRatio);
       setTemperature(nextTemperature);
       setGptImageAdvancedParams(nextAdvancedParams);
       setParallelCount(nextParallelCount);
+      setGrokImageUseUrl(nextGrokImageUseUrl);
       setKeepPromptAfterSubmit(nextKeepPromptAfterSubmit);
       if (useInitial) {
         setPrompt(initialData?.prompt || '');
@@ -227,6 +263,9 @@ export function ImageGenerationWorkbench({
           mimeType: img.mimeType,
           badge: img.badge || '已恢复',
         })));
+        setMarkup(initialData?.gptImageMarkup?.data && initialData.refImages?.[0] && supportsGptImage26(nextModel)
+          ? { referenceId: initialData.refImages[0].id, value: initialData.gptImageMarkup, name: '已恢复标注层' }
+          : null);
       }
 
       setSettingsReady(true);
@@ -259,10 +298,21 @@ export function ImageGenerationWorkbench({
       gptImageQuality: gptImageAdvancedParams.quality,
       gptImageStyle: gptImageAdvancedParams.style,
       gptImageBackground: gptImageAdvancedParams.background,
+      gptImageComplexity: gptImageAdvancedParams.complexity,
+      gptImageOutputFormat: gptImageAdvancedParams.outputFormat,
+      gptImageFrameCount: gptImageAdvancedParams.frameCount,
+      gptImageFrameDurationMs: gptImageAdvancedParams.frameDurationMs,
       parallelCount,
+      grokImageUseUrl,
       keepPromptAfterSubmit,
     });
-  }, [model, outputSize, customSize, aspectRatio, temperature, gptImageAdvancedParams, parallelCount, keepPromptAfterSubmit, settingsReady]);
+  }, [model, outputSize, customSize, aspectRatio, temperature, gptImageAdvancedParams, parallelCount, grokImageUseUrl, keepPromptAfterSubmit, settingsReady]);
+
+  useEffect(() => {
+    if (currentMode === 'image-to-image' && gptImageAdvancedParams.outputFormat === 'svg') {
+      queueMicrotask(() => setGptImageAdvancedParams(prev => ({ ...prev, outputFormat: 'png' })));
+    }
+  }, [currentMode, gptImageAdvancedParams.outputFormat]);
 
   const handleOptimize = useCallback(() => {
     const textModel = requireDefaultConfiguredTextModel('promptOptimize');
@@ -548,7 +598,26 @@ export function ImageGenerationWorkbench({
 
   const handleRemovePending = useCallback((id: string) => {
     setPendingFiles(prev => prev.filter(f => f.id !== id));
+    setMarkup(prev => prev?.referenceId === id ? null : prev);
   }, []);
+
+  const handleMarkupUpload = async (file: Blob, name: string, annotatedPrompt?: string) => {
+    const reference = pendingFiles[0];
+    if (!reference || !supports26) return;
+    setLoading(true);
+    setUploadError(null);
+    try {
+      const value = await prepareGptImageMarkup(file, reference.dataUrl);
+      setMarkup({ referenceId: reference.id, value, name });
+      if (annotatedPrompt) setPrompt(annotatedPrompt);
+      setAnnotationOpen(false);
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : '标注层读取失败');
+      setAnnotationOpen(false);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const applyTextAsset = useCallback((asset: TextAsset) => {
     setPrompt(asset.content);
@@ -579,6 +648,10 @@ export function ImageGenerationWorkbench({
 
   const handleSubmit = () => {
     if (!prompt.trim() || disabled || loading) return;
+    if (pendingFiles.length > 0 && gptImageAdvancedParams.outputFormat === 'svg') {
+      setUploadError('SVG 仅支持文生图，请选择 PNG、JPEG、WebP 或 GIF');
+      return;
+    }
 
     const modelWithBilling = model;
     if (pendingFiles.length > 0) {
@@ -593,7 +666,13 @@ export function ImageGenerationWorkbench({
         gptImageQuality: gptImageAdvancedParams.quality,
         gptImageStyle: gptImageAdvancedParams.style,
         gptImageBackground: gptImageAdvancedParams.background,
+        gptImageComplexity: gptImageAdvancedParams.complexity,
+        gptImageOutputFormat: gptImageAdvancedParams.outputFormat,
+        gptImageFrameCount: gptImageAdvancedParams.frameCount,
+        gptImageFrameDurationMs: gptImageAdvancedParams.frameDurationMs,
+        gptImageMarkup: activeMarkup?.value,
         parallelCount,
+        grokImageUseUrl: isGrokImage2Model(model) && grokImageUseUrl,
       });
     } else {
       onSubmitText({
@@ -606,11 +685,17 @@ export function ImageGenerationWorkbench({
         gptImageQuality: gptImageAdvancedParams.quality,
         gptImageStyle: gptImageAdvancedParams.style,
         gptImageBackground: gptImageAdvancedParams.background,
+        gptImageComplexity: gptImageAdvancedParams.complexity,
+        gptImageOutputFormat: gptImageAdvancedParams.outputFormat,
+        gptImageFrameCount: gptImageAdvancedParams.frameCount,
+        gptImageFrameDurationMs: gptImageAdvancedParams.frameDurationMs,
         parallelCount,
+        grokImageUseUrl: isGrokImage2Model(model) && grokImageUseUrl,
       });
     }
 
     setPendingFiles([]);
+    setMarkup(null);
     if (!keepPromptAfterSubmit) setPrompt('');
     setUploadError(null);
     onDraftConsumed?.();
@@ -619,6 +704,7 @@ export function ImageGenerationWorkbench({
   const handleClearDraft = () => {
     setPrompt('');
     setPendingFiles([]);
+    setMarkup(null);
     setUploadError(null);
     onDraftConsumed?.();
   };
@@ -674,7 +760,25 @@ export function ImageGenerationWorkbench({
                 value={{ model, outputSize, customSize, aspectRatio, temperature, parallelCount, gptImageAdvancedParams }}
                 onChange={handleParamsChange}
                 className="studio-params-bar"
+                mode={currentMode}
+                enableExtendedFormats
               />
+              {supports26 && gptImageAdvancedParams.outputFormat === 'gif' && (
+                <p className="text-xs text-muted-foreground">GIF 帧尺寸由模型自动选择；在提示词中描述动作和循环效果。</p>
+              )}
+              {isGrokImage2Model(model) && (
+                <div className="flex items-center justify-between gap-4 border-t border-border pt-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">启用 URL 下载</p>
+                    <p className="text-xs text-muted-foreground">客户端直连上游图片地址，速度更快；需当前网络可访问该地址。</p>
+                  </div>
+                  <Switch
+                    checked={grokImageUseUrl}
+                    onCheckedChange={setGrokImageUseUrl}
+                    aria-label="启用 URL 下载"
+                  />
+                </div>
+              )}
             </div>
 
             <div className="p-3 sm:p-4">
@@ -790,12 +894,47 @@ export function ImageGenerationWorkbench({
                   </Button>
                 </div>
               </div>
+              {supports26 && pendingFiles[0] && (
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                  <Button variant="outline" size="sm" disabled={loading} onClick={() => setAnnotationOpen(true)}>
+                    <PenTool className="size-3.5" />标注首张参考图
+                  </Button>
+                  <label className="relative">
+                    <span className="inline-flex h-8 items-center rounded-md border border-border px-3 text-sm">上传透明标注层</span>
+                    <input type="file" accept="image/png" aria-label="上传透明标注层" disabled={loading} className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        event.target.value = '';
+                        if (file) void handleMarkupUpload(file, file.name);
+                      }} />
+                  </label>
+                  {activeMarkup ? (
+                    <span className="inline-flex items-center gap-1 text-primary">
+                      {activeMarkup.name}
+                      <button type="button" aria-label="移除标注层" onClick={() => setMarkup(null)}><X className="size-3.5" /></button>
+                    </span>
+                  ) : <span className="text-muted-foreground">标注层需与首图尺寸一致，保留透明区域。</span>}
+                </div>
+              )}
             </div>
           </>
         )}
       </div>
 
       {uploadError && <p className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">{uploadError}</p>}
+      {annotationOpen && pendingFiles[0] && createPortal(
+        <ImageAnnotationEditor
+          src={pendingFiles[0].dataUrl}
+          title={pendingFiles[0].name}
+          outputMode="markup"
+          initialPrompt={prompt}
+          onClose={() => setAnnotationOpen(false)}
+          onSubmit={(dataUrl, annotatedPrompt) => {
+            const file = dataUrlToBlob(dataUrl);
+            if (file) void handleMarkupUpload(file, '画笔标注层', annotatedPrompt);
+          }}
+        />, document.body,
+      )}
       <MissingApiKeyDialog
         open={missingApiKeyDialogOpen}
         onOpenChange={setMissingApiKeyDialogOpen}

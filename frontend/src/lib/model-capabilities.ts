@@ -12,20 +12,35 @@ import type { AspectRatio, OutputSize, RefImageData, StoredJob } from '@/lib/job
 export type ParallelCount = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 type FixedOutputSize = Exclude<OutputSize, 'auto' | '1.5K'>;
 
-export type GptImageQuality = 'auto' | 'high' | 'medium' | 'low';
+export type GptImageQuality = 'auto' | 'max' | 'xhigh' | 'high' | 'medium' | 'low';
 export type GptImageStyle = 'auto' | 'vivid' | 'natural';
 export type GptImageBackground = 'auto' | 'transparent' | 'opaque';
+export type GptImageComplexity = 'low' | 'medium' | 'high';
+export type GptImageOutputFormat = 'png' | 'jpeg' | 'webp' | 'svg' | 'gif';
+
+export interface GptImageMarkup {
+  data: string;
+  mimeType: 'image/png';
+}
 
 export interface GptImageAdvancedParams {
   quality: GptImageQuality;
   style: GptImageStyle;
   background: GptImageBackground;
+  complexity?: GptImageComplexity;
+  outputFormat?: GptImageOutputFormat;
+  frameCount?: number;
+  frameDurationMs?: number;
 }
 
 export const DEFAULT_GPT_IMAGE_ADVANCED_PARAMS: GptImageAdvancedParams = {
   quality: 'auto',
   style: 'auto',
   background: 'auto',
+  complexity: 'high',
+  outputFormat: 'png',
+  frameCount: 9,
+  frameDurationMs: 200,
 };
 
 function getModelConfig(modelId: string) {
@@ -42,6 +57,8 @@ function isGptImage2Preset(presetId: string): boolean {
 
 export const GPT_IMAGE_QUALITY_OPTIONS: { value: GptImageQuality; label: string }[] = [
   { value: 'auto', label: '自动' },
+  { value: 'max', label: '最高' },
+  { value: 'xhigh', label: '超高' },
   { value: 'high', label: '高' },
   { value: 'medium', label: '中' },
   { value: 'low', label: '低' },
@@ -189,6 +206,11 @@ export interface RetryData {
   gptImageQuality: GptImageQuality;
   gptImageStyle: GptImageStyle;
   gptImageBackground: GptImageBackground;
+  gptImageComplexity?: GptImageComplexity;
+  gptImageOutputFormat?: GptImageOutputFormat;
+  gptImageFrameCount?: number;
+  gptImageFrameDurationMs?: number;
+  gptImageMarkup?: GptImageMarkup;
   refImages?: RefImageData[];
 }
 
@@ -290,7 +312,21 @@ export function supportsGptImageAdvancedParams(model: string): boolean {
   const modelConfig = getModelConfig(model);
   if (modelConfig) return Boolean(modelConfig.supportsAdvancedParams);
   const preset = getBuiltinPreset(model);
-  return Boolean(preset?.supportsAdvancedParams);
+  return Boolean(preset?.supportsAdvancedParams) || isGptImage2Preset(model);
+}
+
+export function supportsGptImage26(model: string): boolean {
+  return getBuiltinPresetId(model).startsWith('gpt-image-2.6-');
+}
+
+export function getGptImageQualityOptions(model: string): typeof GPT_IMAGE_QUALITY_OPTIONS {
+  const presetId = getBuiltinPresetId(model);
+  if (isGrokImage2Model(model)) {
+    return GPT_IMAGE_QUALITY_OPTIONS.filter(option => ['auto', 'medium', 'low'].includes(option.value));
+  }
+  return presetId.startsWith('gpt-image-2.5') || supportsGptImage26(model)
+    ? GPT_IMAGE_QUALITY_OPTIONS
+    : GPT_IMAGE_QUALITY_OPTIONS.filter(option => option.value !== 'max' && option.value !== 'xhigh');
 }
 
 export function normalizeGptImageQuality(value?: string): GptImageQuality {
@@ -316,7 +352,7 @@ export function getGptImageAdvancedParamsForModel(
   params?: Partial<GptImageAdvancedParams>,
 ): GptImageAdvancedParams {
   if (!supportsGptImageAdvancedParams(model)) {
-    return DEFAULT_GPT_IMAGE_ADVANCED_PARAMS;
+    return { quality: 'auto', style: 'auto', background: 'auto' };
   }
 
   if (isGrokImage2Model(model)) {
@@ -327,10 +363,20 @@ export function getGptImageAdvancedParamsForModel(
     };
   }
 
+  const quality = getGptImageQualityOptions(model).some(option => option.value === params?.quality)
+    ? normalizeGptImageQuality(params?.quality)
+    : 'auto';
   return {
-    quality: normalizeGptImageQuality(params?.quality),
+    quality,
     style: normalizeGptImageStyle(params?.style),
     background: normalizeGptImageBackground(params?.background),
+    ...(supportsGptImage26(model) ? {
+      complexity: params?.complexity === 'low' || params?.complexity === 'medium' ? params.complexity : 'high',
+      outputFormat: (['png', 'jpeg', 'webp', 'svg', 'gif'] as const).includes(params?.outputFormat as GptImageOutputFormat)
+        ? params!.outputFormat : 'png',
+      frameCount: Number.isFinite(params?.frameCount) ? Math.min(16, Math.max(2, Math.round(params!.frameCount!))) : 9,
+      frameDurationMs: Number.isFinite(params?.frameDurationMs) ? Math.min(2000, Math.max(20, Math.round(params!.frameDurationMs!))) : 200,
+    } : {}),
   };
 }
 
@@ -586,20 +632,33 @@ export function getCompatibleRetryData(job: StoredJob): RetryData {
     quality: job.gptImageQuality,
     style: job.gptImageStyle,
     background: job.gptImageBackground,
+    complexity: job.gptImageComplexity,
+    outputFormat: job.mode === 'image-to-image' && job.gptImageOutputFormat === 'svg'
+      ? 'png' : job.gptImageOutputFormat,
+    frameCount: job.gptImageFrameCount,
+    frameDurationMs: job.gptImageFrameDurationMs,
   });
+  const isGif = advancedParams.outputFormat === 'gif';
 
   return {
     mode: job.mode,
     prompt: job.originalPrompt || job.prompt,
     model,
-    outputSize,
-    aspectRatio,
-    customSize,
+    outputSize: isGif ? 'auto' : outputSize,
+    aspectRatio: isGif ? 'auto' : aspectRatio,
+    customSize: isGif ? undefined : customSize,
     temperature,
     parallelCount,
     gptImageQuality: advancedParams.quality,
     gptImageStyle: advancedParams.style,
     gptImageBackground: advancedParams.background,
+    ...(supportsGptImage26(model) ? {
+      gptImageComplexity: advancedParams.complexity,
+      gptImageOutputFormat: advancedParams.outputFormat,
+      gptImageFrameCount: advancedParams.frameCount,
+      gptImageFrameDurationMs: advancedParams.frameDurationMs,
+      ...(job.mode === 'image-to-image' ? { gptImageMarkup: job.gptImageMarkup } : {}),
+    } : {}),
     refImages: job.refImages?.slice(0, maxRefs),
   };
 }

@@ -4,11 +4,14 @@ import {
   type NovaTaskResponse,
   type ImageReference,
 } from '@/lib/ccode-task-client';
-import type { ModelId } from '@/lib/gemini-config';
 import type { AspectRatio, OutputSize, StoredJob } from '@/lib/job-store';
 import {
   getGptImageAdvancedParamsForModel,
+  supportsGptImage26,
   type GptImageBackground,
+  type GptImageComplexity,
+  type GptImageMarkup,
+  type GptImageOutputFormat,
   type GptImageQuality,
   type GptImageStyle,
   type ParallelCount,
@@ -26,7 +29,12 @@ export interface TextToImageSubmitInput {
   gptImageQuality: GptImageQuality;
   gptImageStyle: GptImageStyle;
   gptImageBackground: GptImageBackground;
+  gptImageComplexity?: GptImageComplexity;
+  gptImageOutputFormat?: GptImageOutputFormat;
+  gptImageFrameCount?: number;
+  gptImageFrameDurationMs?: number;
   parallelCount: ParallelCount;
+  grokImageUseUrl?: boolean;
 }
 
 export interface ImageToImageSubmitInput {
@@ -40,7 +48,13 @@ export interface ImageToImageSubmitInput {
   gptImageQuality: GptImageQuality;
   gptImageStyle: GptImageStyle;
   gptImageBackground: GptImageBackground;
+  gptImageComplexity?: GptImageComplexity;
+  gptImageOutputFormat?: GptImageOutputFormat;
+  gptImageFrameCount?: number;
+  gptImageFrameDurationMs?: number;
+  gptImageMarkup?: GptImageMarkup;
   parallelCount: ParallelCount;
+  grokImageUseUrl?: boolean;
 }
 
 export interface SubmitActions {
@@ -62,22 +76,19 @@ function buildImageReferences(files: ImageToImageSubmitInput['files']): ImageRef
 function createBaseJob(
   mode: StoredJob['mode'],
   prompt: string,
-  outputSize: OutputSize,
-  customSize: string | undefined,
-  aspectRatio: AspectRatio,
-  temperature: number,
-  model: string,
-  gptImageQuality: GptImageQuality,
-  gptImageStyle: GptImageStyle,
-  gptImageBackground: GptImageBackground,
-  parallelCount: ParallelCount,
+  input: TextToImageSubmitInput | ImageToImageSubmitInput,
   refImages?: StoredJob['refImages']
 ): StoredJob {
-  const advancedParams = getGptImageAdvancedParamsForModel(model as ModelId, {
-    quality: gptImageQuality,
-    style: gptImageStyle,
-    background: gptImageBackground,
+  const advancedParams = getGptImageAdvancedParamsForModel(input.model, {
+    quality: input.gptImageQuality,
+    style: input.gptImageStyle,
+    background: input.gptImageBackground,
+    complexity: input.gptImageComplexity,
+    outputFormat: input.gptImageOutputFormat,
+    frameCount: input.gptImageFrameCount,
+    frameDurationMs: input.gptImageFrameDurationMs,
   });
+  const isGif = advancedParams.outputFormat === 'gif';
 
   return {
     id: generateUUID(),
@@ -85,15 +96,22 @@ function createBaseJob(
     mode,
     prompt,
     originalPrompt: prompt,
-    output_size: outputSize,
-    custom_size: customSize,
-    temperature,
-    aspect_ratio: aspectRatio,
-    model,
+    output_size: isGif ? 'auto' : input.outputSize,
+    custom_size: isGif ? undefined : input.customSize,
+    temperature: input.temperature,
+    aspect_ratio: isGif ? 'auto' : input.aspectRatio,
+    model: input.model,
     gptImageQuality: advancedParams.quality,
     gptImageStyle: advancedParams.style,
     gptImageBackground: advancedParams.background,
-    parallelCount,
+    ...(supportsGptImage26(input.model) ? {
+      gptImageComplexity: advancedParams.complexity,
+      gptImageOutputFormat: advancedParams.outputFormat,
+      gptImageFrameCount: advancedParams.frameCount,
+      gptImageFrameDurationMs: advancedParams.frameDurationMs,
+      ...(mode === 'image-to-image' && 'gptImageMarkup' in input ? { gptImageMarkup: input.gptImageMarkup } : {}),
+    } : {}),
+    parallelCount: input.parallelCount,
     created_at: new Date().toISOString(),
     refImages,
   };
@@ -172,19 +190,7 @@ export async function submitTextToImage(
   }
 
   for (const prompt of input.prompts) {
-    const job = createBaseJob(
-      'text-to-image',
-      prompt,
-      input.outputSize,
-      input.customSize,
-      input.aspectRatio,
-      input.temperature,
-      input.model,
-      input.gptImageQuality,
-      input.gptImageStyle,
-      input.gptImageBackground,
-      input.parallelCount
-    );
+    const job = createBaseJob('text-to-image', prompt, input);
     actions.addJob(job);
 
     try {
@@ -194,15 +200,22 @@ export async function submitTextToImage(
         protocol: provider.protocol,
         mode: 'text-to-image',
         prompt,
-        outputSize: input.outputSize,
-        customSize: input.customSize,
-        aspectRatio: input.aspectRatio,
+        outputSize: job.output_size,
+        customSize: job.custom_size,
+        aspectRatio: job.aspect_ratio,
         temperature: input.temperature,
         model: provider.modelId,
-        gptImageQuality: input.gptImageQuality,
-        gptImageStyle: input.gptImageStyle,
-        gptImageBackground: input.gptImageBackground,
+        gptImageQuality: job.gptImageQuality,
+        gptImageStyle: job.gptImageStyle,
+        gptImageBackground: job.gptImageBackground,
+        ...(supportsGptImage26(input.model) ? {
+          gptImageComplexity: job.gptImageComplexity,
+          gptImageOutputFormat: job.gptImageOutputFormat,
+          gptImageFrameCount: job.gptImageFrameCount,
+          gptImageFrameDurationMs: job.gptImageFrameDurationMs,
+        } : {}),
         parallelCount: input.parallelCount,
+        grokImageUseUrl: input.grokImageUseUrl === true,
         images: [],
       });
 
@@ -222,6 +235,10 @@ export async function submitImageToImage(
   actions: SubmitActions,
   onError: (message: string) => void
 ): Promise<void> {
+  if (input.gptImageOutputFormat === 'svg') {
+    onError('SVG 输出仅支持文生图，请切换为 PNG、JPEG、WebP 或 GIF 后编辑图片');
+    return;
+  }
   const provider = resolveImageTaskProvider(input.model);
   const apiKey = provider.apiKey;
 
@@ -237,20 +254,7 @@ export async function submitImageToImage(
     mimeType: file.mimeType,
   }));
   const imageReferences = buildImageReferences(input.files);
-  const job = createBaseJob(
-    'image-to-image',
-    input.prompt,
-    input.outputSize,
-    input.customSize,
-    input.aspectRatio,
-    input.temperature,
-    input.model,
-    input.gptImageQuality,
-    input.gptImageStyle,
-    input.gptImageBackground,
-    input.parallelCount,
-    refImages
-  );
+  const job = createBaseJob('image-to-image', input.prompt, input, refImages);
 
   actions.addJob(job);
 
@@ -261,15 +265,23 @@ export async function submitImageToImage(
       protocol: provider.protocol,
       mode: 'image-to-image',
       prompt: input.prompt,
-      outputSize: input.outputSize,
-      customSize: input.customSize,
-      aspectRatio: input.aspectRatio,
+      outputSize: job.output_size,
+      customSize: job.custom_size,
+      aspectRatio: job.aspect_ratio,
       temperature: input.temperature,
       model: provider.modelId,
-      gptImageQuality: input.gptImageQuality,
-      gptImageStyle: input.gptImageStyle,
-      gptImageBackground: input.gptImageBackground,
+      gptImageQuality: job.gptImageQuality,
+      gptImageStyle: job.gptImageStyle,
+      gptImageBackground: job.gptImageBackground,
+      ...(supportsGptImage26(input.model) ? {
+        gptImageComplexity: job.gptImageComplexity,
+        gptImageOutputFormat: job.gptImageOutputFormat,
+        gptImageFrameCount: job.gptImageFrameCount,
+        gptImageFrameDurationMs: job.gptImageFrameDurationMs,
+        gptImageMarkup: job.gptImageMarkup,
+      } : {}),
       parallelCount: input.parallelCount,
+      grokImageUseUrl: input.grokImageUseUrl === true,
       images: imageReferences,
     });
 

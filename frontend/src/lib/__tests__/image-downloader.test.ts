@@ -136,6 +136,26 @@ describe('fetchImageAsBlob', () => {
 });
 
 describe('downloadAndStoreImages', () => {
+  it.each([
+    ['svg', 'image/svg+xml', '<svg xmlns="http://www.w3.org/2000/svg"/>'],
+    ['gif', 'image/gif', 'GIF89a-original-animation'],
+  ])('saves the original %s response and MIME type into desktop history', async (extension, mimeType, contents) => {
+    vi.stubGlobal('Blob', NodeBlob);
+    vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:original') });
+    const bytes = new TextEncoder().encode(contents);
+    mockImageFetch(new Response(bytes, { headers: { 'content-type': mimeType } }));
+    const write = vi.fn().mockResolvedValue({});
+    window.novaDesktop = { files: { write } } as unknown as NovaDesktopBridge;
+
+    const result = await downloadAndStoreImages(`job-${extension}`, [`URL:/original.${extension}`], { maxRetries: 1 });
+
+    expect(result.successCount).toBe(1);
+    expect(write).toHaveBeenCalledOnce();
+    const [namespace, id, savedBytes, savedMimeType] = write.mock.calls[0];
+    expect([namespace, id, savedMimeType]).toEqual(['history', `job-${extension}-0`, mimeType]);
+    expect(Array.from(savedBytes as Uint8Array)).toEqual(Array.from(bytes));
+  });
+
   it('跨域图片经桌面网络读取后保存到本地历史文件', async () => {
     vi.stubGlobal('Blob', NodeBlob);
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));

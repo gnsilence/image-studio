@@ -189,6 +189,42 @@ test('upload rejects unsupported or misleading file extensions', async t => {
   );
 });
 
+test('uploads and reads SVG and animated GIF originals without rasterizing them', async t => {
+  const storage = withStorage(t);
+  saveTestConfig(storage);
+  const samples = [
+    ['logo.svg', 'image/svg+xml', Buffer.from('\uFEFF<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0h2v2z"/></svg>')],
+    ['motion.gif', 'image/gif', Buffer.from('GIF89a-original-animation')],
+  ];
+  for (const [fileName, mimeType, data] of samples) {
+    let uploaded;
+    const service = makeService(storage, async command => {
+      if (command.constructor.name === 'PutObjectCommand') {
+        uploaded = command.input;
+        return { ETag: 'new-etag' };
+      }
+      return { Body: data, ContentLength: data.length, ContentType: mimeType };
+    });
+    const result = await service.uploadObject({ prefix: 'images/', fileName, mimeType, data });
+    assert.equal(result.mimeType, mimeType);
+    assert.equal(uploaded.ContentType, mimeType);
+    assert.deepEqual(uploaded.Body, data);
+    const restored = await service.readObject(result);
+    assert.equal(restored.mimeType, mimeType);
+    assert.deepEqual(restored.data, data);
+  }
+});
+
+test('includes SVG files when listing an S3 folder', async t => {
+  const storage = withStorage(t);
+  saveTestConfig(storage);
+  const service = makeService(storage, async () => ({
+    Contents: [{ Key: 'images/logo.svg', Size: 120 }, { Key: 'images/notes.xml', Size: 120 }],
+  }));
+  const result = await service.listFolder({ prefix: 'images/' });
+  assert.deepEqual(result.objects.map(object => [object.name, object.mimeType]), [['logo.svg', 'image/svg+xml']]);
+});
+
 test('thumbnail cache is versioned and reused for the same object version', async t => {
   const storage = withStorage(t);
   saveTestConfig(storage);

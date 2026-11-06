@@ -6,7 +6,7 @@
 
 import type { ModelId } from '@/lib/gemini-config';
 import type { OutputSize, AspectRatio } from '@/lib/job-store';
-import type { GptImageBackground, GptImageQuality, GptImageStyle, ParallelCount } from '@/lib/model-capabilities';
+import type { GptImageBackground, GptImageComplexity, GptImageOutputFormat, GptImageQuality, GptImageStyle, ParallelCount } from '@/lib/model-capabilities';
 
 export const IMAGE_GENERATION_WORKBENCH_SETTINGS_KEY = 'nova-image-generation-settings';
 
@@ -19,6 +19,11 @@ export interface ImageFormSettings {
   gptImageQuality: GptImageQuality;
   gptImageStyle: GptImageStyle;
   gptImageBackground: GptImageBackground;
+  gptImageComplexity?: GptImageComplexity;
+  gptImageOutputFormat?: GptImageOutputFormat;
+  gptImageFrameCount?: number;
+  gptImageFrameDurationMs?: number;
   parallelCount: ParallelCount;
+  grokImageUseUrl?: boolean;
   keepPromptAfterSubmit?: boolean;
 }

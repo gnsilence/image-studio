@@ -1,4 +1,4 @@
-import type { GptImageBackground, GptImageQuality, GptImageStyle } from '@/lib/model-capabilities';
+import type { GptImageBackground, GptImageComplexity, GptImageMarkup, GptImageOutputFormat, GptImageQuality, GptImageStyle } from '@/lib/model-capabilities';
 import { makeStoredBlobRef } from '@/lib/image-downloader';
 import { openImageDb, IMG_STORE } from '@/lib/image-db';
 import { getDesktopBridge } from '@/lib/desktop-bridge';
@@ -30,6 +30,11 @@ export interface StoredJob {
   gptImageQuality?: GptImageQuality;
   gptImageStyle?: GptImageStyle;
   gptImageBackground?: GptImageBackground;
+  gptImageComplexity?: GptImageComplexity;
+  gptImageOutputFormat?: GptImageOutputFormat;
+  gptImageFrameCount?: number;
+  gptImageFrameDurationMs?: number;
+  gptImageMarkup?: GptImageMarkup;
   created_at: string;
   error?: string;
   networkError?: boolean;
@@ -53,6 +58,7 @@ export { IMG_STORE };
 export const openDB = openImageDb;
 
 export function getImageSrc(imageData: string): string {
+  if (imageData.startsWith('data:image/')) return imageData;
   if (imageData.startsWith('blob:')) {
     return imageData;
   }
@@ -81,6 +87,14 @@ function toPersistedImageRefs(result: StoredJob): string[] | undefined {
 export async function saveImage(result: StoredJob) {
   const desktop = getDesktopBridge();
   if (desktop) {
+    let gptImageMarkup = result.gptImageMarkup;
+    if (gptImageMarkup?.data) {
+      const blob = dataUrlToBlob(`data:image/png;base64,${gptImageMarkup.data}`);
+      if (blob) {
+        await desktop.files.write('history', `${result.id}:markup`, await blobToBytes(blob), 'image/png');
+        gptImageMarkup = { ...gptImageMarkup, data: '' };
+      }
+    }
     const refImages = await Promise.all((result.refImages || []).map(async (refImage, index) => {
       const blob = dataUrlToBlob(refImage.dataUrl);
       if (!blob) return refImage;
@@ -95,6 +109,7 @@ export async function saveImage(result: StoredJob) {
       imageData: images?.[0] || result.imageData,
       images,
       refImages,
+      gptImageMarkup,
       error: result.error,
     });
     return;
@@ -113,6 +128,7 @@ export async function saveImage(result: StoredJob) {
       imageData: images?.[0] || result.imageData,
       images,
       refImages: result.refImages,
+      gptImageMarkup: result.gptImageMarkup,
       error: result.error,
     });
     tx.oncomplete = () => resolve();
@@ -125,6 +141,7 @@ export async function deleteImage(jobId: string) {
   if (desktop) {
     const record = await desktop.records.get<StoredJob>('image-records', jobId);
     await Promise.all((record?.refImages || []).map((_, index) => desktop.files.delete('history', `${jobId}:ref:${index}`)));
+    if (record?.gptImageMarkup) await desktop.files.delete('history', `${jobId}:markup`);
     await desktop.records.delete('image-records', jobId);
     return;
   }
@@ -156,6 +173,7 @@ export function saveJobs(jobs: StoredJob[]) {
     delete job.imageData;
     delete job.images;
     delete job.refImages;
+    delete job.gptImageMarkup;
     delete job.blobUrls;
     return job;
   });
@@ -209,7 +227,15 @@ export async function loadStoredImages(): Promise<StoredJob[]> {
         if (!stored) return refImage;
         return { ...refImage, dataUrl: await blobToDataUrl(storedFileToBlob(stored)) };
       }));
-      return { ...record, refImages };
+      let gptImageMarkup = record.gptImageMarkup;
+      if (gptImageMarkup && !gptImageMarkup.data) {
+        const stored = await desktop.files.read('history', `${record.id}:markup`);
+        if (stored) {
+          const dataUrl = await blobToDataUrl(storedFileToBlob(stored));
+          gptImageMarkup = { ...gptImageMarkup, data: dataUrl.split(',')[1] };
+        }
+      }
+      return { ...record, refImages, gptImageMarkup };
     }));
   }
 

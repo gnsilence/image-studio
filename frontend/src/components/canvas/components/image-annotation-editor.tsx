@@ -35,6 +35,8 @@ type Annotation =
 interface ImageAnnotationEditorProps {
   src: string;
   title?: string;
+  outputMode?: 'composite' | 'markup';
+  initialPrompt?: string;
   onClose: () => void;
   onSubmit: (annotatedDataUrl: string, prompt: string) => void;
 }
@@ -289,6 +291,7 @@ function compositeImage(
   annotations: Annotation[],
   displayWidth: number,
   displayHeight: number,
+  outputMode: 'composite' | 'markup' = 'composite',
 ): string {
   const canvas = document.createElement('canvas');
   canvas.width = img.naturalWidth;
@@ -297,7 +300,7 @@ function compositeImage(
   if (!ctx) throw new Error('当前浏览器不支持 Canvas 2D');
 
   // Draw the original image
-  ctx.drawImage(img, 0, 0);
+  if (outputMode === 'composite') ctx.drawImage(img, 0, 0);
 
   // Scale annotations from display coordinates to natural resolution
   const scaleX = img.naturalWidth / displayWidth;
@@ -347,12 +350,12 @@ function makeId(): string {
 
 // ── Main Component ─────────────────────────────────────────────────────────
 
-export function ImageAnnotationEditor({ src, title, onClose, onSubmit }: ImageAnnotationEditorProps) {
+export function ImageAnnotationEditor({ src, title, outputMode = 'composite', initialPrompt = '', onClose, onSubmit }: ImageAnnotationEditorProps) {
   const [tool, setTool] = useState<Tool>('brush');
   const [color, setColor] = useState(DEFAULT_COLOR);
   const [brushSize, setBrushSize] = useState(DEFAULT_BRUSH_SIZE);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
-  const [userInput, setUserInput] = useState('');
+  const [userInput, setUserInput] = useState(initialPrompt);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 });
@@ -581,14 +584,14 @@ export function ImageAnnotationEditor({ src, title, onClose, onSubmit }: ImageAn
     if (!img || !img.complete || annotations.length === 0 || !userInput.trim() || displaySize.width === 0) return;
     setSubmitting(true);
     try {
-      const dataUrl = compositeImage(img, annotations, displaySize.width, displaySize.height);
+      const dataUrl = compositeImage(img, annotations, displaySize.width, displaySize.height, outputMode);
       const prompt = constructPrompt(userInput.trim(), annotations);
       onSubmit(dataUrl, prompt);
     } catch (err) {
       console.error('标注图片合成失败:', err);
       setSubmitting(false);
     }
-  }, [annotations, userInput, displaySize, onSubmit]);
+  }, [annotations, userInput, displaySize, outputMode, onSubmit]);
 
   // ── Esc to close ──
   const requestClose = useCallback(() => {
@@ -816,14 +819,14 @@ export function ImageAnnotationEditor({ src, title, onClose, onSubmit }: ImageAn
               onClick={handleSubmit}
               disabled={!canSubmit}
               className="gap-1.5 shrink-0"
-              title="跳转到生图工作台并自动构造提示词"
+              title={outputMode === 'markup' ? '保存标注层和修改需求' : '跳转到生图工作台并自动构造提示词'}
             >
               {submitting ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Wand2 className="h-4 w-4" />
               )}
-              开始修改
+              {outputMode === 'markup' ? '使用标注' : '开始修改'}
             </Button>
           </div>
           {annotations.length > 0 && userInput.trim() && (

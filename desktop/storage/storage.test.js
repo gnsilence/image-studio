@@ -108,3 +108,18 @@ test('writes files atomically inside allowlisted namespaces and removes orphans'
   storage.files.delete('history', 'job-1:0');
   assert.equal(storage.files.read('history', 'job-1:0'), null);
 });
+
+test('preserves SVG and animated GIF originals and their file extensions', t => {
+  const { dataRoot, storage } = withStorage(t);
+  const samples = [
+    ['svg', 'image/svg+xml', Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0h1v1z"/></svg>')],
+    ['gif', 'image/gif', Buffer.from('GIF89a-original-animation')],
+  ];
+  for (const [extension, mimeType, bytes] of samples) {
+    storage.files.write('history', `job-${extension}-0`, bytes, mimeType);
+    const restored = storage.files.read('history', `job-${extension}-0`);
+    assert.equal(restored.mimeType, mimeType);
+    assert.deepEqual(restored.data, bytes);
+    assert.equal(fs.readdirSync(path.join(dataRoot, 'files', 'history')).some(name => name.endsWith(`.${extension}`)), true);
+  }
+});

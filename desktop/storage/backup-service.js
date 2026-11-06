@@ -114,11 +114,14 @@ class BackupService {
 
     const imageRecords = storage.recordList('image-records').map(entry => ({ ...entry.value }));
     for (const record of imageRecords) {
-      if (!Array.isArray(record.refImages)) continue;
-      for (let index = 0; index < record.refImages.length; index++) {
+      for (let index = 0; index < (Array.isArray(record.refImages) ? record.refImages.length : 0); index++) {
         if (record.refImages[index]?.dataUrl) continue;
         const stored = storage.files.read('history', `${record.id}:ref:${index}`);
         if (stored) record.refImages[index] = { ...record.refImages[index], dataUrl: bufferToDataUrl(stored.data, stored.mimeType) };
+      }
+      if (record.gptImageMarkup && !record.gptImageMarkup.data) {
+        const stored = storage.files.read('history', `${record.id}:markup`);
+        if (stored) record.gptImageMarkup = { ...record.gptImageMarkup, data: stored.data.toString('base64') };
       }
     }
 
@@ -246,7 +249,12 @@ class BackupService {
 
     const imageDb = await this.readJson(entries, 'indexedDB/nova-image-db.json', {});
     for (const record of imageDb?.images || []) {
-      if (record?.id) storage.recordPut('image-records', String(record.id), record);
+      if (!record?.id) continue;
+      if (record.gptImageMarkup?.data) {
+        storage.files.write('history', `${record.id}:markup`, Buffer.from(record.gptImageMarkup.data, 'base64'), 'image/png');
+        record.gptImageMarkup = { ...record.gptImageMarkup, data: '' };
+      }
+      storage.recordPut('image-records', String(record.id), record);
     }
     for (const record of imageDb?.blobs || []) {
       if (!record?.key) continue;

@@ -4,7 +4,7 @@
 
 **自托管的 AI 图像生成工作台 · 自定义模型 · 多模式 · PWA · 实时任务**
 
-[![Version](https://img.shields.io/badge/version-v1.0.4-blue.svg)](https://github.com/gnsilence/image-studio/releases)
+[![Version](https://img.shields.io/badge/version-v1.0.9-blue.svg)](https://github.com/gnsilence/image-studio/releases)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-green.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black.svg)](https://nextjs.org)

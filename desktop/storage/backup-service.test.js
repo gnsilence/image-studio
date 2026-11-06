@@ -81,6 +81,40 @@ test('desktop backup round-trips records and files without exporting model API k
   assert.deepEqual(target.getStorage().s3GetCredentials(), { accessKeyId: '', secretAccessKey: '', sessionToken: '' });
 });
 
+test('desktop backup round-trips markup PNG files through portable image records', async t => {
+  const safeStorage = makeSafeStorage();
+  const sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'nova-markup-source-'));
+  const targetRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'nova-markup-target-'));
+  const zipPath = path.join(sourceRoot, 'markup-backup.zip');
+  const source = makeManager(sourceRoot, safeStorage);
+  const target = makeManager(targetRoot, safeStorage);
+  t.after(() => {
+    try { source.getStorage().close(); } catch { /* ignore */ }
+    try { target.getStorage().close(); } catch { /* ignore */ }
+    for (const item of [sourceRoot, targetRoot]) {
+      try { fs.rmSync(item, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); } catch { /* ignore */ }
+    }
+  });
+  const markup = Buffer.from('transparent-markup-png');
+  source.getStorage().recordPut('image-records', 'marked-job', {
+    id: 'marked-job', status: 'completed', gptImageMarkup: { data: '', mimeType: 'image/png' },
+  });
+  source.getStorage().files.write('history', 'marked-job:markup', markup, 'image/png');
+
+  await source.backup.exportTo(zipPath);
+  const directory = await unzipper.Open.file(zipPath);
+  const imageDbEntry = directory.files.find(entry => entry.path === 'indexedDB/nova-image-db.json');
+  const exported = JSON.parse((await imageDbEntry.buffer()).toString('utf8'));
+  assert.equal(exported.images[0].gptImageMarkup.data, markup.toString('base64'));
+  assert.equal(source.getStorage().recordGet('image-records', 'marked-job').gptImageMarkup.data, '');
+
+  await target.backup.importFrom(zipPath);
+  const restored = target.getStorage().files.read('history', 'marked-job:markup');
+  assert.deepEqual(restored.data, markup);
+  assert.equal(restored.mimeType, 'image/png');
+  assert.deepEqual(target.getStorage().recordGet('image-records', 'marked-job').gptImageMarkup, { data: '', mimeType: 'image/png' });
+});
+
 test('imports plaintext secrets from a Web backup and encrypts them immediately', async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nova-backup-secret-'));
   const zipPath = path.join(os.tmpdir(), `nova-web-backup-${Date.now()}.zip`);

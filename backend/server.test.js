@@ -50,6 +50,220 @@ async function waitForTaskDone(baseUrl, taskId, headers) {
   return task;
 }
 
+test('GPT Image 2.6 forwards model-specific parameters and preserves SVG/GIF results', async (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nova-image-26-test-'));
+  const token = 'test-image-26-token';
+  const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lW2mWQAAAABJRU5ErkJggg==';
+  const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><path d="M0 0h16v16H0z"/></svg>');
+  const gif = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+  const requests = [];
+  let returnUrl = false;
+  const upstream = http.createServer((req, res) => {
+    const chunks = [];
+    req.on('data', chunk => chunks.push(chunk));
+    req.on('end', async () => {
+      try {
+        const raw = Buffer.concat(chunks);
+        const multipart = req.headers['content-type'].startsWith('multipart/');
+        const body = multipart
+          ? Object.fromEntries(await new Request('http://localhost', { method: 'POST', headers: req.headers, body: raw }).formData())
+          : JSON.parse(raw);
+        requests.push({ path: req.url, body });
+        const format = body.output_format;
+        const result = format === 'svg' ? svg : format === 'gif' ? gif : Buffer.from(pngBase64, 'base64');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ data: [returnUrl ? { url: `https://images.example.com/result.${format}` } : { b64_json: result.toString('base64') }] }));
+      } catch (error) {
+        res.writeHead(500);
+        res.end(String(error));
+      }
+    });
+  });
+  const address = await listen(upstream);
+  const child = fork(path.join(__dirname, 'server.js'), [], {
+    cwd: path.join(__dirname, '..'), silent: true,
+    env: {
+      ...process.env, NODE_ENV: 'production', HOSTNAME: '127.0.0.1', PORT: '0',
+      NOVA_TASK_DB: path.join(tempDir, 'tasks.sqlite'), NOVA_IMAGE_DIR: path.join(tempDir, 'images'),
+      NOVA_DESKTOP_SESSION_TOKEN: token, NOVA_IMAGE_STREAM: 'true', NOVA_IMAGE_PARTIAL_IMAGES: '2',
+    },
+  });
+  try {
+    const ready = await waitForMessage(child, 'ready');
+    const headers = { 'Content-Type': 'application/json', 'X-Nova-Desktop-Token': token };
+    const defaults = {
+      apiKey: 'image-26-key', baseUrl: `http://127.0.0.1:${address.port}/v1/`, protocol: 'openai',
+      mode: 'text-to-image', model: 'gpt-image-2.6-sunburst', prompt: 'test image',
+      outputSize: '1K', aspectRatio: '1:1', temperature: 1, parallelCount: 1, images: [],
+    };
+    const submit = body => fetch(`${ready.url}/api/nova/tasks`, { method: 'POST', headers, body: JSON.stringify({ ...defaults, ...body }) });
+    const complete = async body => {
+      const response = await submit(body);
+      assert.equal(response.status, 202, await response.clone().text());
+      const { taskId } = await response.json();
+      const task = await waitForTaskDone(ready.url, taskId, headers);
+      assert.equal(task.status, 'completed', task.error);
+      return { taskId, task };
+    };
+    await t.test('both 2.6 models accept extended quality and omit legacy fields', async () => {
+      for (const [model, quality] of [['gpt-image-2.6-sunburst', 'max'], ['gpt-image-2.6-flare', 'xhigh']]) {
+        await complete({ model, gptImageQuality: quality, gptImageStyle: 'vivid', gptImageComplexity: 'low', gptImageOutputFormat: 'webp' });
+        const body = requests.at(-1).body;
+        assert.equal(body.model, model);
+        assert.equal(body.quality, quality);
+        assert.equal(body.complexity, 'low');
+        assert.equal(body.output_format, 'webp');
+        assert.equal(body.stream, true);
+        for (const field of ['response_format', 'style', 'input_fidelity', 'frame_count', 'frame_duration_ms']) assert.equal(body[field], undefined);
+      }
+    });
+    await t.test('defaults use high complexity and PNG', async () => {
+      await complete({});
+      assert.equal(requests.at(-1).body.complexity, 'high');
+      assert.equal(requests.at(-1).body.output_format, 'png');
+    });
+    await t.test('SVG and GIF use one output without streaming and retain MIME on disk', async () => {
+      for (const [format, bytes, mime] of [['svg', svg, 'image/svg+xml'], ['gif', gif, 'image/gif']]) {
+        const { taskId, task } = await complete({ gptImageOutputFormat: format, gptImageFrameCount: 16, gptImageFrameDurationMs: 250 });
+        const body = requests.at(-1).body;
+        assert.equal(body.n, 1);
+        for (const field of ['stream', 'partial_images', 'output_compression', 'prompt_rewriter']) assert.equal(body[field], undefined);
+        if (format === 'gif') {
+          assert.equal(body.size, 'auto');
+          assert.equal(body.frame_count, 16);
+          assert.equal(body.frame_duration_ms, 250);
+        }
+        const stored = await fetch(`${ready.url}${task.result.images[0].substring(4)}`, { headers });
+        assert.equal(stored.headers.get('content-type'), mime);
+        assert.equal(stored.headers.get('x-content-type-options'), 'nosniff');
+        if (format === 'svg') assert.match(stored.headers.get('content-security-policy'), /sandbox/);
+        assert.deepEqual(Buffer.from(await stored.arrayBuffer()), bytes);
+        assert.ok(fs.existsSync(path.join(tempDir, 'images', `${taskId}-0-0.${format}`)));
+      }
+    });
+    await t.test('URL results preserve their SVG/GIF addresses', async () => {
+      returnUrl = true;
+      for (const format of ['svg', 'gif']) {
+        const { task } = await complete({ gptImageOutputFormat: format });
+        assert.deepEqual(task.result.images, [`URL:https://images.example.com/result.${format}`]);
+      }
+      returnUrl = false;
+    });
+    await t.test('GIF edits forward still references and animation settings for both 2.6 models', async () => {
+      for (const [model, settings, frameCount, frameDurationMs] of [
+        ['gpt-image-2.6-flare', { gptImageFrameCount: 12, gptImageFrameDurationMs: 350 }, '12', '350'],
+        ['gpt-image-2.6-sunburst', {}, '9', '200'],
+      ]) {
+        const { taskId, task } = await complete({
+          mode: 'image-to-image', model,
+          images: [{ data: pngBase64, mimeType: 'image/png' }],
+          gptImageOutputFormat: 'gif', outputSize: '4K', customSize: '3840x2160',
+          gptImageComplexity: 'low', gptImageQuality: 'high', ...settings,
+        });
+        const { path: endpoint, body } = requests.at(-1);
+        assert.equal(endpoint, '/v1/images/edits');
+        assert.equal(body.model, model);
+        assert.equal(body.output_format, 'gif');
+        assert.equal(body.size, 'auto');
+        assert.equal(body.n, '1');
+        assert.equal(body.frame_count, frameCount);
+        assert.equal(body.frame_duration_ms, frameDurationMs);
+        assert.equal(body.complexity, 'low');
+        assert.equal(body.quality, 'high');
+        assert.equal(body.image.type, 'image/png');
+        assert.deepEqual(Buffer.from(await body.image.arrayBuffer()), Buffer.from(pngBase64, 'base64'));
+        for (const field of ['stream', 'partial_images', 'output_compression', 'prompt_rewriter', 'response_format']) assert.equal(body[field], undefined);
+        const stored = await fetch(`${ready.url}${task.result.images[0].substring(4)}`, { headers });
+        assert.equal(stored.headers.get('content-type'), 'image/gif');
+        assert.deepEqual(Buffer.from(await stored.arrayBuffer()), gif);
+        assert.ok(fs.existsSync(path.join(tempDir, 'images', `${taskId}-0-0.gif`)));
+      }
+    });
+    await t.test('parallel SVG results remain separate requests with one output each', async () => {
+      const before = requests.length;
+      const { task } = await complete({ gptImageOutputFormat: 'svg', parallelCount: 2 });
+      assert.equal(requests.length, before + 2);
+      assert.equal(task.result.images.length, 2);
+      for (const request of requests.slice(before)) assert.equal(request.body.n, 1);
+    });
+    await t.test('markup is sent as a separate PNG file and only metadata is persisted', async () => {
+      const { taskId } = await complete({
+        mode: 'image-to-image', images: [{ data: pngBase64, mimeType: 'image/png' }],
+        gptImageMarkup: { data: pngBase64, mimeType: 'image/png' }, gptImageOutputFormat: 'jpeg',
+        gptImageComplexity: 'medium', gptImageQuality: 'xhigh',
+      });
+      const { path: endpoint, body } = requests.at(-1);
+      assert.equal(endpoint, '/v1/images/edits');
+      assert.equal(body.complexity, 'medium');
+      assert.equal(body.output_format, 'jpeg');
+      assert.equal(body.quality, 'xhigh');
+      assert.equal(body.markup.type, 'image/png');
+      assert.deepEqual(Buffer.from(await body.markup.arrayBuffer()), Buffer.from(pngBase64, 'base64'));
+      for (const field of ['response_format', 'style', 'input_fidelity', 'mask', 'frame_count', 'frame_duration_ms']) assert.equal(body[field], undefined);
+      const Database = require('better-sqlite3');
+      const db = new Database(path.join(tempDir, 'tasks.sqlite'), { readonly: true });
+      try {
+        const request = JSON.parse(db.prepare('SELECT request_json FROM tasks WHERE id = ?').get(taskId).request_json);
+        assert.deepEqual(request.gptImageMarkup, { mimeType: 'image/png', width: 1, height: 1 });
+        assert.equal(request.gptImageComplexity, 'medium');
+        assert.equal(request.gptImageOutputFormat, 'jpeg');
+        assert.ok(!JSON.stringify(request).includes(pngBase64));
+      } finally { db.close(); }
+    });
+    await t.test('invalid 2.6 combinations are rejected before reaching upstream', async () => {
+      const before = requests.length;
+      const mismatched = Buffer.from(pngBase64, 'base64');
+      mismatched.writeUInt32BE(2, 16);
+      const oversized = Buffer.from(pngBase64, 'base64');
+      oversized.writeUInt32BE(4097, 16);
+      oversized.writeUInt32BE(4096, 20);
+      const opaque = Buffer.from(pngBase64, 'base64');
+      opaque[25] = 2;
+      const invalid = [
+        { gptImageComplexity: 'extreme' }, { gptImageOutputFormat: 'bmp' },
+        { gptImageFrameCount: 1 }, { gptImageFrameCount: 17 }, { gptImageFrameCount: 3.5 },
+        { gptImageFrameDurationMs: 19 }, { gptImageFrameDurationMs: 2001 },
+        { mode: 'image-to-image', images: [{ data: pngBase64, mimeType: 'image/png' }], gptImageOutputFormat: 'svg' },
+        { gptImageOutputFormat: 'jpeg', gptImageBackground: 'transparent' },
+        { gptImageMarkup: { data: pngBase64, mimeType: 'image/png' } },
+        { mode: 'image-to-image', images: [] },
+        { mode: 'image-to-image', images: [{ data: gif.toString('base64'), mimeType: 'image/gif' }] },
+        { mode: 'image-to-image', images: [{ data: pngBase64, mimeType: 'image/png' }], gptImageMarkup: { data: pngBase64, mimeType: 'image/png' }, mask: 'test' },
+        ...[
+          { data: gif.toString('base64'), mimeType: 'image/png' },
+          { data: pngBase64, mimeType: 'image/jpeg' },
+          { data: mismatched.toString('base64'), mimeType: 'image/png' },
+          { data: oversized.toString('base64'), mimeType: 'image/png' },
+          { data: opaque.toString('base64'), mimeType: 'image/png' },
+        ].map(gptImageMarkup => ({ mode: 'image-to-image', images: [{ data: pngBase64, mimeType: 'image/png' }], gptImageMarkup })),
+      ];
+      for (const body of invalid) {
+        const response = await submit(body);
+        assert.equal(response.status, 400, JSON.stringify(body));
+      }
+      assert.equal(requests.length, before);
+    });
+    await t.test('2.5 extended quality works while other models keep legacy fields', async () => {
+      await complete({ model: 'gpt-image-2.5-flare', gptImageQuality: 'max', gptImageStyle: 'natural', gptImageOutputFormat: 'svg', gptImageComplexity: 'low' });
+      const body = requests.at(-1).body;
+      assert.equal(body.quality, 'max');
+      assert.equal(body.response_format, 'url');
+      assert.equal(body.style, 'natural');
+      assert.equal(body.output_format, 'png');
+      assert.equal(body.complexity, undefined);
+    });
+  } finally {
+    if (child.connected) {
+      const exited = waitForExit(child);
+      child.send({ type: 'stop' });
+      await exited;
+    } else if (!child.killed) child.kill('SIGKILL');
+    child.stdout?.destroy(); child.stderr?.destroy();
+    await closeServer(upstream);
+    try { fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); } catch { /* Windows file handles may close shortly after child exit. */ }
+  }
+});
+
 test('Grok Imagine 2.0 forwards official parameters and returns every batch result in one request', async (t) => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nova-image-grok2-test-'));
   const token = 'test-grok2-session-token';
@@ -107,10 +321,11 @@ test('Grok Imagine 2.0 forwards official parameters and returns every batch resu
       method: 'POST', headers, body: JSON.stringify({ ...defaults, ...body }),
     });
     const cases = [
-      { name: 'text generation at 1.5K', count: 1, refs: 0, size: '1.5K', quality: 'low', ratio: '5:2' },
-      { name: 'single reference edit', count: 1, refs: 1, size: '2K', quality: 'medium', ratio: '9:19.5' },
-      { name: 'five references and ten outputs', count: 10, refs: 5, size: '2K', quality: 'auto', ratio: 'auto' },
+      { name: 'text generation at 1.5K', count: 1, refs: 0, size: '1.5K', quality: 'low', ratio: '5:2', base64: true },
+      { name: 'single reference edit', count: 1, refs: 1, size: '2K', quality: 'medium', ratio: '9:19.5', base64: true },
+      { name: 'five references and ten outputs', count: 10, refs: 5, size: '2K', quality: 'auto', ratio: 'auto', base64: true },
       { name: 'all Base64 batch outputs are stored', count: 3, refs: 0, size: '1K', quality: 'medium', ratio: '21:9', base64: true },
+      { name: 'reference edit returns URLs when enabled', count: 1, refs: 1, size: '1K', quality: 'medium', ratio: '1:1', base64: false, useUrl: true },
     ];
     for (const scenario of cases) {
       await t.test(scenario.name, async () => {
@@ -125,6 +340,7 @@ test('Grok Imagine 2.0 forwards official parameters and returns every batch resu
           gptImageStyle: 'vivid',
           gptImageBackground: 'transparent',
           parallelCount: scenario.count,
+          ...(scenario.useUrl ? { grokImageUseUrl: true } : {}),
         });
         assert.equal(response.status, 202);
         const { taskId } = await response.json();
@@ -137,7 +353,7 @@ test('Grok Imagine 2.0 forwards official parameters and returns every batch resu
           model: 'grok-imagine-image-2.0',
           prompt: defaults.prompt,
           n: scenario.count,
-          response_format: 'url',
+          response_format: scenario.useUrl ? 'url' : 'b64_json',
           resolution: scenario.size.toLowerCase(),
           aspect_ratio: scenario.ratio,
           quality: scenario.quality,
@@ -166,6 +382,7 @@ test('Grok Imagine 2.0 forwards official parameters and returns every batch resu
         { parallelCount: 11 },
         { parallelCount: 5, model: 'grok-imagine-image-quality' },
         { gptImageQuality: 'high' },
+        { grokImageUseUrl: 'true' },
         { outputSize: '4K' },
         { aspectRatio: '4:5' },
         { mode: 'image-to-image', images: [] },

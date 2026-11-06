@@ -5,6 +5,7 @@ import type { StoredJob } from '@/lib/job-store';
 import { BUILTIN_IMAGE_PRESETS, DEFAULT_DEFAULTS } from '@/lib/nova-models';
 import {
   finalizeCompletedServerTask,
+  submitImageToImage,
   submitTextToImage,
   type SubmitActions,
 } from '@/lib/workspace-task-service';
@@ -97,6 +98,90 @@ beforeEach(() => {
 });
 
 describe('submitTextToImage', () => {
+  it('submits native GIF controls using auto size and stores the same normalized parameters', async () => {
+    const { actions } = createActions(makeJob());
+    mockedResolveImageTaskProvider.mockReturnValue({
+      apiKey: 'test-api-key', baseUrl: 'https://api.openai.com', protocol: 'openai', modelId: 'gpt-image-2.6-flare',
+    });
+    await submitTextToImage({
+      prompts: ['animate a flower'], outputSize: '4K', customSize: '4096x4096', aspectRatio: '1:1',
+      temperature: 1, model: 'gpt-image-2.6-flare', gptImageQuality: 'max',
+      gptImageStyle: 'auto', gptImageBackground: 'auto', gptImageOutputFormat: 'gif',
+      gptImageComplexity: 'medium', gptImageFrameCount: 50, gptImageFrameDurationMs: 5, parallelCount: 1,
+    }, actions, vi.fn());
+    const expected = {
+      gptImageOutputFormat: 'gif', gptImageComplexity: 'medium', gptImageFrameCount: 16,
+      gptImageFrameDurationMs: 20, gptImageQuality: 'max',
+    };
+    expect(actions.addJob).toHaveBeenCalledWith(expect.objectContaining({
+      ...expected, output_size: 'auto', custom_size: undefined, aspect_ratio: 'auto',
+    }));
+    expect(mockedCreateNovaTask).toHaveBeenCalledWith(expect.objectContaining({
+      ...expected, outputSize: 'auto', customSize: undefined, aspectRatio: 'auto',
+    }));
+  });
+
+  it('does not send stale 2.6 controls after switching to a previous model', async () => {
+    const { actions } = createActions(makeJob());
+    await submitTextToImage({
+      prompts: ['photo'], outputSize: '1K', aspectRatio: '1:1', temperature: 1, model: 'gpt-image-2',
+      gptImageQuality: 'max', gptImageStyle: 'auto', gptImageBackground: 'auto',
+      gptImageOutputFormat: 'gif', gptImageComplexity: 'low', parallelCount: 1,
+    }, actions, vi.fn());
+    expect(mockedCreateNovaTask.mock.calls[0][0]).not.toHaveProperty('gptImageOutputFormat');
+    expect(mockedCreateNovaTask.mock.calls[0][0].gptImageQuality).toBe('auto');
+  });
+
+  it('forwards a markup PNG for 2.6 edits and rejects SVG edit requests', async () => {
+    const { actions } = createActions(makeJob());
+    const input = {
+      prompt: 'move the marked object', files: [], outputSize: '1K' as const, aspectRatio: '1:1' as const,
+      temperature: 1, model: 'gpt-image-2.6-sunburst', gptImageQuality: 'xhigh' as const,
+      gptImageStyle: 'auto' as const, gptImageBackground: 'auto' as const,
+      gptImageMarkup: { data: 'AA==', mimeType: 'image/png' as const }, parallelCount: 1 as const,
+    };
+    await submitImageToImage(input, actions, vi.fn());
+    expect(mockedCreateNovaTask).toHaveBeenCalledWith(expect.objectContaining({ gptImageMarkup: input.gptImageMarkup }));
+    mockedCreateNovaTask.mockClear();
+    const onError = vi.fn();
+    await submitImageToImage({ ...input, gptImageOutputFormat: 'svg' }, actions, onError);
+    expect(mockedCreateNovaTask).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['gpt-image-2.6-flare', 'gpt-image-2.6-sunburst'] as const)(
+    'submits reference-guided GIF animations with %s and retains normalized history parameters',
+    async model => {
+      const { actions } = createActions(makeJob());
+      const onError = vi.fn();
+      const files = [{
+        id: 'ref-1', name: 'reference.png', dataUrl: 'data:image/png;base64,aW1hZ2U=', mimeType: 'image/png',
+      }];
+      mockedResolveImageTaskProvider.mockReturnValue({
+        apiKey: 'test-api-key', baseUrl: 'https://api.openai.com', protocol: 'openai', modelId: model,
+      });
+      await submitImageToImage({
+        prompt: 'animate this reference', files, outputSize: '4K', customSize: '3840x2160', aspectRatio: '16:9',
+        temperature: 1, model, gptImageQuality: 'max', gptImageStyle: 'auto', gptImageBackground: 'auto',
+        gptImageOutputFormat: 'gif', gptImageComplexity: 'medium', gptImageFrameCount: 12,
+        gptImageFrameDurationMs: 120, parallelCount: 1,
+      }, actions, onError);
+
+      const expected = {
+        mode: 'image-to-image', model, gptImageOutputFormat: 'gif', gptImageComplexity: 'medium',
+        gptImageFrameCount: 12, gptImageFrameDurationMs: 120, gptImageQuality: 'max',
+      };
+      expect(onError).not.toHaveBeenCalled();
+      expect(actions.addJob).toHaveBeenCalledWith(expect.objectContaining({
+        ...expected, output_size: 'auto', custom_size: undefined, aspect_ratio: 'auto', refImages: files,
+      }));
+      expect(mockedCreateNovaTask).toHaveBeenCalledWith(expect.objectContaining({
+        ...expected, outputSize: 'auto', customSize: undefined, aspectRatio: 'auto',
+        images: [{ data: 'aW1hZ2U=', mimeType: 'image/png' }],
+      }));
+    },
+  );
+
   it('passes GPT Image advanced params into createNovaTask payload', async () => {
     const job = makeJob();
     const { actions, getJob } = createActions(job);
@@ -150,6 +235,71 @@ describe('submitTextToImage', () => {
       model: 'gpt-image-2.5',
       outputSize: '2K',
       aspectRatio: '16:9',
+    }));
+  });
+
+  it('forwards the Grok Imagine 2.0 URL setting', async () => {
+    mockedResolveImageTaskProvider.mockReturnValue({
+      apiKey: 'test-api-key',
+      baseUrl: 'https://api.x.ai',
+      protocol: 'grok',
+      modelId: 'grok-imagine-image-2.0',
+    });
+    const { actions } = createActions(makeJob({ model: 'grok-image-2-config' }));
+
+    await submitTextToImage({
+      prompts: ['test URL response'],
+      outputSize: '1K',
+      aspectRatio: '1:1',
+      temperature: 1,
+      model: 'grok-image-2-config',
+      gptImageQuality: 'auto',
+      gptImageStyle: 'natural',
+      gptImageBackground: 'opaque',
+      parallelCount: 1,
+      grokImageUseUrl: true,
+    }, actions, vi.fn());
+
+    expect(mockedCreateNovaTask).toHaveBeenCalledWith(expect.objectContaining({
+      protocol: 'grok',
+      model: 'grok-imagine-image-2.0',
+      grokImageUseUrl: true,
+    }));
+  });
+
+  it('forwards the Grok Imagine 2.0 URL setting for reference edits', async () => {
+    mockedResolveImageTaskProvider.mockReturnValue({
+      apiKey: 'test-api-key',
+      baseUrl: 'https://api.x.ai',
+      protocol: 'grok',
+      modelId: 'grok-imagine-image-2.0',
+    });
+    const { actions } = createActions(makeJob({ mode: 'image-to-image', model: 'grok-image-2-config' }));
+
+    await submitImageToImage({
+      prompt: 'edit with reference',
+      files: [{
+        id: 'ref-1',
+        name: 'reference.png',
+        dataUrl: 'data:image/png;base64,aW1hZ2U=',
+        mimeType: 'image/png',
+      }],
+      outputSize: '1K',
+      aspectRatio: '1:1',
+      temperature: 1,
+      model: 'grok-image-2-config',
+      gptImageQuality: 'auto',
+      gptImageStyle: 'natural',
+      gptImageBackground: 'opaque',
+      parallelCount: 1,
+      grokImageUseUrl: true,
+    }, actions, vi.fn());
+
+    expect(mockedCreateNovaTask).toHaveBeenCalledWith(expect.objectContaining({
+      protocol: 'grok',
+      mode: 'image-to-image',
+      model: 'grok-imagine-image-2.0',
+      grokImageUseUrl: true,
     }));
   });
 });

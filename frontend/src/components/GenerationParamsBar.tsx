@@ -22,6 +22,7 @@ import {
   supportsAutoLayout,
   supportsCustomSize,
   supportsGptImageAdvancedParams,
+  supportsGptImage26,
   type GptImageAdvancedParams,
   type ParallelCount,
 } from '@/lib/model-capabilities';
@@ -44,13 +45,15 @@ interface GenerationParamsBarProps {
   onChange: (patch: Partial<GenerationParamsValue>) => void;
   size?: ButtonSize;
   className?: string;
+  mode?: 'text-to-image' | 'image-to-image';
+  enableExtendedFormats?: boolean;
 }
 
 /**
  * 共享的「模型 + 生成参数」控件条（自宿主 TextToImageForm 抽取）。受控：对外只发最终 patch，
  * 模型/分辨率联动级联在内部完成。文生图与无限画布编排节点共用，保证展示一致并支持自定义分辨率。
  */
-export function GenerationParamsBar({ value, onChange, size = 'xs', className }: GenerationParamsBarProps) {
+export function GenerationParamsBar({ value, onChange, size = 'xs', className, mode, enableExtendedFormats = false }: GenerationParamsBarProps) {
   const [modelPopoverOpen, setModelPopoverOpen] = useState(false);
   const [sizePopoverOpen, setSizePopoverOpen] = useState(false);
   const [aspectPopoverOpen, setAspectPopoverOpen] = useState(false);
@@ -65,11 +68,12 @@ export function GenerationParamsBar({ value, onChange, size = 'xs', className }:
   const supportsTemperature = getSupportsTemperature(model);
   const supportsAdvancedParams = supportsGptImageAdvancedParams(model);
   const autoLayoutAvailable = supportsAutoLayout(model);
-  const autoLayoutLocked = autoLayoutAvailable && value.outputSize === 'auto';
+  const gifLayout = enableExtendedFormats && supportsGptImage26(model) && value.gptImageAdvancedParams.outputFormat === 'gif';
+  const autoLayoutLocked = gifLayout || (autoLayoutAvailable && value.outputSize === 'auto');
   const showSizeControl = model !== 'gpt-image-2';
   const customSizeAvailable = supportsCustomSize(model) && !autoLayoutLocked;
   const customSizeMaxSide = getCustomSizeMaxSide(model) || 2048;
-  const displaySizeLabel = value.customSize || getOutputSizeLabel(value.outputSize);
+  const displaySizeLabel = gifLayout ? '自动' : value.customSize || getOutputSizeLabel(value.outputSize);
   const handleModelChange = (newModel: ModelId) => {
     const nextGpt = getGptImageAdvancedParamsForModel(newModel, value.gptImageAdvancedParams);
     const nextSizeOptions = getSizeOptions(newModel);
@@ -137,6 +141,7 @@ export function GenerationParamsBar({ value, onChange, size = 'xs', className }:
           onClick={() => handleAutoLayoutChange(!autoLayoutLocked)}
           className={cn(buttonVariants({ variant: 'outline', size }), 'gap-1', autoLayoutLocked && 'border-primary text-primary')}
           title="自动分辨率和比例"
+          disabled={gifLayout}
         >
           <span className={cn('flex h-3 w-3 items-center justify-center rounded-[3px] border', autoLayoutLocked ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/50')}>
             {autoLayoutLocked && <Check className="h-2.5 w-2.5" />}
@@ -178,7 +183,7 @@ export function GenerationParamsBar({ value, onChange, size = 'xs', className }:
       <Popover open={aspectPopoverOpen && !autoLayoutLocked} onOpenChange={(open) => setAspectPopoverOpen(autoLayoutLocked ? false : open)}>
         <PopoverTrigger className={cn(buttonVariants({ variant: 'outline', size }), 'gap-1')} title={autoLayoutLocked ? '自动模式已锁定比例' : '图像比例'} disabled={autoLayoutLocked}>
           <RectangleHorizontal className="h-3 w-3" />
-          <span className="text-[11px]">{value.aspectRatio}</span>
+          <span className="text-[11px]">{gifLayout ? '自动' : value.aspectRatio}</span>
         </PopoverTrigger>
         <PopoverContent className="w-52 p-1" align="start">
           <div className="grid grid-cols-2 gap-1">
@@ -215,7 +220,7 @@ export function GenerationParamsBar({ value, onChange, size = 'xs', className }:
       </Popover>
 
       {supportsAdvancedParams && (
-        <GptImageAdvancedParamsControl model={model} value={value.gptImageAdvancedParams} onChange={(next) => onChange({ gptImageAdvancedParams: next })} variant="outline" size={size} />
+        <GptImageAdvancedParamsControl model={model} mode={mode} enableExtendedFormats={enableExtendedFormats} value={value.gptImageAdvancedParams} onChange={(next) => onChange({ gptImageAdvancedParams: next })} variant="outline" size={size} />
       )}
 
       {supportsTemperature && (

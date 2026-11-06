@@ -199,6 +199,11 @@ export function WorkspaceShell() {
         gptImageQuality: workspace.retryData.gptImageQuality,
         gptImageStyle: workspace.retryData.gptImageStyle,
         gptImageBackground: workspace.retryData.gptImageBackground,
+        gptImageComplexity: workspace.retryData.gptImageComplexity,
+        gptImageOutputFormat: workspace.retryData.gptImageOutputFormat,
+        gptImageFrameCount: workspace.retryData.gptImageFrameCount,
+        gptImageFrameDurationMs: workspace.retryData.gptImageFrameDurationMs,
+        gptImageMarkup: workspace.retryData.gptImageMarkup,
         parallelCount: workspace.retryData.parallelCount,
         refImages: workspace.retryData.refImages,
       }

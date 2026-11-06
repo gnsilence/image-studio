@@ -430,7 +430,7 @@ export function S3AssetBrowser({
             <>
               <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setFolderDialogOpen(true)}><FolderPlus className="h-3.5 w-3.5" />新建文件夹</Button>
               <Button size="sm" className="gap-1.5" disabled={uploading} onClick={() => fileInputRef.current?.click()}>{uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}上传</Button>
-              <input ref={fileInputRef} hidden type="file" multiple accept=".png,.jpg,.jpeg,.webp,.gif,.avif" onChange={event => { if (event.target.files) void handleUpload(event.target.files); event.target.value = ''; }} />
+              <input ref={fileInputRef} hidden type="file" multiple accept=".png,.jpg,.jpeg,.webp,.gif,.svg,.avif" onChange={event => { if (event.target.files) void handleUpload(event.target.files); event.target.value = ''; }} />
             </>
           )}
         </div>

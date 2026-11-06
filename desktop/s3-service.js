@@ -20,6 +20,7 @@ const IMAGE_EXTENSIONS = new Map([
   ['.jpeg', 'image/jpeg'],
   ['.webp', 'image/webp'],
   ['.gif', 'image/gif'],
+  ['.svg', 'image/svg+xml'],
   ['.avif', 'image/avif'],
 ]);
 const IMAGE_MIME_TYPES = new Set(IMAGE_EXTENSIONS.values());
@@ -145,6 +146,8 @@ function detectImageMime(buffer) {
   if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'image/jpeg';
   if (buffer.length >= 6 && ['GIF87a', 'GIF89a'].includes(buffer.subarray(0, 6).toString('ascii'))) return 'image/gif';
   if (buffer.length >= 12 && buffer.subarray(0, 4).toString('ascii') === 'RIFF' && buffer.subarray(8, 12).toString('ascii') === 'WEBP') return 'image/webp';
+  const textHeader = buffer.subarray(0, 4096).toString('utf8').replace(/^\uFEFF/, '').trimStart();
+  if (/^(?:<\?xml[^>]*\?>\s*)?(?:<!--[\s\S]*?-->\s*)*<svg(?:\s|>)/i.test(textHeader)) return 'image/svg+xml';
   if (buffer.length >= 12 && buffer.subarray(4, 8).toString('ascii') === 'ftyp') {
     const brand = buffer.subarray(8, Math.min(buffer.length, 32)).toString('ascii');
     if (brand.includes('avif') || brand.includes('avis')) return 'image/avif';
@@ -477,7 +480,7 @@ class S3Service {
     const prefix = validatePrefix(input?.prefix, config);
     const fileName = validateFileName(input?.fileName);
     const expectedMimeType = IMAGE_EXTENSIONS.get(path.extname(fileName).toLowerCase());
-    if (!expectedMimeType) throw new Error('仅支持 PNG、JPEG、WebP、GIF 和 AVIF 图片');
+    if (!expectedMimeType) throw new Error('仅支持 PNG、JPEG、WebP、GIF、SVG 和 AVIF 图片');
     const data = Buffer.from(input?.data || []);
     if (!data.length || data.length > MAX_OBJECT_SIZE) throw new Error('上传图片大小无效或超过 100 MB 限制');
     const mimeType = detectImageMime(data);
