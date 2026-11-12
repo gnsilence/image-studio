@@ -1871,21 +1871,36 @@ async function runSingleImage(apiKey, request, taskId, index, trace) {
       ? JSON.parse(image.substring(12))
       : image.startsWith('MULTI_URL:') ? image.substring(10).split('|||').map(url => `URL:${url}`) : [image];
     const diskRefs = [];
+    const ensureWebp = isGptImage26Request(request) && request.mode === 'image-to-image'
+      && request.gptImageOutputFormat === 'webp';
     for (let subIdx = 0; subIdx < expanded.length; subIdx++) {
       const img = expanded[subIdx];
-      if (img.startsWith('URL:')) {
-        const remoteUrl = img.substring(4);
+      const isRemote = img.startsWith('URL:');
+      if (isRemote && !ensureWebp) {
         // Let the desktop/web client download the upstream result directly.
         // This avoids routing the image body through the project server.
-        diskRefs.push(`URL:${remoteUrl}`);
+        diskRefs.push(img);
       } else {
-        const buffer = Buffer.from(img, 'base64');
+        let buffer;
+        if (isRemote) {
+          const response = await fetchWithTimeout(img.substring(4));
+          if (!response.ok) throw new Error(`图片下载失败: HTTP ${response.status}`);
+          buffer = await readBodyWithProgress(response, trace, 'downloading');
+        } else {
+          buffer = Buffer.from(img, 'base64');
+        }
         const fallbackMimeType = isGptImage26Request(request) && request.gptImageOutputFormat
           ? `image/${request.gptImageOutputFormat === 'svg' ? 'svg+xml' : request.gptImageOutputFormat}` : 'image/png';
-        const result = saveImageToDisk(taskId, index, subIdx, buffer, detectImageMimeType(buffer, fallbackMimeType));
+        let mimeType = detectImageMimeType(buffer, ensureWebp ? '' : fallbackMimeType);
+        if (ensureWebp && mimeType !== 'image/webp') {
+          // Some edit providers return PNG despite output_format=webp. Encode that result without generating again.
+          buffer = await runtimeRequire('sharp')(buffer).webp({ lossless: true, exact: true }).toBuffer();
+          mimeType = 'image/webp';
+        }
+        const result = saveImageToDisk(taskId, index, subIdx, buffer, mimeType);
         logTaskStage(trace, 'result_saved', {
           subIndex: subIdx,
-          source: 'base64',
+          source: isRemote ? 'url' : 'base64',
           requestElapsedMs: Date.now() - trace.startedAt,
           bytes: buffer.length,
         });

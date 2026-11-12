@@ -985,3 +985,159 @@ test('Grok URL image tasks preserve remote URL results without server-side downl
     }
   }
 });
+
+test('GPT Image 2.6 WebP edits normalize upstream PNG results without another generation', async t => {
+  const sharp = require('sharp');
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nova-image-26-webp-test-'));
+  const token = 'test-image-26-webp-token';
+  const pixels = Buffer.from([255, 0, 0, 255, 13, 27, 42, 0, 0, 127, 255, 128, 23, 42, 255, 255]);
+  const png = await sharp(pixels, { raw: { width: 2, height: 2, channels: 4 } }).png().toBuffer();
+  const webp = await sharp(png).webp({ lossless: true, exact: true }).toBuffer();
+  const generationRequests = [];
+  const imageRequests = [];
+  let scenario;
+  let upstreamUrl;
+  const upstream = http.createServer((req, res) => {
+    if (req.method === 'GET') {
+      imageRequests.push({ path: req.url, authorization: req.headers.authorization });
+      if (req.url === '/result/missing.png') {
+        res.writeHead(503);
+        res.end('image unavailable');
+        return;
+      }
+      const result = req.url.endsWith('.webp') ? webp : png;
+      res.writeHead(200, { 'Content-Type': req.url.endsWith('.webp') ? 'image/webp' : 'image/png' });
+      res.end(result);
+      return;
+    }
+    const chunks = [];
+    req.on('data', chunk => chunks.push(chunk));
+    req.on('end', async () => {
+      try {
+        const raw = Buffer.concat(chunks);
+        const body = req.headers['content-type'].startsWith('multipart/')
+          ? Object.fromEntries(await new Request('http://localhost', { method: 'POST', headers: req.headers, body: raw }).formData())
+          : JSON.parse(raw);
+        generationRequests.push({ path: req.url, body });
+        const result = scenario.format === 'webp' ? webp : scenario.format === 'invalid' ? Buffer.from('not an image') : png;
+        if (scenario.wire === 'sse') {
+          res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+          res.end(`data: ${JSON.stringify({ type: 'image_edit.partial_image', b64_json: png.toString('base64') })}\n\n`
+            + `data: ${JSON.stringify({ type: 'image_edit.completed', b64_json: result.toString('base64'), output_format: scenario.format })}\n\n`
+            + 'data: [DONE]\n\n');
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ output_format: scenario.format, data: [scenario.wire === 'url'
+          ? { url: `${upstreamUrl}/result/${scenario.missing ? 'missing.png' : `image.${scenario.format}`}` }
+          : { b64_json: result.toString('base64') }] }));
+      } catch (error) {
+        res.writeHead(500);
+        res.end(String(error));
+      }
+    });
+  });
+  const address = await listen(upstream);
+  upstreamUrl = `http://127.0.0.1:${address.port}`;
+  const child = fork(path.join(__dirname, 'server.js'), [], {
+    cwd: path.join(__dirname, '..'), silent: true,
+    env: {
+      ...process.env, NODE_ENV: 'production', HOSTNAME: '127.0.0.1', PORT: '0',
+      NOVA_TASK_DB: path.join(tempDir, 'tasks.sqlite'), NOVA_IMAGE_DIR: path.join(tempDir, 'images'),
+      NOVA_DESKTOP_SESSION_TOKEN: token, NOVA_IMAGE_STREAM: 'true', NOVA_IMAGE_PARTIAL_IMAGES: '2',
+    },
+  });
+  try {
+    const ready = await waitForMessage(child, 'ready');
+    const headers = { 'Content-Type': 'application/json', 'X-Nova-Desktop-Token': token };
+    const complete = async (overrides = {}, response = { wire: 'json', format: 'png' }) => {
+      scenario = response;
+      const generationCount = generationRequests.length;
+      const imageCount = imageRequests.length;
+      const submitted = await fetch(`${ready.url}/api/nova/tasks`, {
+        method: 'POST', headers,
+        body: JSON.stringify({
+          apiKey: 'image-26-webp-key', baseUrl: upstreamUrl, protocol: 'openai',
+          mode: 'image-to-image', model: 'gpt-image-2.6-sunburst', prompt: 'local WebP test',
+          outputSize: '1K', aspectRatio: '1:1', temperature: 1, parallelCount: 1,
+          images: [{ data: png.toString('base64'), mimeType: 'image/png' }], gptImageOutputFormat: 'webp',
+          ...overrides,
+        }),
+      });
+      assert.equal(submitted.status, 202, await submitted.clone().text());
+      const { taskId } = await submitted.json();
+      const task = await waitForTaskDone(ready.url, taskId, headers);
+      assert.equal(generationRequests.length, generationCount + 1, 'normalizing an existing result must not generate another image');
+      return { taskId, task, request: generationRequests.at(-1), downloads: imageRequests.slice(imageCount) };
+    };
+    const storedResult = async ({ taskId, task }, extension, mime) => {
+      assert.equal(task.status, 'completed', task.error);
+      assert.ok(task.result.images[0].startsWith('URL:/api/nova/images/'));
+      const stored = await fetch(`${ready.url}${task.result.images[0].substring(4)}`, { headers });
+      assert.equal(stored.headers.get('content-type'), mime);
+      const bytes = Buffer.from(await stored.arrayBuffer());
+      assert.deepEqual(bytes, fs.readFileSync(path.join(tempDir, 'images', `${taskId}-0-0.${extension}`)));
+      return bytes;
+    };
+    for (const model of ['gpt-image-2.6-sunburst', 'gpt-image-2.6-flare']) {
+      for (const wire of ['json', 'sse', 'url']) {
+        await t.test(`${model} preserves RGBA pixels when ${wire} edits return PNG for WebP`, async () => {
+          const result = await complete({ model }, { wire, format: 'png' });
+          assert.equal(result.request.path, '/v1/images/edits');
+          assert.equal(result.request.body.output_format, 'webp');
+          assert.equal(result.downloads.length, wire === 'url' ? 1 : 0);
+          for (const download of result.downloads) assert.equal(download.authorization, undefined);
+          const bytes = await storedResult(result, 'webp', 'image/webp');
+          assert.equal(bytes.toString('ascii', 0, 4), 'RIFF');
+          assert.equal(bytes.toString('ascii', 8, 12), 'WEBP');
+          assert.deepEqual(await sharp(bytes).ensureAlpha().raw().toBuffer(), pixels);
+        });
+      }
+    }
+    for (const wire of ['json', 'url']) {
+      await t.test(`existing WebP ${wire} results retain their exact bytes`, async () => {
+        const result = await complete({}, { wire, format: 'webp' });
+        assert.equal(result.downloads.length, wire === 'url' ? 1 : 0);
+        for (const download of result.downloads) assert.equal(download.authorization, undefined);
+        assert.deepEqual(await storedResult(result, 'webp', 'image/webp'), webp);
+      });
+    }
+    for (const [name, response] of [
+      ['unavailable result URL', { wire: 'url', format: 'png', missing: true }],
+      ['invalid image bytes', { wire: 'json', format: 'invalid' }],
+    ]) {
+      await t.test(`${name} fails without another image generation`, async () => {
+        const result = await complete({}, response);
+        assert.equal(result.task.status, 'failed');
+        assert.ok(result.task.error);
+        assert.equal(result.downloads.length, response.wire === 'url' ? 1 : 0);
+        for (const download of result.downloads) assert.equal(download.authorization, undefined);
+      });
+    }
+    await t.test('other output selections and text generation retain the actual upstream bytes', async () => {
+      for (const [overrides, format, bytes, mime] of [
+        [{ gptImageOutputFormat: 'png' }, 'webp', webp, 'image/webp'],
+        [{ gptImageOutputFormat: 'jpeg' }, 'png', png, 'image/png'],
+        [{ mode: 'text-to-image', images: [] }, 'png', png, 'image/png'],
+      ]) {
+        const result = await complete(overrides, { wire: 'json', format });
+        assert.deepEqual(await storedResult(result, format, mime), bytes);
+      }
+    });
+    await t.test('PNG edit URL results retain their original address without backend download', async () => {
+      const result = await complete({ gptImageOutputFormat: 'png' }, { wire: 'url', format: 'png', missing: true });
+      assert.equal(result.task.status, 'completed', result.task.error);
+      assert.deepEqual(result.task.result.images, [`URL:${upstreamUrl}/result/missing.png`]);
+      assert.equal(result.downloads.length, 0);
+    });
+  } finally {
+    if (child.connected) {
+      const exited = waitForExit(child);
+      child.send({ type: 'stop' });
+      await exited;
+    } else if (!child.killed) child.kill('SIGKILL');
+    child.stdout?.destroy(); child.stderr?.destroy();
+    await closeServer(upstream);
+    try { fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); } catch { /* Windows may retain SQLite handles briefly after child exit. */ }
+  }
+});
